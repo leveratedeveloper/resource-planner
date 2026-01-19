@@ -17,6 +17,7 @@ interface ResourceRowProps {
   brandId: string | null;
   onAssignProject?: (resourceId: string) => void;
   cellWidth?: number;
+  isWeekView?: boolean;
 }
 
 // Allocation Cell Component
@@ -133,7 +134,7 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: Ret
   );
 };
 
-export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, onAssignProject, cellWidth = 100 }) => {
+export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, onAssignProject, cellWidth = 100, isWeekView = false }) => {
   const { assignments, projects, brands, addAssignment, updateAssignment } = useApp();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -293,6 +294,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               days={days}
               resourceRowHeight={50}
               cellWidth={cellWidth}
+              isWeekView={isWeekView}
               onUpdate={handleUpdateAssignment}
             />
           ))}
@@ -341,6 +343,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                   days={days}
                   resourceRowHeight={60}
                   cellWidth={cellWidth}
+                  isWeekView={isWeekView}
                   onUpdate={handleUpdateAssignment}
                 />
               ))}

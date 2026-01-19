@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import { Assignment } from "@/types";
-import { differenceInDays, startOfDay, format, addDays } from "date-fns";
+import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks } from "date-fns";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import {
@@ -17,6 +17,7 @@ interface AssignmentBlockProps {
   days: Date[];
   resourceRowHeight: number;
   cellWidth?: number;
+  isWeekView?: boolean; // true for quarter/halfYear/year views where each cell = 1 week
   onUpdate?: (id: string, updates: { startDate?: Date; endDate?: Date }) => void;
 }
 
@@ -25,6 +26,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   days,
   resourceRowHeight,
   cellWidth = 100,
+  isWeekView = false,
   onUpdate,
 }) => {
   const { projects } = useApp();
@@ -44,31 +46,78 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const endDate = startOfDay(new Date(assignment.endDate));
   const timelineStart = startOfDay(days[0]);
 
-  const offsetDays = differenceInDays(startDate, timelineStart);
-  const durationDays = differenceInDays(endDate, startDate) + 1;
+  let offsetDays: number;
+  let durationDays: number;
+  let startVisibleIdx: number;
+  let endVisibleIdx: number;
+  let visibleDuration: number;
+  let useVisibleIndices: boolean;
 
-  // Find positions in visible days array - inline calculation
-  const startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
+  if (isWeekView) {
+    // In week view, each cell represents a week (Monday)
+    // Find which week column the start/end dates fall into
+    const assignmentStartWeek = startOfWeek(startDate, { weekStartsOn: 1 });
+    const assignmentEndWeek = startOfWeek(endDate, { weekStartsOn: 1 });
 
-  // Find correct end index even if it falls on a hidden weekend
-  let endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
-  if (endVisibleIdx === -1 && startVisibleIdx >= 0) {
-    const endDateTime = endDate.getTime();
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (startOfDay(days[i]).getTime() <= endDateTime) {
-        endVisibleIdx = i;
-        break;
+    // Find the indices in the days array (which contains Mondays)
+    startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentStartWeek.getTime());
+    endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentEndWeek.getTime());
+
+    // If not found, find the closest week before/after
+    if (startVisibleIdx === -1) {
+      const assignmentStartWeekTime = assignmentStartWeek.getTime();
+      for (let i = 0; i < days.length; i++) {
+        if (startOfDay(days[i]).getTime() >= assignmentStartWeekTime) {
+          startVisibleIdx = i;
+          break;
+        }
+      }
+      if (startVisibleIdx === -1) startVisibleIdx = 0;
+    }
+
+    if (endVisibleIdx === -1) {
+      const assignmentEndWeekTime = assignmentEndWeek.getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= assignmentEndWeekTime) {
+          endVisibleIdx = i;
+          break;
+        }
+      }
+      if (endVisibleIdx === -1) endVisibleIdx = days.length - 1;
+    }
+
+    visibleDuration = endVisibleIdx - startVisibleIdx + 1;
+    useVisibleIndices = true;
+    offsetDays = startVisibleIdx;
+    durationDays = visibleDuration;
+  } else {
+    // Day view - original logic
+    offsetDays = differenceInDays(startDate, timelineStart);
+    durationDays = differenceInDays(endDate, startDate) + 1;
+
+    // Find positions in visible days array - inline calculation
+    startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
+
+    // Find correct end index even if it falls on a hidden weekend
+    endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
+    if (endVisibleIdx === -1 && startVisibleIdx >= 0) {
+      const endDateTime = endDate.getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= endDateTime) {
+          endVisibleIdx = i;
+          break;
+        }
       }
     }
+
+    // Calculate duration in visible days (how many columns it spans)
+    visibleDuration = startVisibleIdx >= 0 && endVisibleIdx >= 0
+      ? endVisibleIdx - startVisibleIdx + 1
+      : durationDays;
+
+    // Determine if we should use visible column indices (when weekends are hidden)
+    useVisibleIndices = startVisibleIdx >= 0;
   }
-
-  // Calculate duration in visible days (how many columns it spans)
-  const visibleDuration = startVisibleIdx >= 0 && endVisibleIdx >= 0
-    ? endVisibleIdx - startVisibleIdx + 1
-    : durationDays;
-
-  // Determine if we should use visible column indices (when weekends are hidden)
-  const useVisibleIndices = startVisibleIdx >= 0;
 
   // Apply temp offset during resize or drag
   let displayOffset = useVisibleIndices ? startVisibleIdx : offsetDays;
@@ -119,21 +168,38 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     return days.findIndex(d => startOfDay(d).getTime() === dateMs);
   }, [days]);
 
-  // Find the correct visible index for a date, even if it falls on a hidden weekend
+  // Find the correct visible index for a date, even if it falls on a hidden weekend or in week view
   const findCorrectVisibleIndex = useCallback((date: Date) => {
-    const exactIdx = findVisibleIndex(date);
-    if (exactIdx >= 0) return exactIdx;
+    if (isWeekView) {
+      // In week view, find which week this date belongs to
+      const dateWeek = startOfWeek(date, { weekStartsOn: 1 });
+      const exactIdx = days.findIndex(d => startOfDay(d).getTime() === dateWeek.getTime());
+      if (exactIdx >= 0) return exactIdx;
 
-    // If not found (e.g., weekend when weekends are hidden),
-    // find the last visible day that's before or equal to this date
-    const dateTime = startOfDay(date).getTime();
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (startOfDay(days[i]).getTime() <= dateTime) {
-        return i;
+      // If not found, find the closest week before this date
+      const dateWeekTime = dateWeek.getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= dateWeekTime) {
+          return i;
+        }
       }
+      return -1;
+    } else {
+      // Day view - original logic
+      const exactIdx = findVisibleIndex(date);
+      if (exactIdx >= 0) return exactIdx;
+
+      // If not found (e.g., weekend when weekends are hidden),
+      // find the last visible day that's before or equal to this date
+      const dateTime = startOfDay(date).getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= dateTime) {
+          return i;
+        }
+      }
+      return -1;
     }
-    return -1;
-  }, [days, findVisibleIndex]);
+  }, [days, findVisibleIndex, isWeekView]);
 
   // Resize handlers
   const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.MouseEvent) => {
@@ -175,35 +241,53 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
         return result;
       };
       
-      // Apply the resize using visible days array
+      // Apply the resize
       if (onUpdate && deltaColumns !== 0) {
-        if (edge === 'left') {
-          // For left edge: find new start date from days array
-          const currentIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
-          const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
-          let newStartDate = days[newIdx];
-          
-          // Skip weekend if needed
-          if (newStartDate) {
-            newStartDate = skipWeekend(newStartDate, 'forward');
-          }
-          
-          if (newStartDate && newStartDate < endDate) {
-            onUpdate(assignment.id, { startDate: newStartDate });
+        if (isWeekView) {
+          // In week view, each column represents 1 week (7 days)
+          const daysToMove = deltaColumns * 7;
+
+          if (edge === 'left') {
+            const newStartDate = addDays(startDate, daysToMove);
+            if (newStartDate < endDate) {
+              onUpdate(assignment.id, { startDate: newStartDate });
+            }
+          } else {
+            const newEndDate = addDays(endDate, daysToMove);
+            if (newEndDate > startDate) {
+              onUpdate(assignment.id, { endDate: newEndDate });
+            }
           }
         } else {
-          // For right edge: find new end date from days array
-          const currentIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
-          const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
-          let newEndDate = days[newIdx];
-          
-          // Skip weekend if needed
-          if (newEndDate) {
-            newEndDate = skipWeekend(newEndDate, 'backward');
-          }
-          
-          if (newEndDate && newEndDate > startDate) {
-            onUpdate(assignment.id, { endDate: newEndDate });
+          // In day view, use visible days array
+          if (edge === 'left') {
+            // For left edge: find new start date from days array
+            const currentIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
+            const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
+            let newStartDate = days[newIdx];
+
+            // Skip weekend if needed
+            if (newStartDate) {
+              newStartDate = skipWeekend(newStartDate, 'forward');
+            }
+
+            if (newStartDate && newStartDate < endDate) {
+              onUpdate(assignment.id, { startDate: newStartDate });
+            }
+          } else {
+            // For right edge: find new end date from days array
+            const currentIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
+            const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
+            let newEndDate = days[newIdx];
+
+            // Skip weekend if needed
+            if (newEndDate) {
+              newEndDate = skipWeekend(newEndDate, 'backward');
+            }
+
+            if (newEndDate && newEndDate > startDate) {
+              onUpdate(assignment.id, { endDate: newEndDate });
+            }
           }
         }
       }
@@ -215,7 +299,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex]);
 
   // Drag to move handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -253,23 +337,33 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       setIsDragging(false);
       setDragOffset(0);
 
-      // Apply the move using visible days array
+      // Apply the move
       if (deltaColumns !== 0 && onUpdate && startVisibleIdx >= 0 && endVisibleIdx >= 0) {
-        const newStartIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx + deltaColumns));
-        const newEndIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx + deltaColumns));
-
-        const newStartDate = days[newStartIdx];
-        const newEndDate = days[newEndIdx];
-
-        if (newStartDate && newEndDate) {
+        if (isWeekView) {
+          // In week view, each column represents 1 week (7 days)
+          // Move by the number of weeks
+          const daysToMove = deltaColumns * 7;
+          const newStartDate = addDays(startDate, daysToMove);
+          const newEndDate = addDays(endDate, daysToMove);
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+        } else {
+          // In day view, use the visible days array
+          const newStartIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx + deltaColumns));
+          const newEndIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx + deltaColumns));
+
+          const newStartDate = days[newStartIdx];
+          const newEndDate = days[newEndIdx];
+
+          if (newStartDate && newEndDate) {
+            onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+          }
         }
       }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView]);
 
   return (
     <TooltipProvider>

@@ -3,10 +3,10 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@iconify/react";
-import { format, addWeeks, subWeeks, addMonths, subMonths, startOfWeek } from "date-fns";
+import { format, addWeeks, subWeeks, addMonths, subMonths, addQuarters, subQuarters, addYears, subYears, startOfWeek } from "date-fns";
 import { cn } from "@/lib/utils";
 
-export type ViewMode = "day" | "week" | "month";
+export type ViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
 
 interface TimelineHeaderControlsProps {
   currentDate: Date;
@@ -28,18 +28,42 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
   onToday,
 }) => {
   const handlePrev = () => {
-    if (viewMode === "month") {
-      onDateChange(subMonths(currentDate, 1));
-    } else {
-      onDateChange(subWeeks(currentDate, 1));
+    switch (viewMode) {
+      case "week":
+        onDateChange(subWeeks(currentDate, 1));
+        break;
+      case "month":
+        onDateChange(subMonths(currentDate, 1));
+        break;
+      case "quarter":
+        onDateChange(subQuarters(currentDate, 1));
+        break;
+      case "halfYear":
+        onDateChange(subMonths(currentDate, 6));
+        break;
+      case "year":
+        onDateChange(subYears(currentDate, 1));
+        break;
     }
   };
 
   const handleNext = () => {
-    if (viewMode === "month") {
-      onDateChange(addMonths(currentDate, 1));
-    } else {
-      onDateChange(addWeeks(currentDate, 1));
+    switch (viewMode) {
+      case "week":
+        onDateChange(addWeeks(currentDate, 1));
+        break;
+      case "month":
+        onDateChange(addMonths(currentDate, 1));
+        break;
+      case "quarter":
+        onDateChange(addQuarters(currentDate, 1));
+        break;
+      case "halfYear":
+        onDateChange(addMonths(currentDate, 6));
+        break;
+      case "year":
+        onDateChange(addYears(currentDate, 1));
+        break;
     }
   };
 
@@ -64,23 +88,12 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
           </Button>
         </div>
         <span className="font-medium text-sm min-w-[140px]">
-          {format(currentDate, "MMMM yyyy")}
+          {viewMode === "year" ? format(currentDate, "yyyy") : format(currentDate, "MMMM yyyy")}
         </span>
       </div>
 
       {/* Center: View Mode Toggle */}
       <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-        <Button
-          variant={viewMode === "day" ? "secondary" : "ghost"}
-          size="sm"
-          onClick={() => onViewModeChange("day")}
-          className={cn(
-            "text-xs h-7 px-3",
-            viewMode === "day" && "bg-background shadow-sm"
-          )}
-        >
-          Day
-        </Button>
         <Button
           variant={viewMode === "week" ? "secondary" : "ghost"}
           size="sm"
@@ -103,23 +116,61 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
         >
           Month
         </Button>
-      </div>
-
-      {/* Right: Weekend Toggle */}
-      <div className="flex items-center gap-2">
         <Button
-          variant={showWeekends ? "default" : "outline"}
+          variant={viewMode === "quarter" ? "secondary" : "ghost"}
           size="sm"
-          onClick={onToggleWeekends}
-          className="text-xs gap-1"
+          onClick={() => onViewModeChange("quarter")}
+          className={cn(
+            "text-xs h-7 px-3",
+            viewMode === "quarter" && "bg-background shadow-sm"
+          )}
         >
-          <Icon 
-            icon={showWeekends ? "lucide:calendar" : "lucide:calendar-off"} 
-            className="h-3.5 w-3.5" 
-          />
-          {showWeekends ? "Hide Weekends" : "Show Weekends"}
+          Quarter
+        </Button>
+        <Button
+          variant={viewMode === "halfYear" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => onViewModeChange("halfYear")}
+          className={cn(
+            "text-xs h-7 px-3",
+            viewMode === "halfYear" && "bg-background shadow-sm"
+          )}
+        >
+          Half Year
+        </Button>
+        <Button
+          variant={viewMode === "year" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => onViewModeChange("year")}
+          className={cn(
+            "text-xs h-7 px-3",
+            viewMode === "year" && "bg-background shadow-sm"
+          )}
+        >
+          Year
         </Button>
       </div>
+
+      {/* Right: Weekend Toggle (only for week and month views) */}
+      {(viewMode === "week" || viewMode === "month") ? (
+        <div className="flex items-center gap-2">
+          <Button
+            variant={showWeekends ? "default" : "outline"}
+            size="sm"
+            onClick={onToggleWeekends}
+            className="text-xs gap-1"
+          >
+            <Icon
+              icon={showWeekends ? "lucide:calendar" : "lucide:calendar-off"}
+              className="h-3.5 w-3.5"
+            />
+            {showWeekends ? "Hide Weekends" : "Show Weekends"}
+          </Button>
+        </div>
+      ) : (
+        /* Placeholder to maintain centered layout */
+        <div className="w-[140px]" />
+      )}
     </div>
   );
 };
