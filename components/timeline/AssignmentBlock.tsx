@@ -35,6 +35,10 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
   const [tempOffset, setTempOffset] = useState(0); // Days to adjust
 
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0); // Days to move
+
   // Calculate Position and Width
   const startDate = startOfDay(new Date(assignment.startDate));
   const endDate = startOfDay(new Date(assignment.endDate));
@@ -43,15 +47,17 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const offsetDays = differenceInDays(startDate, timelineStart);
   const durationDays = differenceInDays(endDate, startDate) + 1;
 
-  // Apply temp offset during resize
+  // Apply temp offset during resize or drag
   let displayOffset = offsetDays;
   let displayDuration = durationDays;
-  
+
   if (isResizing === 'left') {
     displayOffset = offsetDays + tempOffset;
     displayDuration = durationDays - tempOffset;
   } else if (isResizing === 'right') {
     displayDuration = durationDays + tempOffset;
+  } else if (isDragging) {
+    displayOffset = offsetDays + dragOffset;
   }
 
   // Clamp to valid values
@@ -172,6 +178,50 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     document.addEventListener('mouseup', handleMouseUp);
   }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset]);
 
+  // Drag to move handlers
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    // Don't start drag if clicking on resize handles
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-resize-handle]')) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    setIsDragging(true);
+    setDragOffset(0);
+
+    const startX = e.clientX;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaDays = Math.round(deltaX / cellWidth);
+      setDragOffset(deltaDays);
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+
+      const deltaX = upEvent.clientX - startX;
+      const deltaDays = Math.round(deltaX / cellWidth);
+
+      setIsDragging(false);
+      setDragOffset(0);
+
+      // Apply the move
+      if (deltaDays !== 0 && onUpdate) {
+        const newStartDate = addDays(startDate, deltaDays);
+        const newEndDate = addDays(endDate, deltaDays);
+        onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate]);
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -181,7 +231,8 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             className={cn(
               "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group transition-all",
               isTimeOff && "bg-gray-500 opacity-80",
-              isResizing && "cursor-col-resize ring-2 ring-blue-400"
+              isResizing && "cursor-col-resize ring-2 ring-blue-400",
+              isDragging ? "cursor-grabbing opacity-60 ring-2 ring-blue-400" : "cursor-grab"
             )}
             style={{
               left: LEFT_OFFSET,
@@ -190,9 +241,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               top: 4,
               height: resourceRowHeight - 8,
             }}
+            onMouseDown={handleDragStart}
           >
             {/* Left resize handle */}
             <div
+              data-resize-handle="left"
               className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-10"
               onMouseDown={(e) => handleResizeStart('left', e)}
             />
@@ -205,6 +258,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             
             {/* Right resize handle */}
             <div
+              data-resize-handle="right"
               className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-10"
               onMouseDown={(e) => handleResizeStart('right', e)}
             />
