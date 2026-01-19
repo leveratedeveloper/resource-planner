@@ -4,7 +4,7 @@ import { useState } from "react";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { SetupManager } from "@/components/setup/SetupManager";
 import { Timeline } from "@/components/timeline/Timeline";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export default function Home() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -26,7 +26,13 @@ export default function Home() {
       </main>
 
       <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
-        <DialogContent className="max-w-7xl h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full h-[90vh] overflow-y-auto">
+          <div className="sr-only">
+            <DialogTitle>Setup</DialogTitle>
+            <DialogDescription>
+              Manage your brands and team resources.
+            </DialogDescription>
+          </div>
           <SetupManager />
         </DialogContent>
       </Dialog>

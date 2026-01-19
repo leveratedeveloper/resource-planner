@@ -1,17 +1,21 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Resource, Brand, Assignment } from "@/types";
-import { mockResources, mockBrands, mockAssignments } from "@/lib/mockData";
+import { Resource, Brand, Project, Assignment } from "@/types";
+import { mockResources, mockBrands, mockProjects, createMockAssignments } from "@/lib/mockData";
 
 type AppContextType = {
   resources: Resource[];
   brands: Brand[];
+  projects: Project[];
   assignments: Assignment[];
   addResource: (resource: Resource) => void;
   updateResource: (resource: Resource) => void;
   addBrand: (brand: Brand) => void;
   updateBrand: (brand: Brand) => void;
+  addProject: (project: Project) => void;
+  updateProject: (project: Project) => void;
+  deleteProject: (id: string) => void;
   addAssignment: (assignment: Assignment) => void;
   updateAssignment: (assignment: Assignment) => void;
   deleteAssignment: (id: string) => void;
@@ -22,9 +26,13 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [resources, setResources] = useState<Resource[]>(mockResources);
   const [brands, setBrands] = useState<Brand[]>(mockBrands);
-  const [assignments, setAssignments] = useState<Assignment[]>(mockAssignments);
+  const [projects, setProjects] = useState<Project[]>(mockProjects);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
 
-  // Load from local storage on mount (optional, skipping for now to rely on mock data or adding persistence later)
+  // Initialize assignments on client-side only to avoid hydration mismatch
+  useEffect(() => {
+    setAssignments(createMockAssignments());
+  }, []);
 
   const addResource = (resource: Resource) => {
     setResources((prev) => [...prev, resource]);
@@ -40,6 +48,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateBrand = (updated: Brand) => {
     setBrands((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+  };
+
+  const addProject = (project: Project) => {
+    setProjects((prev) => [...prev, project]);
+  };
+
+  const updateProject = (updated: Project) => {
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  };
+
+  const deleteProject = (id: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== id));
   };
 
   const addAssignment = (assignment: Assignment) => {
@@ -59,11 +79,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         resources,
         brands,
+        projects,
         assignments,
         addResource,
         updateResource,
         addBrand,
         updateBrand,
+        addProject,
+        updateProject,
+        deleteProject,
         addAssignment,
         updateAssignment,
         deleteAssignment,
