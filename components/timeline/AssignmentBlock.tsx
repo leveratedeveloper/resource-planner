@@ -47,9 +47,20 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const offsetDays = differenceInDays(startDate, timelineStart);
   const durationDays = differenceInDays(endDate, startDate) + 1;
 
-  // Find positions in visible days array
+  // Find positions in visible days array - inline calculation
   const startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
-  const endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
+
+  // Find correct end index even if it falls on a hidden weekend
+  let endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
+  if (endVisibleIdx === -1 && startVisibleIdx >= 0) {
+    const endDateTime = endDate.getTime();
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (startOfDay(days[i]).getTime() <= endDateTime) {
+        endVisibleIdx = i;
+        break;
+      }
+    }
+  }
 
   // Calculate duration in visible days (how many columns it spans)
   const visibleDuration = startVisibleIdx >= 0 && endVisibleIdx >= 0
@@ -108,6 +119,22 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     return days.findIndex(d => startOfDay(d).getTime() === dateMs);
   }, [days]);
 
+  // Find the correct visible index for a date, even if it falls on a hidden weekend
+  const findCorrectVisibleIndex = useCallback((date: Date) => {
+    const exactIdx = findVisibleIndex(date);
+    if (exactIdx >= 0) return exactIdx;
+
+    // If not found (e.g., weekend when weekends are hidden),
+    // find the last visible day that's before or equal to this date
+    const dateTime = startOfDay(date).getTime();
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (startOfDay(days[i]).getTime() <= dateTime) {
+        return i;
+      }
+    }
+    return -1;
+  }, [days, findVisibleIndex]);
+
   // Resize handlers
   const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.MouseEvent) => {
     e.preventDefault();
@@ -118,11 +145,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     offsetRef.current = 0;
     
     const startX = e.clientX;
-    
+
     // Find current visible indices
     const startVisibleIdx = findVisibleIndex(startDate);
-    const endVisibleIdx = findVisibleIndex(endDate);
-    
+    const endVisibleIdx = findCorrectVisibleIndex(endDate);
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaColumns = Math.round(deltaX / cellWidth);
@@ -208,7 +235,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     // Find current visible indices
     const startVisibleIdx = findVisibleIndex(startDate);
-    const endVisibleIdx = findVisibleIndex(endDate);
+    const endVisibleIdx = findCorrectVisibleIndex(endDate);
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -227,12 +254,9 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       setDragOffset(0);
 
       // Apply the move using visible days array
-      if (deltaColumns !== 0 && onUpdate) {
-        const currentStartIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
-        const currentEndIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
-
-        const newStartIdx = Math.max(0, Math.min(days.length - 1, currentStartIdx + deltaColumns));
-        const newEndIdx = Math.max(0, Math.min(days.length - 1, currentEndIdx + deltaColumns));
+      if (deltaColumns !== 0 && onUpdate && startVisibleIdx >= 0 && endVisibleIdx >= 0) {
+        const newStartIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx + deltaColumns));
+        const newEndIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx + deltaColumns));
 
         const newStartDate = days[newStartIdx];
         const newEndDate = days[newEndIdx];
@@ -245,7 +269,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex]);
 
   return (
     <TooltipProvider>

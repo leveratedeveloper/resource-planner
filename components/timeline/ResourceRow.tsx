@@ -49,21 +49,28 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: Ret
   }, 0);
 
   // Time off check
-  const isTimeOff = assignments.some(a => 
-    a.resourceId === resource.id && 
-    a.isTimeOff && 
+  const isTimeOff = assignments.some(a =>
+    a.resourceId === resource.id &&
+    a.isTimeOff &&
     isWithinInterval(startOfDay(new Date(day)), {
       start: startOfDay(new Date(a.startDate)),
       end: startOfDay(new Date(a.endDate))
     })
   );
 
-  if (isTimeOff) return (
-    <div 
-      className="shrink-0 h-[60px] border-r border-dashed bg-gray-100/50"
-      style={{ width: cellWidth }}
-    />
-  );
+  if (isTimeOff) {
+    // Only show label if cells are wide enough
+    const showLabel = cellWidth >= 60;
+
+    return (
+      <div
+        className="shrink-0 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
+        style={{ width: cellWidth }}
+      >
+        {showLabel && "Time Off"}
+      </div>
+    );
+  }
 
   const percentage = dailyHours / dailyCapacity;
   
