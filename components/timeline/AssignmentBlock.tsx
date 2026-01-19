@@ -47,17 +47,29 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const offsetDays = differenceInDays(startDate, timelineStart);
   const durationDays = differenceInDays(endDate, startDate) + 1;
 
+  // Find positions in visible days array
+  const startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
+  const endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
+
+  // Calculate duration in visible days (how many columns it spans)
+  const visibleDuration = startVisibleIdx >= 0 && endVisibleIdx >= 0
+    ? endVisibleIdx - startVisibleIdx + 1
+    : durationDays;
+
+  // Determine if we should use visible column indices (when weekends are hidden)
+  const useVisibleIndices = startVisibleIdx >= 0;
+
   // Apply temp offset during resize or drag
-  let displayOffset = offsetDays;
-  let displayDuration = durationDays;
+  let displayOffset = useVisibleIndices ? startVisibleIdx : offsetDays;
+  let displayDuration = useVisibleIndices ? visibleDuration : durationDays;
 
   if (isResizing === 'left') {
-    displayOffset = offsetDays + tempOffset;
-    displayDuration = durationDays - tempOffset;
+    displayOffset = displayOffset + tempOffset;
+    displayDuration = displayDuration - tempOffset;
   } else if (isResizing === 'right') {
-    displayDuration = durationDays + tempOffset;
+    displayDuration = displayDuration + tempOffset;
   } else if (isDragging) {
-    displayOffset = offsetDays + dragOffset;
+    displayOffset = displayOffset + dragOffset;
   }
 
   // Clamp to valid values
@@ -194,6 +206,10 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     const startX = e.clientX;
 
+    // Find current visible indices
+    const startVisibleIdx = findVisibleIndex(startDate);
+    const endVisibleIdx = findVisibleIndex(endDate);
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaDays = Math.round(deltaX / cellWidth);
@@ -205,22 +221,31 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       document.removeEventListener('mouseup', handleMouseUp);
 
       const deltaX = upEvent.clientX - startX;
-      const deltaDays = Math.round(deltaX / cellWidth);
+      const deltaColumns = Math.round(deltaX / cellWidth);
 
       setIsDragging(false);
       setDragOffset(0);
 
-      // Apply the move
-      if (deltaDays !== 0 && onUpdate) {
-        const newStartDate = addDays(startDate, deltaDays);
-        const newEndDate = addDays(endDate, deltaDays);
-        onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+      // Apply the move using visible days array
+      if (deltaColumns !== 0 && onUpdate) {
+        const currentStartIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
+        const currentEndIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
+
+        const newStartIdx = Math.max(0, Math.min(days.length - 1, currentStartIdx + deltaColumns));
+        const newEndIdx = Math.max(0, Math.min(days.length - 1, currentEndIdx + deltaColumns));
+
+        const newStartDate = days[newStartIdx];
+        const newEndDate = days[newEndIdx];
+
+        if (newStartDate && newEndDate) {
+          onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+        }
       }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex]);
 
   return (
     <TooltipProvider>
