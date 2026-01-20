@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import { Assignment } from "@/types";
-import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore } from "date-fns";
+import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import {
@@ -19,6 +19,7 @@ interface AssignmentBlockProps {
   cellWidth?: number;
   isWeekView?: boolean; // true for quarter/halfYear/year views where each cell = 1 week
   onUpdate?: (id: string, updates: { startDate?: Date; endDate?: Date }) => void;
+  timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
 }
 
 export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
@@ -28,6 +29,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   cellWidth = 100,
   isWeekView = false,
   onUpdate,
+  timeOffAssignments = [],
 }) => {
   const { projects } = useApp();
   const project = projects.find((p) => p.id === assignment.projectId);
@@ -163,6 +165,42 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   // Use ref to avoid stale closure in event handlers
   const offsetRef = useRef(0);
 
+  // Check if a specific date has time-off
+  const hasTimeOffOnDate = useCallback((date: Date) => {
+    return timeOffAssignments.some(a => 
+      isWithinInterval(startOfDay(date), {
+        start: startOfDay(new Date(a.startDate)),
+        end: startOfDay(new Date(a.endDate))
+      })
+    );
+  }, [timeOffAssignments]);
+
+  // Check if any date in a range has time-off (for detecting overlap)
+  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
+    // Check if any time-off assignment overlaps with the given range
+    // Exclude the current assignment if it's a time-off assignment being resized
+    return timeOffAssignments.some(a => {
+      // Skip checking against the current assignment itself
+      if (a.id === assignment.id) return false;
+
+      const timeOffStart = startOfDay(new Date(a.startDate));
+      const timeOffEnd = startOfDay(new Date(a.endDate));
+      const checkStart = startOfDay(rangeStart);
+      const checkEnd = startOfDay(rangeEnd);
+
+      // Two ranges overlap if one starts before the other ends AND ends after the other starts
+      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
+    });
+  }, [timeOffAssignments, assignment.id]);
+
+  // Use ref to avoid stale closure for hasTimeOffInRange in nested handlers
+  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
+  hasTimeOffInRangeRef.current = hasTimeOffInRange;
+
+  // Use ref to avoid stale closure for hasTimeOffOnDate in nested handlers
+  const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
+  hasTimeOffOnDateRef.current = hasTimeOffOnDate;
+
   // Find the visible column index for a date (returns -1 if not visible)
   const findVisibleIndex = useCallback((date: Date) => {
     const dateMs = startOfDay(date).getTime();
@@ -254,6 +292,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             if (isBefore(newStartDate, today)) {
               newStartDate = today;
             }
+            // Prevent resizing into time-off (check if new range overlaps with any time-off)
+            if (hasTimeOffInRangeRef.current(newStartDate, endDate)) {
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return; // Cancel the resize
+            }
             if (newStartDate < endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
             }
@@ -262,6 +307,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             // Prevent resizing end date into the past
             if (isBefore(newEndDate, today)) {
               newEndDate = today;
+            }
+            // Prevent resizing into time-off (check if new range overlaps with any time-off)
+            if (hasTimeOffInRangeRef.current(startDate, newEndDate)) {
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return; // Cancel the resize
             }
             if (newEndDate > startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
@@ -285,6 +337,14 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               newStartDate = today;
             }
 
+            // Prevent resizing into time-off (check if new range overlaps with any time-off)
+            if (newStartDate && hasTimeOffInRangeRef.current(newStartDate, endDate)) {
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return; // Cancel the resize
+            }
+
             if (newStartDate && newStartDate < endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
             }
@@ -304,6 +364,14 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               newEndDate = today;
             }
 
+            // Prevent resizing into time-off (check if new range overlaps with any time-off)
+            if (newEndDate && hasTimeOffInRangeRef.current(startDate, newEndDate)) {
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return; // Cancel the resize
+            }
+
             if (newEndDate && newEndDate > startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
             }
@@ -318,7 +386,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, today]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, today, hasTimeOffOnDate]);
 
   // Drag to move handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -370,6 +438,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             return; // Cancel the move
           }
           
+          // Prevent moving into time-off (check if new range overlaps with any time-off)
+          if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
+            return; // Cancel the move
+          }
+          
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
         } else {
           // In day view, use the visible days array
@@ -384,6 +457,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             return; // Cancel the move
           }
 
+          // Prevent moving into time-off (check if new range overlaps with any time-off)
+          if (newStartDate && newEndDate && hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
+            return; // Cancel the move
+          }
+
           if (newStartDate && newEndDate) {
             onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
           }
@@ -393,7 +471,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, today]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, today, hasTimeOffOnDate]);
 
   return (
     <TooltipProvider>

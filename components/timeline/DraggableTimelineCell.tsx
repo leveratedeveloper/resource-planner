@@ -3,7 +3,8 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
-import { format, startOfDay, isBefore } from "date-fns";
+import { format, startOfDay, isBefore, isWithinInterval } from "date-fns";
+import { Assignment } from "@/types";
 import {
   Popover,
   PopoverContent,
@@ -25,6 +26,8 @@ interface DraggableTimelineCellProps {
   days: Date[];
   cellWidth?: number;
   cellHeight?: number;
+  timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
+  isTimeOffMode?: boolean; // True when used for adding time-off (skip time-off blocking)
 }
 
 export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
@@ -35,6 +38,8 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   days,
   cellWidth = 100,
   cellHeight = 60,
+  timeOffAssignments = [],
+  isTimeOffMode = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -51,11 +56,23 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   // Check if this is a past date
   const today = startOfDay(new Date());
   const isPastDate = isBefore(startOfDay(day), today);
+  
+  // Check if this day has time-off (100% allocation)
+  // Only check when NOT in time-off mode (time-off mode allows adding on any day)
+  const hasTimeOff = !isTimeOffMode && timeOffAssignments.some(a => 
+    isWithinInterval(startOfDay(day), {
+      start: startOfDay(new Date(a.startDate)),
+      end: startOfDay(new Date(a.endDate))
+    })
+  );
+  
+  // Day is blocked if past, or has time-off (when not in time-off mode)
+  const isBlocked = isPastDate || hasTimeOff;
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      // Prevent scheduling on past dates
-      if (isPastDate) {
+      // Prevent scheduling on blocked dates (past or time-off)
+      if (isBlocked) {
         return;
       }
       
@@ -102,7 +119,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     },
-    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth, isWeekend, showWeekendConfirm, isPastDate]
+    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth, isWeekend, showWeekendConfirm, isBlocked]
   );
 
   // Handle weekend confirmation
@@ -126,6 +143,13 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     return dayIndex >= start && dayIndex <= end;
   }, [isDragging, dayIndex, dragEndIndex]);
 
+  // Get the appropriate tooltip message for blocked days
+  const getBlockedMessage = () => {
+    if (isPastDate) return "Cannot schedule on past dates";
+    if (hasTimeOff) return "Cannot schedule - Time Off";
+    return "";
+  };
+
   // Weekend cell with tooltip and confirmation
   if (isWeekend) {
     return (
@@ -133,15 +157,15 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         ref={cellRef}
         className={cn(
           "shrink-0 border-r border-dashed relative group",
-          isPastDate && "cursor-not-allowed",
+          isBlocked && "cursor-not-allowed",
           isInDragRange() && "bg-primary/20"
         )}
         style={{ width: cellWidth, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Show lock icon for past weekend dates */}
-        {isHovered && !isDragging && isPastDate && (
+        {/* Show lock icon for blocked weekend dates (past or time-off) */}
+        {isHovered && !isDragging && isBlocked && (
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -155,13 +179,13 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
                 side="top" 
                 className="bg-slate-700 text-white border-slate-600"
               >
-                Cannot schedule on past dates
+                {getBlockedMessage()}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
-        {/* Weekend add button with tooltip and confirmation - only for future dates */}
-        {isHovered && !isDragging && !isPastDate && (
+        {/* Weekend add button with tooltip and confirmation - only for non-blocked dates */}
+        {isHovered && !isDragging && !isBlocked && (
           <Popover open={showWeekendConfirm} onOpenChange={setShowWeekendConfirm}>
             <TooltipProvider delayDuration={200}>
               <Tooltip>
@@ -217,8 +241,8 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     );
   }
 
-  // Past date cell - disabled state with lock icon
-  if (isPastDate) {
+  // Blocked date cell (past or time-off) - disabled state with lock icon
+  if (isBlocked) {
     return (
       <div
         ref={cellRef}
@@ -245,7 +269,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
                 side="top" 
                 className="bg-slate-700 text-white border-slate-600"
               >
-                Cannot schedule on past dates
+                {getBlockedMessage()}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

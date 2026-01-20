@@ -188,6 +188,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Check if has time off
   const hasTimeOff = resourceAssignments.some(a => a.isTimeOff);
+  
+  // Get time-off assignments for this resource (used to block scheduling on time-off days)
+  const timeOffAssignments = useMemo(() => 
+    resourceAssignments.filter(a => a.isTimeOff),
+    [resourceAssignments]
+  );
 
   // Handle drag complete - open popover
   const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date, position: { x: number; y: number }) => {
@@ -218,6 +224,22 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
     setPopoverData(null);
   }, [popoverData, resource.id, addAssignment]);
+
+  // Handle time-off drag complete - create time-off directly (no popover needed)
+  const handleTimeOffDragComplete = useCallback((startDay: Date, endDay: Date) => {
+    addAssignment({
+      id: `a${Date.now()}`,
+      resourceId: resource.id,
+      projectId: '', // No project for time-off
+      startDate: startDay,
+      endDate: endDay,
+      hoursPerDay: 8, // Full day time-off
+      isTimeOff: true,
+      category: 'other' as AssignmentCategory,
+      isBillable: false,
+      note: 'Time Off',
+    });
+  }, [resource.id, addAssignment]);
 
   // Handle resize update
   const handleUpdateAssignment = useCallback((id: string, updates: { startDate?: Date; endDate?: Date }) => {
@@ -313,10 +335,18 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         </div>
         <div className="flex relative flex-1 h-[50px]">
           {days.map((day) => (
-            <div
+            <DraggableTimelineCell
               key={day.toISOString()}
-              className="shrink-0 h-full border-r border-dashed"
-              style={{ width: cellWidth }}
+              day={day}
+              projectId=""
+              projectColor="#6b7280"
+              days={days}
+              cellWidth={cellWidth}
+              cellHeight={50}
+              isTimeOffMode={true}
+              onDragComplete={(startDay, endDay) => 
+                handleTimeOffDragComplete(startDay, endDay)
+              }
             />
           ))}
           {/* Time Off Assignments */}
@@ -363,6 +393,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                   days={days}
                   cellWidth={cellWidth}
                   cellHeight={60}
+                  timeOffAssignments={timeOffAssignments}
                   onDragComplete={(startDay, endDay, position) => 
                     handleDragComplete(project.id, startDay, endDay, position)
                   }
@@ -378,6 +409,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
                   onUpdate={handleUpdateAssignment}
+                  timeOffAssignments={timeOffAssignments}
                 />
               ))}
             </div>
