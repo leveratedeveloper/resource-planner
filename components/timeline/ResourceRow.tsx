@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { Resource, AssignmentCategory } from "@/types";
-import { differenceInDays, startOfWeek, endOfWeek, isWithinInterval, startOfDay, addWeeks } from "date-fns";
+import { differenceInDays, startOfWeek, endOfWeek, isWithinInterval, startOfDay, addWeeks, addDays } from "date-fns";
 import { useApp } from "@/context/AppContext";
 import { AssignmentBlock } from "./AssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
@@ -21,54 +21,85 @@ interface ResourceRowProps {
 }
 
 // Allocation Cell Component
-const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: ReturnType<typeof useApp>["assignments"]; cellWidth: number }> = ({
+const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: ReturnType<typeof useApp>["assignments"]; cellWidth: number; isWeekView?: boolean }> = ({
   day,
   resource,
   assignments,
-  cellWidth
+  cellWidth,
+  isWeekView = false
 }) => {
   const dailyCapacity = resource.capacity / 5; // Assuming 5 day week
   
-  // Calculate hours for this specific day
-  const dailyHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
-    if (assignment.resourceId !== resource.id) return total;
-    
-    // Check if day is within assignment range
-    const assignStart = startOfDay(new Date(assignment.startDate));
-    const assignEnd = startOfDay(new Date(assignment.endDate));
-    const currentDay = startOfDay(new Date(day));
-    
-    if (currentDay >= assignStart && currentDay <= assignEnd) {
-      // Check if weekend (skip if standard assignment)
-      const dayOfWeek = currentDay.getDay();
-      if (dayOfWeek === 0 || dayOfWeek === 6) return total;
-      
-      return total + assignment.hoursPerDay;
+  // For week view, aggregate hours across the week (Mon-Fri)
+  // For day view, just check the single day
+  const getDaysToCheck = () => {
+    if (!isWeekView) {
+      return [startOfDay(new Date(day))];
     }
+    // Return all weekdays in the week starting from this day
+    const weekDays: Date[] = [];
+    const weekStart = startOfDay(new Date(day));
+    for (let i = 0; i < 5; i++) {
+      const d = addDays(weekStart, i);
+      if (d.getDay() !== 0 && d.getDay() !== 6) {
+        weekDays.push(d);
+      }
+    }
+    return weekDays;
+  };
+  
+  const daysToCheck = getDaysToCheck();
+  
+  // Calculate average hours per day across the period
+  let totalHours = 0;
+  let workingDaysCount = 0;
+  
+  for (const currentDay of daysToCheck) {
+    const dayOfWeek = currentDay.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
     
-    return total;
-  }, 0);
+    workingDaysCount++;
+    
+    const dayHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
+      if (assignment.resourceId !== resource.id) return total;
+      
+      const assignStart = startOfDay(new Date(assignment.startDate));
+      const assignEnd = startOfDay(new Date(assignment.endDate));
+      
+      if (currentDay >= assignStart && currentDay <= assignEnd) {
+        return total + assignment.hoursPerDay;
+      }
+      
+      return total;
+    }, 0);
+    
+    totalHours += dayHours;
+  }
+  
+  const dailyHours = workingDaysCount > 0 ? totalHours / workingDaysCount : 0;
 
-  // Time off check
-  const isTimeOff = assignments.some(a =>
-    a.resourceId === resource.id &&
-    a.isTimeOff &&
-    isWithinInterval(startOfDay(new Date(day)), {
-      start: startOfDay(new Date(a.startDate)),
-      end: startOfDay(new Date(a.endDate))
-    })
+  // Time off check - check if ANY day in the period has time off
+  const hasTimeOff = daysToCheck.some(currentDay =>
+    assignments.some(a =>
+      a.resourceId === resource.id &&
+      a.isTimeOff &&
+      isWithinInterval(currentDay, {
+        start: startOfDay(new Date(a.startDate)),
+        end: startOfDay(new Date(a.endDate))
+      })
+    )
   );
 
-  if (isTimeOff) {
+  if (hasTimeOff) {
     // Only show label if cells are wide enough
-    const showLabel = cellWidth >= 60;
+    const showLabel = cellWidth >= 40;
 
     return (
       <div
         className="shrink-0 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
         style={{ width: cellWidth }}
       >
-        {showLabel && "Time Off"}
+        {showLabel && (cellWidth >= 60 ? "Time Off" : "TO")}
       </div>
     );
   }
@@ -230,6 +261,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               resource={resource}
               assignments={resourceAssignments}
               cellWidth={cellWidth}
+              isWeekView={isWeekView}
             />
           ))}
         </div>
@@ -267,6 +299,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               resource={resource}
               assignments={resourceAssignments}
               cellWidth={cellWidth}
+              isWeekView={isWeekView}
             />
           ))}
         </div>

@@ -3,6 +3,19 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
+import { format, startOfDay, isBefore } from "date-fns";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 interface DraggableTimelineCellProps {
   day: Date;
@@ -25,14 +38,32 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [showWeekendConfirm, setShowWeekendConfirm] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const dragStartIndex = useRef<number | null>(null);
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
 
   const dayIndex = days.findIndex((d) => d.toISOString() === day.toISOString());
+  
+  // Check if this is a weekend day
+  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+  
+  // Check if this is a past date
+  const today = startOfDay(new Date());
+  const isPastDate = isBefore(startOfDay(day), today);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      // Prevent scheduling on past dates
+      if (isPastDate) {
+        return;
+      }
+      
+      // If weekend and we haven't confirmed yet, don't start drag
+      if (isWeekend && !showWeekendConfirm) {
+        return;
+      }
+      
       e.preventDefault();
       setIsDragging(true);
       dragStartIndex.current = dayIndex;
@@ -65,13 +96,27 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         setIsDragging(false);
         setDragEndIndex(null);
         dragStartIndex.current = null;
+        setShowWeekendConfirm(false);
       };
 
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     },
-    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth]
+    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth, isWeekend, showWeekendConfirm, isPastDate]
   );
+
+  // Handle weekend confirmation
+  const handleWeekendConfirm = useCallback(() => {
+    setShowWeekendConfirm(false);
+    // Open the popover directly for single-day weekend assignment
+    if (cellRef.current) {
+      const rect = cellRef.current.getBoundingClientRect();
+      onDragComplete(day, day, {
+        x: rect.left + rect.width / 2,
+        y: rect.bottom,
+      });
+    }
+  }, [day, onDragComplete]);
 
   // Calculate if this cell is in the drag range
   const isInDragRange = useCallback(() => {
@@ -81,6 +126,135 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     return dayIndex >= start && dayIndex <= end;
   }, [isDragging, dayIndex, dragEndIndex]);
 
+  // Weekend cell with tooltip and confirmation
+  if (isWeekend) {
+    return (
+      <div
+        ref={cellRef}
+        className={cn(
+          "shrink-0 border-r border-dashed relative group",
+          isPastDate && "cursor-not-allowed",
+          isInDragRange() && "bg-primary/20"
+        )}
+        style={{ width: cellWidth, height: cellHeight }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* Show lock icon for past weekend dates */}
+        {isHovered && !isDragging && isPastDate && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center bg-gray-300 shadow-sm">
+                    <Icon icon="lucide:lock" className="h-3 w-3 text-gray-600" />
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent 
+                side="top" 
+                className="bg-slate-700 text-white border-slate-600"
+              >
+                Cannot schedule on past dates
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {/* Weekend add button with tooltip and confirmation - only for future dates */}
+        {isHovered && !isDragging && !isPastDate && (
+          <Popover open={showWeekendConfirm} onOpenChange={setShowWeekendConfirm}>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: projectColor }}
+                      >
+                        <Icon icon="lucide:plus" className="h-3 w-3" />
+                      </div>
+                    </div>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent 
+                  side="top" 
+                  className="bg-slate-700 text-white border-slate-600"
+                >
+                  Schedule on a non-working day
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <PopoverContent 
+              side="bottom" 
+              align="center"
+              className="w-64 p-4"
+            >
+              <div className="text-center">
+                <p className="text-sm mb-4">Schedule on a non-working day?</p>
+                <div className="flex justify-center gap-3">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setShowWeekendConfirm(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleWeekendConfirm}
+                  >
+                    Schedule
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+    );
+  }
+
+  // Past date cell - disabled state with lock icon
+  if (isPastDate) {
+    return (
+      <div
+        ref={cellRef}
+        className={cn(
+          "shrink-0 border-r border-dashed relative group cursor-not-allowed",
+          isInDragRange() && "bg-primary/20"
+        )}
+        style={{ width: cellWidth, height: cellHeight }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* Lock icon with tooltip - shown on hover */}
+        {isHovered && !isDragging && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center bg-gray-300 shadow-sm">
+                    <Icon icon="lucide:lock" className="h-3 w-3 text-gray-600" />
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent 
+                side="top" 
+                className="bg-slate-700 text-white border-slate-600"
+              >
+                Cannot schedule on past dates
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    );
+  }
+
+  // Normal weekday cell
   return (
     <div
       ref={cellRef}
@@ -121,4 +295,3 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     </div>
   );
 };
-

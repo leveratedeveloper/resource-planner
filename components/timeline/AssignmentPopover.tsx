@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useApp } from "@/context/AppContext";
 import { AssignmentCategory } from "@/types";
+import { format } from "date-fns";
 
 interface AssignmentPopoverProps {
   resourceId: string;
@@ -43,6 +44,10 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
 
   const resource = resources.find((r) => r.id === resourceId);
   const project = projects.find((p) => p.id === projectId);
+  
+  // Check if scheduling on a weekend
+  const isWeekendSchedule = startDate.getDay() === 0 || startDate.getDay() === 6;
+  const dayName = format(startDate, "EEEE"); // e.g., "Saturday"
 
   // Calculate total effort
   const totalHours = hoursPerDay * workDays;
@@ -76,11 +81,19 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: project?.color || "#ccc" }}
-          />
-          <span className="font-medium text-sm">{project?.name || "Assignment"}</span>
+          {isWeekendSchedule ? (
+            // Weekend header shows day name
+            <span className="font-medium text-sm">{dayName}</span>
+          ) : (
+            // Normal header shows project color and name
+            <>
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: project?.color || "#ccc" }}
+              />
+              <span className="font-medium text-sm">{project?.name || "Assignment"}</span>
+            </>
+          )}
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
           <Icon icon="lucide:x" className="h-4 w-4" />
