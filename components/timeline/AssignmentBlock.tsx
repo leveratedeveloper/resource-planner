@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import { Assignment } from "@/types";
-import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks } from "date-fns";
+import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore } from "date-fns";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import {
@@ -45,6 +45,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const startDate = startOfDay(new Date(assignment.startDate));
   const endDate = startOfDay(new Date(assignment.endDate));
   const timelineStart = startOfDay(days[0]);
+  const today = startOfDay(new Date());
 
   let offsetDays: number;
   let durationDays: number;
@@ -248,12 +249,20 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           const daysToMove = deltaColumns * 7;
 
           if (edge === 'left') {
-            const newStartDate = addDays(startDate, daysToMove);
+            let newStartDate = addDays(startDate, daysToMove);
+            // Prevent resizing start date into the past
+            if (isBefore(newStartDate, today)) {
+              newStartDate = today;
+            }
             if (newStartDate < endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
             }
           } else {
-            const newEndDate = addDays(endDate, daysToMove);
+            let newEndDate = addDays(endDate, daysToMove);
+            // Prevent resizing end date into the past
+            if (isBefore(newEndDate, today)) {
+              newEndDate = today;
+            }
             if (newEndDate > startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
             }
@@ -271,6 +280,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               newStartDate = skipWeekend(newStartDate, 'forward');
             }
 
+            // Prevent resizing start date into the past
+            if (newStartDate && isBefore(newStartDate, today)) {
+              newStartDate = today;
+            }
+
             if (newStartDate && newStartDate < endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
             }
@@ -283,6 +297,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             // Skip weekend if needed
             if (newEndDate) {
               newEndDate = skipWeekend(newEndDate, 'backward');
+            }
+
+            // Prevent resizing end date into the past
+            if (newEndDate && isBefore(newEndDate, today)) {
+              newEndDate = today;
             }
 
             if (newEndDate && newEndDate > startDate) {
@@ -299,7 +318,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, today]);
 
   // Drag to move handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -345,6 +364,12 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           const daysToMove = deltaColumns * 7;
           const newStartDate = addDays(startDate, daysToMove);
           const newEndDate = addDays(endDate, daysToMove);
+          
+          // Prevent moving start date into the past
+          if (isBefore(newStartDate, today)) {
+            return; // Cancel the move
+          }
+          
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
         } else {
           // In day view, use the visible days array
@@ -353,6 +378,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
           const newStartDate = days[newStartIdx];
           const newEndDate = days[newEndIdx];
+
+          // Prevent moving start date into the past
+          if (newStartDate && isBefore(newStartDate, today)) {
+            return; // Cancel the move
+          }
 
           if (newStartDate && newEndDate) {
             onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
@@ -363,7 +393,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, today]);
 
   return (
     <TooltipProvider>
