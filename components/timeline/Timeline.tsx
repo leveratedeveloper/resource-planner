@@ -2,6 +2,7 @@
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
+import { useEmployees, useBrands } from "@/lib/query/hooks";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
@@ -14,7 +15,9 @@ interface TimelineProps {
 }
 
 export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
-  const { resources, brands } = useApp();
+  // Fetch data using React Query
+  const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
+  const { data: brands = [] } = useBrands();
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   
@@ -111,23 +114,25 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
   // Determine if we're in week view mode (where each cell = 1 week)
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
-  // Filter resources based on selected Brand AND Department
-  const visibleResources = useMemo(() => {
-    let filtered = resources;
+  // Filter employees based on selected Brand AND Department
+  const visibleEmployees = useMemo(() => {
+    let filtered = employees;
 
     if (brandId) {
+       // Find employees assigned to this brand
        const brand = brands.find((b) => b.id === brandId);
-       if (brand) {
-         filtered = filtered.filter((r) => brand.resourceIds.includes(r.id));
+       if (brand && brand.employeeBrandAssignments) {
+         const assignedEmployeeIds = brand.employeeBrandAssignments.map((a) => a.employeeId);
+         filtered = filtered.filter((emp) => assignedEmployeeIds.includes(emp.id));
        }
     }
 
     if (department) {
-      filtered = filtered.filter((r) => r.department === department);
+      filtered = filtered.filter((emp) => emp.departmentId === department);
     }
 
     return filtered;
-  }, [brandId, department, resources, brands]);
+  }, [brandId, department, employees, brands]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
@@ -227,22 +232,32 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
         </div>
       </div>
 
-      {/* Timeline Body (Resources) */}
+      {/* Timeline Body (Employees) */}
       <div 
         ref={bodyScrollRef}
         onScroll={handleBodyScroll}
         className="flex-1 overflow-auto"
       >
         <div className="flex flex-col" style={{ minWidth: `${250 + days.length * cellWidth}px` }}>
-          {visibleResources.length === 0 ? (
+          {isLoadingEmployees ? (
              <div className="p-8 text-center text-muted-foreground">
-                 No resources found for this selection. Go to Setup to assign resources to this brand.
+                 Loading employees...
+             </div>
+          ) : visibleEmployees.length === 0 ? (
+             <div className="p-8 text-center text-muted-foreground">
+                 No employees found for this selection. Go to Setup to assign employees to this brand.
              </div>
           ) : (
-             visibleResources.map((resource) => (
+             visibleEmployees.map((employee) => (
                 <ResourceRow
-                  key={resource.id}
-                  resource={resource}
+                  key={employee.id}
+                  resource={{
+                    id: employee.id,
+                    name: employee.fullName,
+                    role: employee.position,
+                    department: employee.department?.name || "",
+                    capacity: employee.weeklyCapacity,
+                  }}
                   days={days}
                   brandId={brandId}
                   onAssignProject={handleAssignProject}

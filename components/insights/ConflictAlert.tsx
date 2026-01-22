@@ -1,0 +1,113 @@
+"use client";
+
+import React from "react";
+import { Icon } from "@iconify/react";
+import { Conflict } from "@/lib/analysis/types";
+import { Badge } from "@/components/ui/badge";
+
+interface ConflictAlertProps {
+  conflict: Conflict;
+  onResolve?: () => void;
+}
+
+export const ConflictAlert: React.FC<ConflictAlertProps> = ({
+  conflict,
+  onResolve,
+}) => {
+  const getSeverityConfig = () => {
+    switch (conflict.severity) {
+      case "critical":
+        return {
+          icon: "lucide:alert-octagon",
+          color: "text-red-500",
+          bgColor: "bg-red-500/10",
+          borderColor: "border-red-500/40",
+          badgeVariant: "destructive" as const,
+        };
+      case "warning":
+        return {
+          icon: "lucide:alert-triangle",
+          color: "text-amber-500",
+          bgColor: "bg-amber-500/10",
+          borderColor: "border-amber-500/40",
+          badgeVariant: "secondary" as const,
+        };
+      default:
+        return {
+          icon: "lucide:info",
+          color: "text-blue-500",
+          bgColor: "bg-blue-500/10",
+          borderColor: "border-blue-500/40",
+          badgeVariant: "outline" as const,
+        };
+    }
+  };
+
+  const getTypeLabel = () => {
+    switch (conflict.type) {
+      case "time_off_deadline":
+        return "Time-Off Conflict";
+      case "overallocation":
+        return "Overallocation";
+      case "resource_unavailable":
+        return "Unavailable";
+      case "billable_target":
+        return "Billable Target";
+      default:
+        return "Conflict";
+    }
+  };
+
+  const config = getSeverityConfig();
+
+  return (
+    <div
+      className={`p-4 rounded-lg border ${config.borderColor} ${config.bgColor} transition-all`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 ${config.color}`}>
+          <Icon icon={config.icon} className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <Badge variant={config.badgeVariant} className="text-xs">
+              {getTypeLabel()}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {new Date(conflict.date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
+            </span>
+          </div>
+          <p className="text-sm font-medium mb-1">{conflict.resourceName}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {conflict.description}
+          </p>
+          {conflict.suggestedResolution && (
+            <div className="mt-3 p-2 rounded bg-background/50 border border-border/50">
+              <div className="flex items-center gap-1 text-xs font-medium text-primary mb-1">
+                <Icon icon="lucide:lightbulb" className="w-3 h-3" />
+                Suggestion
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {conflict.suggestedResolution}
+              </p>
+            </div>
+          )}
+          {onResolve && conflict.severity === "critical" && (
+            <button
+              onClick={onResolve}
+              className="mt-3 text-xs font-medium text-primary hover:underline flex items-center gap-1"
+            >
+              <Icon icon="lucide:check" className="w-3 h-3" />
+              Mark as Resolved
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ConflictAlert;

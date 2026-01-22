@@ -3,7 +3,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Assignment } from "@/types";
 import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
-import { useApp } from "@/context/AppContext";
+import { useProjects } from "@/lib/query/hooks/useProjects";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -31,7 +31,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   onUpdate,
   timeOffAssignments = [],
 }) => {
-  const { projects } = useApp();
+  const { data: projects = [] } = useProjects();
   const project = projects.find((p) => p.id === assignment.projectId);
   const blockRef = useRef<HTMLDivElement>(null);
 

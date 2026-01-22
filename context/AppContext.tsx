@@ -1,96 +1,126 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { Resource, Brand, Project, Assignment } from "@/types";
-import { mockResources, mockBrands, mockProjects, createMockAssignments } from "@/lib/mockData";
+import React, { createContext, useContext, useState, useMemo } from "react";
+import { useEmployees, useAssignments, useProjects, useBrands } from "@/lib/query/hooks";
+import { useCapacityAnalysis } from "@/hooks/useCapacityAnalysis";
+import { AnalysisResult } from "@/lib/analysis/types";
 
+// Simplified context for UI state only - data fetching is handled by React Query
 type AppContextType = {
-  resources: Resource[];
-  brands: Brand[];
-  projects: Project[];
-  assignments: Assignment[];
-  addResource: (resource: Resource) => void;
-  updateResource: (resource: Resource) => void;
-  addBrand: (brand: Brand) => void;
-  updateBrand: (brand: Brand) => void;
-  addProject: (project: Project) => void;
-  updateProject: (project: Project) => void;
-  deleteProject: (id: string) => void;
-  addAssignment: (assignment: Assignment) => void;
-  updateAssignment: (assignment: Assignment) => void;
-  deleteAssignment: (id: string) => void;
+  // UI State
+  selectedDateRange: { start: Date; end: Date };
+  setSelectedDateRange: (range: { start: Date; end: Date }) => void;
+
+  selectedBrandFilter: string | null;
+  setSelectedBrandFilter: (brandId: string | null) => void;
+
+  selectedDepartmentFilter: string | null;
+  setSelectedDepartmentFilter: (dept: string | null) => void;
+
+  // Analysis results (from Web Worker)
+  analysisResult: AnalysisResult | null;
+  isAnalyzing: boolean;
+  analysisError: Error | null;
+  refreshAnalysis: () => void;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [resources, setResources] = useState<Resource[]>(mockResources);
-  const [brands, setBrands] = useState<Brand[]>(mockBrands);
-  const [projects, setProjects] = useState<Project[]>(mockProjects);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  // UI State
+  const [selectedBrandFilter, setSelectedBrandFilter] = useState<string | null>(null);
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string | null>(null);
+  
+  // Default date range: start from a week ago, look 3 months ahead
+  const [selectedDateRange, setSelectedDateRange] = useState<{ start: Date; end: Date }>(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+    const end = new Date();
+    end.setMonth(end.getMonth() + 3);
+    return { start, end };
+  });
 
-  // Initialize assignments on client-side only to avoid hydration mismatch
-  useEffect(() => {
-    setAssignments(createMockAssignments());
-  }, []);
+  // Fetch data using React Query hooks
+  const { data: employees = [] } = useEmployees();
+  const { data: assignments = [] } = useAssignments();
+  const { data: projects = [] } = useProjects();
+  const { data: brands = [] } = useBrands();
 
-  const addResource = (resource: Resource) => {
-    setResources((prev) => [...prev, resource]);
-  };
+  // Transform data for analysis (match the expected format)
+  const analysisResources = useMemo(() => {
+    return employees.map((emp) => ({
+      id: emp.id,
+      name: emp.fullName,
+      role: emp.position,
+      department: emp.department?.name || "",
+      capacity: emp.weeklyCapacity,
+    }));
+  }, [employees]);
 
-  const updateResource = (updated: Resource) => {
-    setResources((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-  };
+  const analysisAssignments = useMemo(() => {
+    return assignments.map((assign) => ({
+      id: assign.id,
+      resourceId: assign.employeeId,
+      projectId: assign.projectId || "",
+      startDate: new Date(assign.startDate),
+      endDate: new Date(assign.endDate),
+      hoursPerDay: parseFloat(assign.hoursPerDay),
+      isTimeOff: assign.isTimeOff,
+      category: assign.category || "Other",
+      isBillable: assign.isBillable,
+      note: assign.note,
+    }));
+  }, [assignments]);
 
-  const addBrand = (brand: Brand) => {
-    setBrands((prev) => [...prev, brand]);
-  };
+  const analysisProjects = useMemo(() => {
+    return projects.map((proj) => ({
+      id: proj.id,
+      name: proj.name,
+      brandId: proj.brandId,
+      color: proj.color,
+      resourceIds: proj.assignments?.map((a) => a.employeeId) || [],
+    }));
+  }, [projects]);
 
-  const updateBrand = (updated: Brand) => {
-    setBrands((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
-  };
+  const analysisBrands = useMemo(() => {
+    return brands.map((brand) => ({
+      id: brand.id,
+      name: brand.name,
+      color: brand.color,
+      resourceIds: brand.employeeBrandAssignments?.map((a) => a.employeeId) || [],
+    }));
+  }, [brands]);
 
-  const addProject = (project: Project) => {
-    setProjects((prev) => [...prev, project]);
-  };
-
-  const updateProject = (updated: Project) => {
-    setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-  };
-
-  const deleteProject = (id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  const addAssignment = (assignment: Assignment) => {
-    setAssignments((prev) => [...prev, assignment]);
-  };
-
-  const updateAssignment = (updated: Assignment) => {
-    setAssignments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-  };
-
-  const deleteAssignment = (id: string) => {
-    setAssignments((prev) => prev.filter((a) => a.id !== id));
-  };
+  // Capacity analysis (runs in Web Worker)
+  const {
+    result: analysisResult,
+    isAnalyzing,
+    error: analysisError,
+    refresh: refreshAnalysis,
+  } = useCapacityAnalysis(
+    analysisResources,
+    analysisAssignments,
+    analysisProjects,
+    analysisBrands,
+    selectedDateRange,
+    { enabled: analysisAssignments.length > 0, debounceMs: 500 }
+  );
 
   return (
     <AppContext.Provider
       value={{
-        resources,
-        brands,
-        projects,
-        assignments,
-        addResource,
-        updateResource,
-        addBrand,
-        updateBrand,
-        addProject,
-        updateProject,
-        deleteProject,
-        addAssignment,
-        updateAssignment,
-        deleteAssignment,
+        // UI State
+        selectedDateRange,
+        setSelectedDateRange,
+        selectedBrandFilter,
+        setSelectedBrandFilter,
+        selectedDepartmentFilter,
+        setSelectedDepartmentFilter,
+        // Analysis results
+        analysisResult,
+        isAnalyzing,
+        analysisError,
+        refreshAnalysis,
       }}
     >
       {children}

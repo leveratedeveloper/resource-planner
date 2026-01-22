@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { useApp } from "@/context/AppContext";
+import { useBrands } from "@/lib/query/hooks/useBrands";
+import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ interface FilterBarProps {
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
   onOpenSetup: () => void;
+  onOpenInsights: () => void;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -26,9 +28,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   selectedDepartment,
   onDepartmentChange,
   onOpenSetup,
+  onOpenInsights,
 }) => {
-  const { brands, resources } = useApp();
-  const departments = Array.from(new Set(resources.map((r) => r.department))).filter(Boolean);
+  const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const { data: departments = [], isLoading: departmentsLoading } = useDepartments();
 
   return (
     <div className="flex items-center justify-between p-4 border-b bg-card">
@@ -71,18 +74,30 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <SelectContent>
              <SelectItem value="all">All Departments</SelectItem>
              {departments.map((dept) => (
-               <SelectItem key={dept} value={dept}>
-                 {dept}
+               <SelectItem key={dept.id} value={dept.id}>
+                 <div className="flex items-center gap-2">
+                   <div
+                     className="w-3 h-3 rounded-full"
+                     style={{ backgroundColor: dept.color }}
+                   />
+                   {dept.name}
+                 </div>
                </SelectItem>
              ))}
           </SelectContent>
         </Select>
       </div>
 
-      <Button onClick={onOpenSetup} variant="outline">
-        <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
-        Setup / Manage Brands
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button onClick={onOpenInsights} variant="default">
+          <Icon icon="lucide:brain" className="mr-2 h-4 w-4" />
+          AI Insights
+        </Button>
+        <Button onClick={onOpenSetup} variant="outline">
+          <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
+          Setup / Manage Brands
+        </Button>
+      </div>
     </div>
   );
 };

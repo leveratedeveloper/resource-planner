@@ -3,7 +3,9 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { Resource, AssignmentCategory } from "@/types";
 import { differenceInDays, startOfWeek, endOfWeek, isWithinInterval, startOfDay, addWeeks, addDays } from "date-fns";
-import { useApp } from "@/context/AppContext";
+import { useAssignments, useCreateAssignment, useUpdateAssignment } from "@/lib/query/hooks/useAssignments";
+import { useProjects } from "@/lib/query/hooks/useProjects";
+import { useBrands } from "@/lib/query/hooks/useBrands";
 import { AssignmentBlock } from "./AssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
 import { AssignmentPopover } from "./AssignmentPopover";
@@ -21,7 +23,7 @@ interface ResourceRowProps {
 }
 
 // Allocation Cell Component
-const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: ReturnType<typeof useApp>["assignments"]; cellWidth: number; isWeekView?: boolean }> = ({
+const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: any[]; cellWidth: number; isWeekView?: boolean }> = ({
   day,
   resource,
   assignments,
@@ -61,7 +63,7 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: Ret
     workingDaysCount++;
     
     const dayHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
-      if (assignment.resourceId !== resource.id) return total;
+      if (assignment.employeeId !== resource.id) return total;
       
       const assignStart = startOfDay(new Date(assignment.startDate));
       const assignEnd = startOfDay(new Date(assignment.endDate));
@@ -81,7 +83,7 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: Ret
   // Time off check - check if ANY day in the period has time off
   const hasTimeOff = daysToCheck.some(currentDay =>
     assignments.some(a =>
-      a.resourceId === resource.id &&
+      a.employeeId === resource.id &&
       a.isTimeOff &&
       isWithinInterval(currentDay, {
         start: startOfDay(new Date(a.startDate)),
@@ -166,7 +168,11 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: Ret
 };
 
 export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, onAssignProject, cellWidth = 100, isWeekView = false }) => {
-  const { assignments, projects, brands, addAssignment, updateAssignment } = useApp();
+  const { data: assignments = [] } = useAssignments();
+  const { data: projects = [] } = useProjects();
+  const { data: brands = [] } = useBrands();
+  const createAssignment = useCreateAssignment();
+  const updateAssignmentMutation = useUpdateAssignment();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Popover state for creating assignments
@@ -178,7 +184,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   } | null>(null);
 
   // All assignments for this resource
-  const resourceAssignments = assignments.filter((a) => a.resourceId === resource.id);
+  const resourceAssignments = assignments.filter((a) => a.employeeId === resource.id);
   
   // Get projects this resource is assigned to
   const resourceProjects = useMemo(() => {
@@ -209,12 +215,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   }) => {
     if (!popoverData) return;
 
-    addAssignment({
-      id: `a${Date.now()}`,
-      resourceId: resource.id,
+    createAssignment.mutate({
+      employeeId: resource.id,
       projectId: popoverData.projectId,
-      startDate: popoverData.startDate,
-      endDate: popoverData.endDate,
+      startDate: popoverData.startDate.toISOString(),
+      endDate: popoverData.endDate.toISOString(),
       hoursPerDay: data.hoursPerDay,
       isTimeOff: false,
       category: data.category,
@@ -223,35 +228,34 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     });
 
     setPopoverData(null);
-  }, [popoverData, resource.id, addAssignment]);
+  }, [popoverData, resource.id, createAssignment]);
 
   // Handle time-off drag complete - create time-off directly (no popover needed)
   const handleTimeOffDragComplete = useCallback((startDay: Date, endDay: Date) => {
-    addAssignment({
-      id: `a${Date.now()}`,
-      resourceId: resource.id,
-      projectId: '', // No project for time-off
-      startDate: startDay,
-      endDate: endDay,
+    createAssignment.mutate({
+      employeeId: resource.id,
+      projectId: null, // No project for time-off
+      startDate: startDay.toISOString(),
+      endDate: endDay.toISOString(),
       hoursPerDay: 8, // Full day time-off
       isTimeOff: true,
       category: 'other' as AssignmentCategory,
       isBillable: false,
       note: 'Time Off',
     });
-  }, [resource.id, addAssignment]);
+  }, [resource.id, createAssignment]);
 
   // Handle resize update
   const handleUpdateAssignment = useCallback((id: string, updates: { startDate?: Date; endDate?: Date }) => {
     const assignment = assignments.find(a => a.id === id);
     if (!assignment) return;
-    
-    updateAssignment({
-      ...assignment,
-      startDate: updates.startDate || assignment.startDate,
-      endDate: updates.endDate || assignment.endDate,
+
+    updateAssignmentMutation.mutate({
+      id,
+      startDate: updates.startDate?.toISOString() || new Date(assignment.startDate).toISOString(),
+      endDate: updates.endDate?.toISOString() || new Date(assignment.endDate).toISOString(),
     });
-  }, [assignments, updateAssignment]);
+  }, [assignments, updateAssignmentMutation]);
 
   // Collapsed row content
   if (!isExpanded) {

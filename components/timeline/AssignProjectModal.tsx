@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { useApp } from "@/context/AppContext";
+import { useEmployees } from "@/lib/query/hooks/useEmployees";
+import { useProjects, useUpdateProject } from "@/lib/query/hooks/useProjects";
+import { useBrands } from "@/lib/query/hooks/useBrands";
+import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,11 +22,15 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
   open,
   onOpenChange,
 }) => {
-  const { resources, projects, brands, updateProject } = useApp();
+  const { data: employees = [] } = useEmployees();
+  const { data: projects = [] } = useProjects();
+  const { data: brands = [] } = useBrands();
+  const { data: assignments = [] } = useAssignments();
+  const updateProject = useUpdateProject();
   const [search, setSearch] = useState("");
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
 
-  const resource = resources.find((r) => r.id === resourceId);
+  const resource = employees.find((r) => r.id === resourceId);
 
   // Get projects grouped by brand
   const projectsByBrand = useMemo(() => {
@@ -51,8 +58,7 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
 
   // Check if resource is already assigned to a project
   const isAssigned = (projectId: string) => {
-    const project = projects.find((p) => p.id === projectId);
-    return project?.resourceIds.includes(resourceId || "") || false;
+    return assignments.some((a) => a.employeeId === resourceId && a.projectId === projectId);
   };
 
   const toggleProject = (projectId: string) => {
@@ -70,15 +76,10 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
   const handleAssign = () => {
     if (!resourceId) return;
 
-    selectedProjectIds.forEach((projectId) => {
-      const project = projects.find((p) => p.id === projectId);
-      if (project && !project.resourceIds.includes(resourceId)) {
-        updateProject({
-          ...project,
-          resourceIds: [...project.resourceIds, resourceId],
-        });
-      }
-    });
+    // Note: In the new schema, we need to create actual assignment records with dates and hours
+    // This feature is disabled for now - assignments should be created via timeline drag-and-drop
+    console.log("Selected projects:", selectedProjectIds);
+    alert("This feature is being updated. Please use the timeline to drag and drop assignments with specific dates and hours.");
 
     setSelectedProjectIds(new Set());
     onOpenChange(false);
@@ -91,7 +92,7 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add to project(s)</DialogTitle>
-          <DialogDescription>{resource.name}</DialogDescription>
+          <DialogDescription>{resource.fullName}</DialogDescription>
         </DialogHeader>
 
         {/* Search and Filter */}
@@ -160,9 +161,9 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
                   <select
                     className="text-xs border rounded px-2 py-1 bg-background"
                     onClick={(e) => e.stopPropagation()}
-                    defaultValue={resource.role}
+                    defaultValue={resource.position}
                   >
-                    <option>{resource.role}</option>
+                    <option>{resource.position}</option>
                     <option>Designer</option>
                     <option>Developer</option>
                     <option>Manager</option>

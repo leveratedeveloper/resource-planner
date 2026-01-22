@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useApp } from "@/context/AppContext";
-import { Brand } from "@/types";
+import { useBrands, useCreateBrand, useUpdateBrand, type Brand } from "@/lib/query/hooks/useBrands";
+import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -12,51 +12,70 @@ import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 
 export const BrandSetup = () => {
-  const { brands, resources, addBrand, updateBrand } = useApp();
+  const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const { data: employees = [], isLoading: employeesLoading } = useEmployees();
+  const createBrand = useCreateBrand();
+  const updateBrand = useUpdateBrand();
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
 
   // Form State
   const [name, setName] = useState("");
   const [color, setColor] = useState("#3b82f6");
-  const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
 
   const handleOpen = (brand?: Brand) => {
     if (brand) {
       setEditingBrand(brand);
       setName(brand.name);
       setColor(brand.color);
-      setSelectedResourceIds(brand.resourceIds);
+      // Get currently assigned employees from employeeBrandAssignments
+      const assignedEmployeeIds = brand.employeeBrandAssignments?.map(a => a.employeeId) || [];
+      setSelectedEmployeeIds(assignedEmployeeIds);
     } else {
       setEditingBrand(null);
       setName("");
       setColor("#3b82f6");
-      setSelectedResourceIds([]);
+      setSelectedEmployeeIds([]);
     }
     setIsDialogOpen(true);
   };
 
   const handleSave = () => {
-    const newBrand: Brand = {
-      id: editingBrand ? editingBrand.id : crypto.randomUUID(),
-      name,
-      color,
-      resourceIds: selectedResourceIds,
-    };
-
     if (editingBrand) {
-      updateBrand(newBrand);
+      // Update existing brand
+      updateBrand.mutate({
+        id: editingBrand.id,
+        name,
+        color,
+      }, {
+        onSuccess: () => {
+          setIsDialogOpen(false);
+          // TODO: Update employee-brand assignments separately
+          // For now, employee assignments are managed via the separate employee-brand assignment API
+        }
+      });
     } else {
-      addBrand(newBrand);
+      // Create new brand
+      createBrand.mutate({
+        name,
+        color,
+        status: 'active',
+      }, {
+        onSuccess: () => {
+          setIsDialogOpen(false);
+          // TODO: Create employee-brand assignments for selected employees
+        }
+      });
     }
-    setIsDialogOpen(false);
   };
 
-  const toggleResource = (resourceId: string) => {
-    setSelectedResourceIds((prev) =>
-      prev.includes(resourceId)
-        ? prev.filter((id) => id !== resourceId)
-        : [...prev, resourceId]
+  const toggleEmployee = (employeeId: string) => {
+    setSelectedEmployeeIds((prev) =>
+      prev.includes(employeeId)
+        ? prev.filter((id) => id !== employeeId)
+        : [...prev, employeeId]
     );
   };
 
@@ -69,46 +88,52 @@ export const BrandSetup = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {brands.map((brand) => (
-          <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
-            <CardHeader className="pb-2 pt-6 px-6">
-              <div className="flex justify-between items-start mb-1">
-                <div className="flex items-center gap-3">
-                   <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
-                   <CardTitle className="text-lg font-bold flex items-center gap-2">
-                     {brand.name}
-                     <button onClick={() => handleOpen(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1">
-                        <Icon icon="lucide:pencil" className="h-4 w-4" />
-                     </button>
-                   </CardTitle>
-                </div>
-              </div>
-              <CardDescription className="text-muted-foreground mt-2">
-                {brand.resourceIds.length} members assigned
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-6 pb-6">
-              <div className="flex flex-wrap gap-2 mt-4">
-                {brand.resourceIds.slice(0, 3).map((rid) => {
-                  const r = resources.find(res => res.id === rid);
-                  if (!r) return null;
-                  return (
-                    <div key={rid} className="bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full font-medium">
-                      {r.name}
+      {brandsLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Loading brands...</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {brands.map((brand) => {
+            const assignedEmployees = brand.employeeBrandAssignments?.map(assignment =>
+              employees.find(emp => emp.id === assignment.employeeId)
+            ).filter(Boolean) || [];
+
+            return (
+              <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
+                <CardHeader className="pb-2 pt-6 px-6">
+                  <div className="flex justify-between items-start mb-1">
+                    <div className="flex items-center gap-3">
+                       <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
+                       <CardTitle className="text-lg font-bold flex items-center gap-2">
+                         {brand.name}
+                         <button onClick={() => handleOpen(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1">
+                            <Icon icon="lucide:pencil" className="h-4 w-4" />
+                         </button>
+                       </CardTitle>
                     </div>
-                  );
-                })}
-                {brand.resourceIds.length > 3 && (
-                  <div className="bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full font-medium">
-                    +{brand.resourceIds.length - 3}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  <CardDescription className="text-muted-foreground mt-2">
+                    {assignedEmployees.length} members assigned
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="px-6 pb-6">
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {assignedEmployees.slice(0, 3).map((emp: any) => (
+                      <div key={emp.id} className="bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full font-medium">
+                        {emp.fullName}
+                      </div>
+                    ))}
+                    {assignedEmployees.length > 3 && (
+                      <div className="bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full font-medium">
+                        +{assignedEmployees.length - 3}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
@@ -145,36 +170,38 @@ export const BrandSetup = () => {
 
             <div className="space-y-2 mt-4">
               <h4 className="font-medium text-sm">Assign Team Members</h4>
+              <p className="text-xs text-muted-foreground">
+                  Note: Employee assignments are currently managed separately.
+                  This feature will be enhanced in a future update.
+              </p>
               <div className="border rounded-md p-4 h-[200px] overflow-y-auto space-y-2">
-                  {resources.map(resource => (
+                  {employees.map(employee => (
                       <div
-                        key={resource.id}
+                        key={employee.id}
                         className={cn(
                             "flex items-center justify-between p-2 rounded-md cursor-pointer border transition-colors",
-                            selectedResourceIds.includes(resource.id)
+                            selectedEmployeeIds.includes(employee.id)
                                 ? "bg-primary/10 border-primary"
                                 : "hover:bg-accent border-transparent"
                         )}
-                        onClick={() => toggleResource(resource.id)}
+                        onClick={() => toggleEmployee(employee.id)}
                       >
                           <div className="flex flex-col">
-                              <span className="text-sm font-medium">{resource.name}</span>
-                              <span className="text-xs text-muted-foreground">{resource.role}</span>
+                              <span className="text-sm font-medium">{employee.fullName}</span>
+                              <span className="text-xs text-muted-foreground">{employee.position}</span>
                           </div>
-                          {selectedResourceIds.includes(resource.id) && (
+                          {selectedEmployeeIds.includes(employee.id) && (
                               <Icon icon="lucide:check" className="text-primary h-4 w-4" />
                           )}
                       </div>
                   ))}
               </div>
-              <p className="text-xs text-muted-foreground">
-                  Select the employees who will be working on this brand's projects.
-                  Only these employees will appear on the dashboard when this brand is selected.
-              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleSave}>Save Brand</Button>
+            <Button onClick={handleSave} disabled={createBrand.isPending || updateBrand.isPending}>
+              {createBrand.isPending || updateBrand.isPending ? "Saving..." : "Save Brand"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

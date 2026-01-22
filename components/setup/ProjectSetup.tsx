@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useApp } from "@/context/AppContext";
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, type Project } from "@/lib/query/hooks/useProjects";
+import { useBrands } from "@/lib/query/hooks/useBrands";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@iconify/react";
@@ -21,10 +22,15 @@ const PROJECT_COLORS = [
 ];
 
 export const ProjectSetup = () => {
-  const { projects, brands, addProject, updateProject, deleteProject } = useApp();
+  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const createProject = useCreateProject();
+  const updateProjectMutation = useUpdateProject();
+  const deleteProjectMutation = useDeleteProject();
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<string | null>(null);
-  
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
   // Form state
   const [name, setName] = useState("");
   const [brandId, setBrandId] = useState("");
@@ -42,46 +48,47 @@ export const ProjectSetup = () => {
     setIsDialogOpen(true);
   };
 
-  const handleOpenEdit = (projectId: string) => {
-    const project = projects.find((p) => p.id === projectId);
-    if (project) {
-      setName(project.name);
-      setBrandId(project.brandId);
-      setColor(project.color);
-      setEditingProject(projectId);
-      setIsDialogOpen(true);
-    }
+  const handleOpenEdit = (project: Project) => {
+    setName(project.name);
+    setBrandId(project.brandId);
+    setColor(project.color);
+    setEditingProject(project);
+    setIsDialogOpen(true);
   };
 
   const handleSave = () => {
     if (!name.trim() || !brandId) return;
 
     if (editingProject) {
-      const existingProject = projects.find((p) => p.id === editingProject);
-      updateProject({
-        id: editingProject,
+      updateProjectMutation.mutate({
+        id: editingProject.id,
         name: name.trim(),
         brandId,
         color,
-        resourceIds: existingProject?.resourceIds || [],
+      }, {
+        onSuccess: () => {
+          setIsDialogOpen(false);
+          resetForm();
+        }
       });
     } else {
-      addProject({
-        id: `p${Date.now()}`,
+      createProject.mutate({
         name: name.trim(),
         brandId,
         color,
-        resourceIds: [],
+        status: 'active',
+      }, {
+        onSuccess: () => {
+          setIsDialogOpen(false);
+          resetForm();
+        }
       });
     }
-
-    setIsDialogOpen(false);
-    resetForm();
   };
 
   const handleDelete = (projectId: string) => {
     if (confirm("Are you sure you want to delete this project?")) {
-      deleteProject(projectId);
+      deleteProjectMutation.mutate(projectId);
     }
   };
 
@@ -143,7 +150,7 @@ export const ProjectSetup = () => {
                       <div>
                         <div className="font-medium text-sm">{project.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {project.resourceIds.length} team members
+                          {project.assignments?.length || 0} assignments
                         </div>
                       </div>
                     </div>
@@ -151,7 +158,7 @@ export const ProjectSetup = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleOpenEdit(project.id)}
+                        onClick={() => handleOpenEdit(project)}
                       >
                         <Icon icon="lucide:pencil" className="h-4 w-4" />
                       </Button>
@@ -236,8 +243,13 @@ export const ProjectSetup = () => {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={!name.trim() || !brandId}>
-              {editingProject ? "Save Changes" : "Add Project"}
+            <Button
+              onClick={handleSave}
+              disabled={!name.trim() || !brandId || createProject.isPending || updateProjectMutation.isPending}
+            >
+              {createProject.isPending || updateProjectMutation.isPending
+                ? "Saving..."
+                : editingProject ? "Save Changes" : "Add Project"}
             </Button>
           </DialogFooter>
         </DialogContent>

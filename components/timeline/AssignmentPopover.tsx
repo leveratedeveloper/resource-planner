@@ -5,7 +5,8 @@ import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useApp } from "@/context/AppContext";
+import { useEmployees } from "@/lib/query/hooks/useEmployees";
+import { useProjects } from "@/lib/query/hooks/useProjects";
 import { AssignmentCategory } from "@/types";
 import { format } from "date-fns";
 
@@ -33,7 +34,8 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   onClose,
   onSave,
 }) => {
-  const { resources, projects } = useApp();
+  const { data: employees = [] } = useEmployees();
+  const { data: projects = [] } = useProjects();
   const [hoursPerDay, setHoursPerDay] = useState(8);
   const [workDays, setWorkDays] = useState(5);
   const [category, setCategory] = useState<AssignmentCategory>("Development");
@@ -42,7 +44,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
 
-  const resource = resources.find((r) => r.id === resourceId);
+  const resource = employees.find((r) => r.id === resourceId);
   const project = projects.find((p) => p.id === projectId);
   
   // Check if scheduling on a weekend
