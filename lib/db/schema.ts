@@ -7,8 +7,33 @@ export const employmentStatusEnum = pgEnum('employment_status', ['active', 'inac
 export const visibilityEnum = pgEnum('visibility', ['active', 'archived']);
 export const projectStatusEnum = pgEnum('project_status', ['planning', 'active', 'on_hold', 'completed', 'cancelled']);
 export const assignmentStatusEnum = pgEnum('assignment_status', ['draft', 'confirmed', 'completed']);
+export const projectTypeEnum = pgEnum('project_type', ['pitch', 'campaign']);
+export const pitchStatusEnum = pgEnum('pitch_status', [
+  'introduction',
+  'waiting_for_brief',
+  'proposal_development',
+  'submit_or_presentation',
+  'waiting_for_feedback',
+  'negotiation',
+  'won',
+  'lost',
+  'cancelled',
+  'missing',
+  'withdraw'
+]);
 
 // ============ TABLES ============
+
+// 0. Project Categories table (NEW - for project categorization)
+export const projectCategories = pgTable('project_categories', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  displayOrder: integer('display_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 // 1. Business Units table (NEW)
 export const businessUnits = pgTable('business_units', {
@@ -16,8 +41,32 @@ export const businessUnits = pgTable('business_units', {
   name: text('name').notNull(),
   code: text('code').notNull().unique(),
   color: text('color').notNull().default('#3b82f6'),
+  logo: text('logo'), // Logo URL for business unit
   description: text('description'),
   isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 1a. Channel Classifications table (for pitch channels/deliverables)
+export const channelClassifications = pgTable('channel_classifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  channelName: text('channel_name').notNull(),
+  channelNameNew: text('channel_name_new'),
+  flag: text('flag').notNull().default('active'), // 'active' or 'inactive'
+  displayOrder: integer('display_order'),
+  pillarsId: integer('pillars_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 1b. Deliverables table (linked to channels)
+export const deliverables = pgTable('deliverables', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  channelId: uuid('channel_id').references(() => channelClassifications.id),
+  deliverableName: text('deliverable_name').notNull(),
+  deliverableNameNew: text('deliverable_name_new'),
+  flag: text('flag').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -40,6 +89,8 @@ export const brands = pgTable('brands', {
   id: uuid('id').defaultRandom().primaryKey(),
   businessUnitId: uuid('business_unit_id').references(() => businessUnits.id),
   name: text('name').notNull(),
+  companyName: text('company_name'), // Parent company name (e.g., "PT KAO Indonesia")
+  brandAddress: text('brand_address'), // Physical address
   clientCode: text('client_code').unique(),
   color: text('color').notNull().default('#3b82f6'),
   logo: text('logo'),
@@ -48,6 +99,8 @@ export const brands = pgTable('brands', {
   contactTitle: text('contact_title'),
   contactEmail: text('contact_email'),
   contactPhone: text('contact_phone'),
+  picFinanceName: text('pic_finance_name'), // Finance contact person name
+  picFinancePhone: text('pic_finance_phone'), // Finance contact phone number
   industryCategory: text('industry_category'),
   description: text('description'),
   status: brandStatusEnum('status').notNull().default('active'),
@@ -66,7 +119,7 @@ export const employees = pgTable('employees', {
   position: text('position').notNull(),
   departmentId: uuid('department_id').references(() => departments.id),
   businessUnitId: uuid('business_unit_id').references(() => businessUnits.id),
-  directSupervisorId: uuid('direct_supervisor_id').references((): ReturnType<typeof uuid> => employees.id),
+  directSupervisorId: uuid('direct_supervisor_id').references(() => employees.id),
   weeklyCapacity: integer('weekly_capacity').notNull().default(40),
   workStartDate: date('work_start_date'),
   dateOfBirth: date('date_of_birth'),
@@ -90,23 +143,50 @@ export const employeeBrandAssignments = pgTable('employee_brand_assignments', {
   unique('employee_brand_unique').on(table.employeeId, table.brandId),
 ]);
 
-// 6. Projects table (ENHANCED - add 12 new fields)
+// 6. Projects table (ENHANCED - add 12 new fields + pitch/campaign split)
 export const projects = pgTable('projects', {
   id: uuid('id').defaultRandom().primaryKey(),
   brandId: uuid('brand_id').references(() => brands.id).notNull(),
   businessUnitId: uuid('business_unit_id').references(() => businessUnits.id),
+  projectCategoryId: uuid('project_category_id').references(() => projectCategories.id),
   projectTypeId: uuid('project_type_id'), // For future phase, make nullable
+  projectType: projectTypeEnum('project_type').notNull().default('campaign'), // NEW - pitch or campaign
+  entity: text('entity'), // NEW - LSI, SSI, or LMA
   name: text('name').notNull(),
   projectNumber: text('project_number').unique(),
   description: text('description'),
   color: text('color').notNull().default('#10b981'),
-  budget: decimal('budget', { precision: 12, scale: 2 }),
+  budget: decimal('budget', { precision: 15, scale: 2 }), // Updated precision from 12 to 15
+  asf: decimal('asf', { precision: 15, scale: 2 }), // NEW - Administrative Service Fee
+  grandTotal: decimal('grand_total', { precision: 15, scale: 2 }), // NEW - Total (budget + asf)
   currency: text('currency').notNull().default('USD'),
+  ioFile: text('io_file'), // NEW - IO file path/URL
+  flag: text('flag'), // NEW - Flag/marker
+  quotationReference: text('quotation_reference'), // NEW - Quotation ref
   startDate: date('start_date'),
   endDate: date('end_date'),
   status: projectStatusEnum('status').notNull().default('active'),
   createdById: uuid('created_by_id').references(() => employees.id),
   notes: text('notes'),
+  // Pitch-specific fields (nullable for campaigns)
+  region: text('region').default('Indonesia'),
+  submitDate: date('submit_date'),
+  pitchStatus: pitchStatusEnum('pitch_status'),
+  valueTotalEstimate: decimal('value_total_estimate', { precision: 15, scale: 2 }),
+  hsDealId: text('hs_deal_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 6a. Project Channels table (for pitch channels/deliverables assignments)
+export const projectChannels = pgTable('project_channels', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  channelId: uuid('channel_id').references(() => channelClassifications.id).notNull(),
+  deliverableId: uuid('deliverable_id').references(() => deliverables.id),
+  quantity: text('quantity'),
+  channelBudget: decimal('channel_budget', { precision: 15, scale: 2 }),
+  manHours: text('man_hours'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -133,6 +213,38 @@ export const assignments = pgTable('assignments', {
 });
 
 // ============ RELATIONS ============
+
+export const channelClassificationsRelations = relations(channelClassifications, ({ many }) => ({
+  deliverables: many(deliverables),
+  projectChannels: many(projectChannels),
+}));
+
+export const deliverablesRelations = relations(deliverables, ({ one, many }) => ({
+  channel: one(channelClassifications, {
+    fields: [deliverables.channelId],
+    references: [channelClassifications.id],
+  }),
+  projectChannels: many(projectChannels),
+}));
+
+export const projectChannelsRelations = relations(projectChannels, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectChannels.projectId],
+    references: [projects.id],
+  }),
+  channel: one(channelClassifications, {
+    fields: [projectChannels.channelId],
+    references: [channelClassifications.id],
+  }),
+  deliverable: one(deliverables, {
+    fields: [projectChannels.deliverableId],
+    references: [deliverables.id],
+  }),
+}));
+
+export const projectCategoriesRelations = relations(projectCategories, ({ many }) => ({
+  projects: many(projects),
+}));
 
 export const businessUnitsRelations = relations(businessUnits, ({ many }) => ({
   departments: many(departments),
@@ -199,11 +311,16 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     fields: [projects.businessUnitId],
     references: [businessUnits.id],
   }),
+  projectCategory: one(projectCategories, {
+    fields: [projects.projectCategoryId],
+    references: [projectCategories.id],
+  }),
   createdBy: one(employees, {
     fields: [projects.createdById],
     references: [employees.id],
   }),
   assignments: many(assignments),
+  projectChannels: many(projectChannels),
 }));
 
 export const assignmentsRelations = relations(assignments, ({ one }) => ({
@@ -224,6 +341,8 @@ export const assignmentsRelations = relations(assignments, ({ one }) => ({
 }));
 
 // ============ TYPE EXPORTS ============
+export type ProjectCategory = typeof projectCategories.$inferSelect;
+export type NewProjectCategory = typeof projectCategories.$inferInsert;
 export type BusinessUnit = typeof businessUnits.$inferSelect;
 export type NewBusinessUnit = typeof businessUnits.$inferInsert;
 export type Department = typeof departments.$inferSelect;
@@ -238,3 +357,9 @@ export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type Assignment = typeof assignments.$inferSelect;
 export type NewAssignment = typeof assignments.$inferInsert;
+export type ChannelClassification = typeof channelClassifications.$inferSelect;
+export type NewChannelClassification = typeof channelClassifications.$inferInsert;
+export type Deliverable = typeof deliverables.$inferSelect;
+export type NewDeliverable = typeof deliverables.$inferInsert;
+export type ProjectChannel = typeof projectChannels.$inferSelect;
+export type NewProjectChannel = typeof projectChannels.$inferInsert;

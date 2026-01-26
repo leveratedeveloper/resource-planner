@@ -29,6 +29,8 @@ export async function POST(request: Request) {
     const brand = await createBrand({
       businessUnitId: body.businessUnitId || null,
       name: body.name,
+      companyName: body.companyName || null,
+      brandAddress: body.brandAddress || null,
       clientCode: body.clientCode || null,
       color: body.color || "#3b82f6",
       logo: body.logo || null,
@@ -37,6 +39,8 @@ export async function POST(request: Request) {
       contactTitle: body.contactTitle || null,
       contactEmail: body.contactEmail || null,
       contactPhone: body.contactPhone || null,
+      picFinanceName: body.picFinanceName || null,
+      picFinancePhone: body.picFinancePhone || null,
       industryCategory: body.industryCategory || null,
       description: body.description || null,
       status: body.status || "active",

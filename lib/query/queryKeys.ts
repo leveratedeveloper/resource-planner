@@ -17,10 +17,23 @@ export const queryKeys = {
   employee: (id: string) => ["employees", id] as const,
   employeeBrands: (employeeId: string) => ["employees", employeeId, "brands"] as const,
 
+  // Project Categories
+  projectCategories: ["project-categories"] as const,
+  projectCategory: (id: string) => ["project-categories", id] as const,
+
   // Projects
   projects: ["projects"] as const,
   project: (id: string) => ["projects", id] as const,
   projectsByBrand: (brandId: string) => ["projects", "brand", brandId] as const,
+
+  // Channel Classifications
+  channelClassifications: ["channel-classifications"] as const,
+  channelClassification: (id: string) => ["channel-classifications", id] as const,
+
+  // Deliverables
+  deliverables: ["deliverables"] as const,
+  deliverable: (id: string) => ["deliverables", id] as const,
+  deliverablesByChannel: (channelId: string) => ["deliverables", "channel", channelId] as const,
 
   // Assignments
   assignments: ["assignments"] as const,

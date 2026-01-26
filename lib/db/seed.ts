@@ -7,6 +7,7 @@ config({ path: '.env.local' });
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { 
+  projectCategories,
   businessUnits, 
   departments, 
   brands,
@@ -37,6 +38,7 @@ async function seed() {
   await db.delete(brands);
   await db.delete(departments);
   await db.delete(businessUnits);
+  await db.delete(projectCategories);
 
   // 1. Create Business Units
   console.log('🏢 Creating business units...');
@@ -53,6 +55,41 @@ async function seed() {
       code: 'APAC',
       color: '#10b981',
       description: 'Asia-Pacific regional operations',
+      isActive: true,
+    },
+  ]).returning();
+
+  // 1.5 Create Project Categories
+  console.log('📂 Creating project categories...');
+  const [catPitch, catCampaign, catOperational, catRnD, catInitiative] = await db.insert(projectCategories).values([
+    {
+      name: 'Pitch',
+      description: 'New business pitches and proposals',
+      displayOrder: 1,
+      isActive: true,
+    },
+    {
+      name: 'Campaign',
+      description: 'Active client campaigns',
+      displayOrder: 2,
+      isActive: true,
+    },
+    {
+      name: 'Operational',
+      description: 'Internal operational projects',
+      displayOrder: 3,
+      isActive: true,
+    },
+    {
+      name: 'R & D',
+      description: 'Research and development initiatives',
+      displayOrder: 4,
+      isActive: true,
+    },
+    {
+      name: 'Initiative Campaign',
+      description: 'Special initiative campaigns',
+      displayOrder: 5,
       isActive: true,
     },
   ]).returning();
@@ -277,6 +314,7 @@ async function seed() {
     {
       brandId: brandAcme.id,
       businessUnitId: buCorp.id,
+      projectCategoryId: catCampaign.id,
       name: 'Q2 Brand Campaign',
       projectNumber: 'ACME-2024-Q2-001',
       description: 'Comprehensive brand awareness campaign for Q2 product launch',
@@ -292,6 +330,7 @@ async function seed() {
     {
       brandId: brandTech.id,
       businessUnitId: buCorp.id,
+      projectCategoryId: catCampaign.id,
       name: 'Product Launch Event',
       projectNumber: 'TECH-2024-LAUNCH-001',
       description: 'Virtual and in-person product launch event with live streaming',
@@ -307,6 +346,7 @@ async function seed() {
     {
       brandId: brandGreen.id,
       businessUnitId: buApac.id,
+      projectCategoryId: catOperational.id,
       name: 'Website Redesign',
       projectNumber: 'GREEN-2024-WEB-001',
       description: 'Complete website overhaul with e-commerce integration',
@@ -429,6 +469,7 @@ async function seed() {
   console.log('✅ Database seeded successfully!');
   console.log(`
 Summary:
+- Project Categories: 5
 - Business Units: 2
 - Departments: 4
 - Brands: 3

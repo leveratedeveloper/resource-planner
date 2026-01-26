@@ -1,23 +1,63 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from './index';
-import { 
-  businessUnits, 
-  departments, 
-  brands, 
-  employees, 
-  employeeBrandAssignments, 
-  projects, 
-  assignments 
+import {
+  projectCategories,
+  businessUnits,
+  departments,
+  brands,
+  employees,
+  employeeBrandAssignments,
+  projects,
+  assignments,
+  projectChannels,
+  channelClassifications,
+  deliverables
 } from './schema';
-import type { 
-  NewBusinessUnit, 
-  NewDepartment, 
-  NewBrand, 
-  NewEmployee, 
-  NewEmployeeBrandAssignment, 
-  NewProject, 
-  NewAssignment 
+import type {
+  NewProjectCategory,
+  NewBusinessUnit,
+  NewDepartment,
+  NewBrand,
+  NewEmployee,
+  NewEmployeeBrandAssignment,
+  NewProject,
+  NewAssignment,
+  NewProjectChannel
 } from './schema';
+
+// ============ PROJECT CATEGORIES ============
+export async function getAllProjectCategories() {
+  return db.query.projectCategories.findMany({
+    orderBy: (pc, { asc }) => [asc(pc.displayOrder), asc(pc.name)],
+  });
+}
+
+export async function getProjectCategoryById(id: string) {
+  return db.query.projectCategories.findFirst({
+    where: eq(projectCategories.id, id),
+    with: {
+      projects: true,
+    },
+  });
+}
+
+export async function createProjectCategory(data: NewProjectCategory) {
+  const [projectCategory] = await db.insert(projectCategories).values(data).returning();
+  return projectCategory;
+}
+
+export async function updateProjectCategory(id: string, data: Partial<NewProjectCategory>) {
+  const [projectCategory] = await db
+    .update(projectCategories)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(projectCategories.id, id))
+    .returning();
+  return projectCategory;
+}
+
+export async function deleteProjectCategory(id: string) {
+  await db.delete(projectCategories).where(eq(projectCategories.id, id));
+}
 
 // ============ BUSINESS UNITS ============
 export async function getAllBusinessUnits() {
@@ -262,10 +302,17 @@ export async function getAllProjects() {
     with: {
       brand: true,
       businessUnit: true,
+      projectCategory: true,
       createdBy: true,
       assignments: {
         with: {
           employee: true,
+        },
+      },
+      projectChannels: {
+        with: {
+          channel: true,
+          deliverable: true,
         },
       },
     },
@@ -279,10 +326,17 @@ export async function getProjectById(id: string) {
     with: {
       brand: true,
       businessUnit: true,
+      projectCategory: true,
       createdBy: true,
       assignments: {
         with: {
           employee: true,
+        },
+      },
+      projectChannels: {
+        with: {
+          channel: true,
+          deliverable: true,
         },
       },
     },
@@ -299,23 +353,67 @@ export async function getProjectsByBrand(brandId: string) {
           employee: true,
         },
       },
+      projectChannels: {
+        with: {
+          channel: true,
+          deliverable: true,
+        },
+      },
     },
     orderBy: (proj, { asc }) => [asc(proj.name)],
   });
 }
 
-export async function createProject(data: NewProject) {
-  const [project] = await db.insert(projects).values(data).returning();
-  return project;
+export async function createProject(data: NewProject & { projectChannels?: NewProjectChannel[] }) {
+  // Extract projectChannels if provided
+  const { projectChannels: channels, ...projectData } = data;
+
+  // Create the project
+  const [project] = await db.insert(projects).values(projectData).returning();
+
+  // If there are project channels, create them
+  if (channels && channels.length > 0) {
+    await db.insert(projectChannels).values(
+      channels.map(channel => ({
+        ...channel,
+        projectId: project.id,
+      }))
+    );
+  }
+
+  // Return the project with its relations
+  return getProjectById(project.id);
 }
 
-export async function updateProject(id: string, data: Partial<NewProject>) {
+export async function updateProject(id: string, data: Partial<NewProject> & { projectChannels?: NewProjectChannel[] }) {
+  // Extract projectChannels if provided
+  const { projectChannels: channels, ...projectData } = data;
+
+  // Update the project
   const [project] = await db
     .update(projects)
-    .set({ ...data, updatedAt: new Date() })
+    .set({ ...projectData, updatedAt: new Date() })
     .where(eq(projects.id, id))
     .returning();
-  return project;
+
+  // If projectChannels are provided, replace them
+  if (channels !== undefined) {
+    // Delete existing project channels
+    await db.delete(projectChannels).where(eq(projectChannels.projectId, id));
+
+    // Insert new project channels if any
+    if (channels.length > 0) {
+      await db.insert(projectChannels).values(
+        channels.map(channel => ({
+          ...channel,
+          projectId: id,
+        }))
+      );
+    }
+  }
+
+  // Return the updated project with its relations
+  return getProjectById(id);
 }
 
 export async function deleteProject(id: string) {

@@ -6,6 +6,7 @@ import { Resource, Assignment } from "@/types";
 import { ForecastResult, WeeklyForecast } from "@/lib/analysis/types";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ForecastTabProps {
   resources: Resource[];
@@ -29,7 +30,22 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     return (
       <div className="p-4 space-y-3">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-24 bg-muted/50 rounded-lg animate-pulse" />
+          <div key={i} className="h-32 border rounded-lg p-4 space-y-4">
+            <div className="flex justify-between items-center">
+              <div className="space-y-1">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-8" />
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          </div>
         ))}
       </div>
     );

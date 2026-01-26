@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AnalysisResult } from "@/lib/analysis/types";

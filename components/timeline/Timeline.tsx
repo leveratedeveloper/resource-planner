@@ -8,6 +8,7 @@ import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
 import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TimelineProps {
   brandId: string | null;
@@ -240,8 +241,21 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
       >
         <div className="flex flex-col" style={{ minWidth: `${250 + days.length * cellWidth}px` }}>
           {isLoadingEmployees ? (
-             <div className="p-8 text-center text-muted-foreground">
-                 Loading employees...
+             <div className="space-y-0">
+               {[1, 2, 3, 4, 5].map((i) => (
+                 <div key={i} className="flex border-b">
+                   <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
+                     <Skeleton className="h-8 w-8 rounded-full" />
+                     <div className="space-y-2 flex-1">
+                       <Skeleton className="h-4 w-3/4" />
+                       <Skeleton className="h-3 w-1/2" />
+                     </div>
+                   </div>
+                   <div className="flex-1 px-2 py-4 space-y-2">
+                     <Skeleton className="h-full w-full opacity-20" />
+                   </div>
+                 </div>
+               ))}
              </div>
           ) : visibleEmployees.length === 0 ? (
              <div className="p-8 text-center text-muted-foreground">

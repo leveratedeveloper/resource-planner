@@ -37,6 +37,8 @@ export async function PUT(
     const brand = await updateBrand(id, {
       businessUnitId: body.businessUnitId,
       name: body.name,
+      companyName: body.companyName,
+      brandAddress: body.brandAddress,
       clientCode: body.clientCode,
       color: body.color,
       logo: body.logo,
@@ -45,6 +47,8 @@ export async function PUT(
       contactTitle: body.contactTitle,
       contactEmail: body.contactEmail,
       contactPhone: body.contactPhone,
+      picFinanceName: body.picFinanceName,
+      picFinancePhone: body.picFinancePhone,
       industryCategory: body.industryCategory,
       description: body.description,
       status: body.status,

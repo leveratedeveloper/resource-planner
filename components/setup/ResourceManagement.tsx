@@ -9,6 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Icon } from "@iconify/react";
+import { useIsStuck } from "@/hooks/use-is-stuck";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 export const ResourceManagement = () => {
     const { data: employees = [], isLoading } = useEmployees();
@@ -78,9 +81,12 @@ export const ResourceManagement = () => {
         }
     };
 
+    const { sentinelRef, isStuck } = useIsStuck(40);
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div ref={sentinelRef} className="h-px -mt-px invisible" />
+            <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex justify-between items-center transition-shadow duration-200", isStuck && "shadow-sm")}>
                 <h2 className="text-2xl font-bold tracking-tight">Team Members</h2>
                 <Button onClick={() => handleOpen()}>
                     <Icon icon="lucide:plus" className="mr-2 h-4 w-4" /> Add Member
@@ -88,7 +94,20 @@ export const ResourceManagement = () => {
             </div>
 
             {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading employees...</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                        <div key={i} className="border rounded-xl bg-white shadow-sm p-6 space-y-4">
+                            <div className="flex justify-between items-start">
+                                <Skeleton className="h-6 w-1/2" />
+                                <Skeleton className="h-8 w-8 rounded-md" />
+                            </div>
+                            <div className="space-y-2">
+                                <Skeleton className="h-4 w-3/4" />
+                                <Skeleton className="h-4 w-1/2" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {employees.map((employee) => {

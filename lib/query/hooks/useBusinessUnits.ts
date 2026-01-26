@@ -7,6 +7,7 @@ export interface BusinessUnit {
   name: string;
   code: string;
   color: string;
+  logo: string | null;
   description: string | null;
   isActive: boolean;
   createdAt: string;

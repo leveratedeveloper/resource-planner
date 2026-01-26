@@ -2,22 +2,56 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 
 // Types
+export interface ProjectChannel {
+  id: string;
+  projectId: string;
+  channelId: string;
+  deliverableId: string | null;
+  quantity: string | null;
+  channelBudget: string | null;
+  manHours: string | null;
+  createdAt: string;
+  updatedAt: string;
+  channel?: {
+    id: string;
+    channelName: string;
+  };
+  deliverable?: {
+    id: string;
+    deliverableName: string;
+  };
+}
+
 export interface Project {
   id: string;
   brandId: string;
   businessUnitId: string | null;
+  projectCategoryId: string | null;
   projectTypeId: string | null;
+  projectType: 'pitch' | 'campaign';
+  entity: string | null;
   name: string;
   projectNumber: string | null;
   description: string | null;
   color: string;
   budget: string | null;
+  asf: string | null;
+  grandTotal: string | null;
   currency: string;
+  ioFile: string | null;
+  flag: string | null;
+  quotationReference: string | null;
   startDate: string | null;
   endDate: string | null;
   status: "planning" | "active" | "on_hold" | "completed" | "cancelled";
   createdById: string | null;
   notes: string | null;
+  // Pitch-specific fields (nullable)
+  region: string | null;
+  submitDate: string | null;
+  pitchStatus: 'introduction' | 'waiting_for_brief' | 'proposal_development' | 'submit_or_presentation' | 'waiting_for_feedback' | 'negotiation' | 'won' | 'lost' | 'cancelled' | 'missing' | 'withdraw' | null;
+  valueTotalEstimate: string | null;
+  hsDealId: string | null;
   createdAt: string;
   updatedAt: string;
   brand?: {
@@ -29,6 +63,10 @@ export interface Project {
     id: string;
     name: string;
     color: string;
+  };
+  projectCategory?: {
+    id: string;
+    name: string;
   };
   createdBy?: {
     id: string;
@@ -46,23 +84,46 @@ export interface Project {
       position: string;
     };
   }[];
+  projectChannels?: ProjectChannel[];
 }
 
 export type NewProject = {
   name: string;
   brandId: string;
+  projectType?: 'pitch' | 'campaign';
+  entity?: string | null;
   color?: string;
   status?: "planning" | "active" | "on_hold" | "completed" | "cancelled";
   businessUnitId?: string | null;
+  projectCategoryId?: string | null;
   projectTypeId?: string | null;
   projectNumber?: string | null;
   description?: string | null;
   budget?: string | null;
+  asf?: string | null;
+  grandTotal?: string | null;
   currency?: string;
+  ioFile?: string | null;
+  flag?: string | null;
+  quotationReference?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   createdById?: string | null;
   notes?: string | null;
+  // Pitch-specific fields
+  region?: string | null;
+  submitDate?: string | null;
+  pitchStatus?: 'introduction' | 'waiting_for_brief' | 'proposal_development' | 'submit_or_presentation' | 'waiting_for_feedback' | 'negotiation' | 'won' | 'lost' | 'cancelled' | 'missing' | 'withdraw' | null;
+  valueTotalEstimate?: string | null;
+  hsDealId?: string | null;
+  // Project channels (for pitches and campaigns)
+  projectChannels?: Array<{
+    channelId: string;
+    deliverableId: string | null;
+    quantity?: string | null;
+    channelBudget?: string | null;
+    manHours?: string | null;
+  }>;
 };
 
 // API Functions

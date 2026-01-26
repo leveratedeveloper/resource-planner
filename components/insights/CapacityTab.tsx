@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CapacityTabProps {
   capacityAnalysis: ResourceCapacityAnalysis[];
@@ -57,7 +58,22 @@ export const CapacityTab: React.FC<CapacityTabProps> = ({
     return (
       <div className="p-4 space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-32 bg-muted/50 rounded-lg animate-pulse" />
+          <div key={i} className="h-32 border rounded-lg p-4 space-y-4">
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-2 w-full rounded-full" />
+              <div className="flex justify-between">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-3 w-12" />
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     );

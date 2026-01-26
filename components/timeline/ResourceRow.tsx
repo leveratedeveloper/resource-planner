@@ -270,7 +270,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             <Icon icon="lucide:chevron-right" className="h-4 w-4" />
           </button>
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
-            {resource.name.split(" ").map(n => n[0]).join("")}
+            {resource.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm truncate">{resource.name}</div>
@@ -308,7 +308,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             <Icon icon="lucide:chevron-down" className="h-4 w-4" />
           </button>
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
-            {resource.name.split(" ").map(n => n[0]).join("")}
+            {resource.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm truncate">{resource.name}</div>

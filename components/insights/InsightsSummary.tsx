@@ -3,6 +3,7 @@
 import React from "react";
 import { Icon } from "@iconify/react";
 import { AnalysisResult } from "@/lib/analysis/types";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface InsightsSummaryProps {
   result: AnalysisResult | null;
@@ -19,8 +20,10 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="h-20 bg-muted/50 rounded-lg animate-pulse"
-          />
+            className="h-20"
+          >
+            <Skeleton className="h-full w-full rounded-lg" />
+          </div>
         ))}
       </div>
     );

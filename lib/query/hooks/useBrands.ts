@@ -25,6 +25,8 @@ export interface Brand {
   id: string;
   businessUnitId: string | null;
   name: string;
+  companyName: string | null;
+  brandAddress: string | null;
   clientCode: string | null;
   color: string;
   logo: string | null;
@@ -33,6 +35,8 @@ export interface Brand {
   contactTitle: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  picFinanceName: string | null;
+  picFinancePhone: string | null;
   industryCategory: string | null;
   description: string | null;
   status: "active" | "inactive" | "prospect";
@@ -57,6 +61,8 @@ export type NewBrand = {
   color?: string;
   status?: "active" | "inactive" | "prospect";
   businessUnitId?: string | null;
+  companyName?: string | null;
+  brandAddress?: string | null;
   clientCode?: string | null;
   logo?: string | null;
   website?: string | null;
@@ -64,6 +70,8 @@ export type NewBrand = {
   contactTitle?: string | null;
   contactEmail?: string | null;
   contactPhone?: string | null;
+  picFinanceName?: string | null;
+  picFinancePhone?: string | null;
   industryCategory?: string | null;
   description?: string | null;
 };

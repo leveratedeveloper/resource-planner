@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ConflictsTabProps {
   conflicts: Conflict[];
@@ -48,7 +49,18 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
     return (
       <div className="p-4 space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-28 bg-muted/50 rounded-lg animate-pulse" />
+          <div key={i} className="h-28 border rounded-lg p-4 space-y-3">
+            <div className="flex gap-3">
+               <Skeleton className="h-5 w-5 rounded-full" />
+               <div className="flex-1 space-y-2">
+                 <Skeleton className="h-4 w-1/2" />
+                 <Skeleton className="h-3 w-3/4" />
+               </div>
+            </div>
+            <div className="pt-2 flex justify-end">
+              <Skeleton className="h-8 w-24 rounded-md" />
+            </div>
+          </div>
         ))}
       </div>
     );

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1769064292481,
+      "tag": "0000_romantic_naoko",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1769152178054,
+      "tag": "0001_motionless_silver_centurion",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1769398732155,
+      "tag": "0002_fresh_radioactive_man",
+      "breakpoints": true
+    }
+  ]
+}
