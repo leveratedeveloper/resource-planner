@@ -21,6 +21,11 @@ export const pitchStatusEnum = pgEnum('pitch_status', [
   'missing',
   'withdraw'
 ]);
+// Timetrack integration enums
+export const syncStatusEnum = pgEnum('sync_status', ['local', 'synced', 'pending', 'conflict']);
+export const sourceSystemEnum = pgEnum('source_system', ['timetrack', 'resource_planner']);
+export const syncOperationEnum = pgEnum('sync_operation', ['create', 'update', 'delete', 'sync']);
+export const syncEntityTypeEnum = pgEnum('sync_entity_type', ['employee', 'brand', 'business_unit', 'department', 'project', 'timesheet']);
 
 // ============ TABLES ============
 
@@ -143,7 +148,7 @@ export const employeeBrandAssignments = pgTable('employee_brand_assignments', {
   unique('employee_brand_unique').on(table.employeeId, table.brandId),
 ]);
 
-// 6. Projects table (ENHANCED - add 12 new fields + pitch/campaign split)
+// 6. Projects table (ENHANCED - add 12 new fields + pitch/campaign split + Timetrack sync)
 export const projects = pgTable('projects', {
   id: uuid('id').defaultRandom().primaryKey(),
   brandId: uuid('brand_id').references(() => brands.id).notNull(),
@@ -174,6 +179,12 @@ export const projects = pgTable('projects', {
   pitchStatus: pitchStatusEnum('pitch_status'),
   valueTotalEstimate: decimal('value_total_estimate', { precision: 15, scale: 2 }),
   hsDealId: text('hs_deal_id'),
+  // Timetrack integration fields
+  timetrackCampaignId: integer('timetrack_campaign_id'),
+  syncStatus: syncStatusEnum('sync_status').notNull().default('local'),
+  lastSyncedAt: timestamp('last_synced_at'),
+  sourceSystem: sourceSystemEnum('source_system').notNull().default('resource_planner'),
+  syncErrorMessage: text('sync_error_message'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -210,6 +221,36 @@ export const assignments = pgTable('assignments', {
   createdById: uuid('created_by_id').references(() => employees.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// ============ TIMETRACK INTEGRATION TABLES ============
+
+// 8. Timesheet Cache table (for actual hours from Timetrack)
+export const timesheetCache = pgTable('timesheet_cache', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  timetrackEmployeeId: integer('timetrack_employee_id').notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  date: date('date').notNull(),
+  hours: decimal('hours', { precision: 5, scale: 2 }).notNull(),
+  billable: boolean('billable').notNull().default(true),
+  taskDescription: text('task_description'),
+  syncedAt: timestamp('synced_at').defaultNow().notNull(),
+}, (table) => [
+  unique('timesheet_cache_unique').on(table.timetrackEmployeeId, table.projectId, table.date),
+]);
+
+// 9. Sync Audit Log table (tracks all sync operations)
+export const syncAuditLog = pgTable('sync_audit_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  entityType: syncEntityTypeEnum('entity_type').notNull(),
+  entityId: text('entity_id').notNull(),
+  operation: syncOperationEnum('operation').notNull(),
+  sourceSystem: sourceSystemEnum('source_system').notNull(),
+  targetSystem: sourceSystemEnum('target_system').notNull(),
+  status: text('status').notNull(), // 'pending', 'success', 'failed', 'conflict'
+  errorMessage: text('error_message'),
+  payload: text('payload'), // JSON string of the data
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // ============ RELATIONS ============
@@ -340,6 +381,14 @@ export const assignmentsRelations = relations(assignments, ({ one }) => ({
   }),
 }));
 
+// Add relations for new tables
+export const timesheetCacheRelations = relations(timesheetCache, ({ one }) => ({
+  project: one(projects, {
+    fields: [timesheetCache.projectId],
+    references: [projects.id],
+  }),
+}));
+
 // ============ TYPE EXPORTS ============
 export type ProjectCategory = typeof projectCategories.$inferSelect;
 export type NewProjectCategory = typeof projectCategories.$inferInsert;
@@ -363,3 +412,7 @@ export type Deliverable = typeof deliverables.$inferSelect;
 export type NewDeliverable = typeof deliverables.$inferInsert;
 export type ProjectChannel = typeof projectChannels.$inferSelect;
 export type NewProjectChannel = typeof projectChannels.$inferInsert;
+export type TimesheetCache = typeof timesheetCache.$inferSelect;
+export type NewTimesheetCache = typeof timesheetCache.$inferInsert;
+export type SyncAuditLog = typeof syncAuditLog.$inferSelect;
+export type NewSyncAuditLog = typeof syncAuditLog.$inferInsert;
