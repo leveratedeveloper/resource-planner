@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
-import { useProjects, useUpdateProject } from "@/lib/query/hooks/useProjects";
+import { useProjects } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -26,7 +26,6 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
   const { data: projects = [] } = useProjects();
   const { data: brands = [] } = useBrands();
   const { data: assignments = [] } = useAssignments();
-  const updateProject = useUpdateProject();
   const [search, setSearch] = useState("");
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
 

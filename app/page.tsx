@@ -9,10 +9,13 @@ import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogDescription } 
 import { useApp } from "@/context/AppContext";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
+import { useDebounce } from "@/hooks/use-debounce";
 
 export default function Home() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
 
@@ -27,12 +30,18 @@ export default function Home() {
         onBrandChange={setSelectedBrandId}
         selectedDepartment={selectedDepartment}
         onDepartmentChange={setSelectedDepartment}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
         onOpenSetup={() => setIsSetupOpen(true)}
         onOpenInsights={() => setIsInsightsOpen(true)}
       />
 
       <main className="flex-1 overflow-hidden">
-        <Timeline brandId={selectedBrandId} department={selectedDepartment} />
+        <Timeline 
+          brandId={selectedBrandId} 
+          department={selectedDepartment}
+          searchQuery={debouncedSearch}
+        />
       </main>
 
       <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>

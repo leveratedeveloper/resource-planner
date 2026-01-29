@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 
 // Types
@@ -141,6 +141,40 @@ export function useEmployees() {
   return useQuery({
     queryKey: queryKeys.employees,
     queryFn: fetchEmployees,
+  });
+}
+
+const PAGE_SIZE = 12;
+
+interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+async function fetchEmployeesPaginated({ pageParam = 0, search }: { pageParam?: number; search?: string }): Promise<PaginatedResponse<Employee>> {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const response = await fetch(`/api/employees?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch employees");
+  }
+  const result = await response.json();
+  return {
+    data: result.data,
+    total: result.total,
+    hasMore: result.hasMore,
+  };
+}
+
+export function useInfiniteEmployees(search?: string) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.employeesInfinite, search],
+    queryFn: ({ pageParam }) => fetchEmployeesPaginated({ pageParam, search }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage.hasMore) return undefined;
+      return allPages.reduce((acc, page) => acc + page.data.length, 0);
+    },
   });
 }
 

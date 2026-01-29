@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useEmployees, useCreateEmployee, useUpdateEmployee, type Employee } from "@/lib/query/hooks/useEmployees";
+import React, { useState, useMemo, useCallback } from "react";
+import { useEmployees, useInfiniteEmployees, useCreateEmployee, useUpdateEmployee, type Employee } from "@/lib/query/hooks/useEmployees";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,37 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Icon } from "@iconify/react";
 import { useIsStuck } from "@/hooks/use-is-stuck";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { cn } from "@/lib/utils";
 
 export const ResourceManagement = () => {
-    const { data: employees = [], isLoading } = useEmployees();
+    const [searchQuery, setSearchQuery] = useState("");
+    const debouncedSearch = useDebounce(searchQuery, 300);
+    
+    const {
+        data: employeesData,
+        isLoading,
+        isFetchingNextPage,
+        hasNextPage,
+        fetchNextPage,
+    } = useInfiniteEmployees(debouncedSearch || undefined);
     const { data: departments = [] } = useDepartments();
     const createEmployee = useCreateEmployee();
     const updateEmployee = useUpdateEmployee();
+
+    // Flatten all pages into a single array of employees
+    const employees = useMemo(() => {
+        if (!employeesData?.pages) return [];
+        return employeesData.pages.flatMap((page) => page.data);
+    }, [employeesData]);
+
+    const handleLoadMore = useCallback(() => {
+        if (hasNextPage && !isFetchingNextPage) {
+            fetchNextPage();
+        }
+    }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -88,9 +111,20 @@ export const ResourceManagement = () => {
             <div ref={sentinelRef} className="h-px -mt-px invisible" />
             <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex justify-between items-center transition-shadow duration-200", isStuck && "shadow-sm")}>
                 <h2 className="text-2xl font-bold tracking-tight">Team Members</h2>
-                <Button onClick={() => handleOpen()}>
-                    <Icon icon="lucide:plus" className="mr-2 h-4 w-4" /> Add Member
-                </Button>
+                <div className="flex items-center gap-3">
+                    <div className="relative">
+                        <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search employees..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9 w-64"
+                        />
+                    </div>
+                    <Button onClick={() => handleOpen()}>
+                        <Icon icon="lucide:plus" className="mr-2 h-4 w-4" /> Add Member
+                    </Button>
+                </div>
             </div>
 
             {isLoading ? (
@@ -109,34 +143,57 @@ export const ResourceManagement = () => {
                     ))}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {employees.map((employee) => {
-                        const dept = departments.find(d => d.id === employee.departmentId);
-                        return (
-                            <Card key={employee.id} className="hover:shadow-md transition-shadow">
-                                <CardHeader className="pb-2">
-                                    <div className="flex justify-between items-start">
-                                        <CardTitle className="text-lg">{employee.fullName}</CardTitle>
-                                        <Button variant="ghost" size="icon" onClick={() => handleOpen(employee)}>
-                                            <Icon icon="lucide:edit-2" className="h-4 w-4 text-muted-foreground" />
-                                        </Button>
-                                    </div>
-                                    <CardDescription>{employee.position} • {dept?.name || 'No Department'}</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                   <div className="text-sm text-muted-foreground">
-                                       Capacity: <span className="font-medium text-foreground">{employee.weeklyCapacity}h/week</span>
-                                   </div>
-                                   {employee.email && (
-                                       <div className="text-sm text-muted-foreground mt-1">
-                                           {employee.email}
+                <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {employees.map((employee) => {
+                            const dept = departments.find(d => d.id === employee.departmentId);
+                            return (
+                                <Card key={employee.id} className="hover:shadow-md transition-shadow">
+                                    <CardHeader className="pb-2">
+                                        <div className="flex justify-between items-start">
+                                            <CardTitle className="text-lg">{employee.fullName}</CardTitle>
+                                            <Button variant="ghost" size="icon" onClick={() => handleOpen(employee)}>
+                                                <Icon icon="lucide:edit-2" className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                        </div>
+                                        <CardDescription>{employee.position} • {dept?.name || 'No Department'}</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                       <div className="text-sm text-muted-foreground">
+                                           Capacity: <span className="font-medium text-foreground">{employee.weeklyCapacity}h/week</span>
                                        </div>
-                                   )}
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
-                </div>
+                                       {employee.email && (
+                                           <div className="text-sm text-muted-foreground mt-1">
+                                               {employee.email}
+                                           </div>
+                                       )}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                    <InfiniteScrollTrigger
+                        onLoadMore={handleLoadMore}
+                        hasMore={!!hasNextPage}
+                        isLoading={isFetchingNextPage}
+                        skeletonCount={3}
+                    >
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                            {[1, 2, 3].map((i) => (
+                                <div key={i} className="border rounded-xl bg-white shadow-sm p-6 space-y-4">
+                                    <div className="flex justify-between items-start">
+                                        <Skeleton className="h-6 w-1/2" />
+                                        <Skeleton className="h-8 w-8 rounded-md" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Skeleton className="h-4 w-3/4" />
+                                        <Skeleton className="h-4 w-1/2" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </InfiniteScrollTrigger>
+                </>
             )}
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

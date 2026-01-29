@@ -13,9 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface TimelineProps {
   brandId: string | null;
   department: string | null;
+  searchQuery?: string;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
+export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery }) => {
   // Fetch data using React Query
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [] } = useBrands();
@@ -115,7 +116,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
   // Determine if we're in week view mode (where each cell = 1 week)
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
-  // Filter employees based on selected Brand AND Department
+  // Filter employees based on selected Brand, Department, and Search Query
   const visibleEmployees = useMemo(() => {
     let filtered = employees;
 
@@ -132,8 +133,40 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department }) => {
       filtered = filtered.filter((emp) => emp.departmentId === department);
     }
 
+    // Search filter - matches employee name, position, department, projects, tasks, and brands
+    if (searchQuery && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((emp) => {
+        // Match employee name
+        if (emp.fullName.toLowerCase().includes(query)) return true;
+        
+        // Match position
+        if (emp.position?.toLowerCase().includes(query)) return true;
+        
+        // Match department name
+        if (emp.department?.name?.toLowerCase().includes(query)) return true;
+        
+        // Match assigned projects and tasks
+        if (emp.assignments) {
+          for (const assignment of emp.assignments) {
+            // Match project name
+            if (assignment.project?.name?.toLowerCase().includes(query)) return true;
+          }
+        }
+        
+        // Match assigned brands
+        if (emp.employeeBrandAssignments) {
+          for (const brandAssignment of emp.employeeBrandAssignments) {
+            if (brandAssignment.brand?.name?.toLowerCase().includes(query)) return true;
+          }
+        }
+        
+        return false;
+      });
+    }
+
     return filtered;
-  }, [brandId, department, employees, brands]);
+  }, [brandId, department, searchQuery, employees, brands]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {

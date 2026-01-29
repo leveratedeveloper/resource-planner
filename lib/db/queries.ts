@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql, count, ilike, or, inArray, asc } from 'drizzle-orm';
 import { db } from './index';
 import {
   projectCategories,
@@ -153,6 +153,43 @@ export async function getAllBrands() {
   });
 }
 
+export async function getBrandsPaginated(limit: number = 10, offset: number = 0, search?: string) {
+  const searchFilter = search 
+    ? or(
+        ilike(brands.name, `%${search}%`),
+        ilike(brands.companyName, `%${search}%`)
+      )
+    : undefined;
+
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(brands)
+    .where(searchFilter);
+  const total = totalResult?.count ?? 0;
+  
+  const data = await db.query.brands.findMany({
+    where: searchFilter,
+    with: {
+      businessUnit: true,
+      employeeBrandAssignments: {
+        with: {
+          employee: true,
+        },
+      },
+      projects: true,
+    },
+    orderBy: (brand, { asc }) => [asc(brand.name)],
+    limit,
+    offset,
+  });
+  
+  return {
+    data,
+    total,
+    hasMore: offset + data.length < total,
+  };
+}
+
 export async function getBrandById(id: string) {
   return db.query.brands.findFirst({
     where: eq(brands.id, id),
@@ -206,6 +243,50 @@ export async function getAllEmployees() {
     },
     orderBy: (emp, { asc }) => [asc(emp.fullName)],
   });
+}
+
+export async function getEmployeesPaginated(limit: number = 10, offset: number = 0, search?: string) {
+  const searchFilter = search 
+    ? or(
+        ilike(employees.fullName, `%${search}%`),
+        ilike(employees.email, `%${search}%`),
+        ilike(employees.position, `%${search}%`)
+      )
+    : undefined;
+
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(searchFilter);
+  const total = totalResult?.count ?? 0;
+  
+  const data = await db.query.employees.findMany({
+    where: searchFilter,
+    with: {
+      department: true,
+      businessUnit: true,
+      supervisor: true,
+      employeeBrandAssignments: {
+        with: {
+          brand: true,
+        },
+      },
+      assignments: {
+        with: {
+          project: true,
+        },
+      },
+    },
+    orderBy: (emp, { asc }) => [asc(emp.fullName)],
+    limit,
+    offset,
+  });
+  
+  return {
+    data,
+    total,
+    hasMore: offset + data.length < total,
+  };
 }
 
 export async function getEmployeeById(id: string) {
@@ -318,6 +399,118 @@ export async function getAllProjects() {
     },
     orderBy: (proj, { asc }) => [asc(proj.name)],
   });
+}
+
+export async function getProjectsPaginated(limit: number = 10, offset: number = 0, search?: string) {
+  // If search includes brand name, we need to use a different approach
+  if (search) {
+    const searchPattern = `%${search}%`;
+    
+    // Build search filter that includes brand name
+    // Note: ilike on null column returns null (falsy), so we can safely use it directly
+    const searchFilter = or(
+      ilike(projects.name, searchPattern),
+      ilike(projects.projectNumber, searchPattern),
+      ilike(brands.name, searchPattern)
+    );
+
+    // Count total with brand name filter (requires JOIN)
+    const [totalResult] = await db
+      .select({ count: count() })
+      .from(projects)
+      .leftJoin(brands, eq(projects.brandId, brands.id))
+      .where(searchFilter);
+    const total = totalResult?.count ?? 0;
+
+    // Fetch project IDs that match the search filter
+    // Note: We need to include 'name' in SELECT DISTINCT to be able to ORDER BY it
+    const projectIds = await db
+      .selectDistinct({ id: projects.id, name: projects.name })
+      .from(projects)
+      .leftJoin(brands, eq(projects.brandId, brands.id))
+      .where(searchFilter)
+      .orderBy(asc(projects.name))
+      .limit(limit)
+      .offset(offset);
+
+    // If no projects found, return empty result
+    if (projectIds.length === 0) {
+      return {
+        data: [],
+        total,
+        hasMore: false,
+      };
+    }
+
+    // Fetch full project data with relations for the filtered IDs
+    const ids = projectIds.map(p => p.id);
+    const data = await db.query.projects.findMany({
+      where: inArray(projects.id, ids),
+      with: {
+        brand: true,
+        businessUnit: true,
+        projectCategory: true,
+        createdBy: true,
+        assignments: {
+          with: {
+            employee: true,
+          },
+        },
+        projectChannels: {
+          with: {
+            channel: true,
+            deliverable: true,
+          },
+        },
+      },
+      orderBy: (proj, { asc }) => [asc(proj.name)],
+    });
+
+    return {
+      data,
+      total,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  // No search - use the simple relational query
+  const searchFilter = undefined;
+
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(projects)
+    .where(searchFilter);
+  const total = totalResult?.count ?? 0;
+
+  const data = await db.query.projects.findMany({
+    where: searchFilter,
+    with: {
+      brand: true,
+      businessUnit: true,
+      projectCategory: true,
+      createdBy: true,
+      assignments: {
+        with: {
+          employee: true,
+        },
+      },
+      projectChannels: {
+        with: {
+          channel: true,
+          deliverable: true,
+        },
+      },
+    },
+    orderBy: (proj, { asc }) => [asc(proj.name)],
+    limit,
+    offset,
+  });
+
+  return {
+    data,
+    total,
+    hasMore: offset + data.length < total,
+  };
 }
 
 export async function getProjectById(id: string) {

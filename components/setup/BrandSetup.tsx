@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useBrands, useCreateBrand, useUpdateBrand, type Brand } from "@/lib/query/hooks/useBrands";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useBrands, useInfiniteBrands, type Brand } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@iconify/react";
 import { useIsStuck } from "@/hooks/use-is-stuck";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { cn } from "@/lib/utils";
 const INDUSTRY_CATEGORIES = [
   "Agriculture",
@@ -75,11 +77,30 @@ const generateClientCode = (brandName: string, existingCodes: string[] = []): st
 };
 
 export const BrandSetup = () => {
-  const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  
+  const {
+    data: brandsData,
+    isLoading: brandsLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteBrands(debouncedSearch || undefined);
   const { data: businessUnits = [] } = useBusinessUnits();
-  const createBrand = useCreateBrand();
-  const updateBrand = useUpdateBrand();
   const { sentinelRef, isStuck } = useIsStuck(40);
+
+  // Flatten all pages into a single array of brands
+  const brands = useMemo(() => {
+    if (!brandsData?.pages) return [];
+    return brandsData.pages.flatMap((page) => page.data);
+  }, [brandsData]);
+
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
@@ -109,97 +130,26 @@ export const BrandSetup = () => {
   const [businessUnitId, setBusinessUnitId] = useState<string>("");
   const [description, setDescription] = useState("");
 
-  // Auto-generate client code when creating new brand
-  useEffect(() => {
-    if (!editingBrand && name) {
-      const existingCodes = brands.map(b => b.clientCode).filter(Boolean) as string[];
-      const newCode = generateClientCode(name, existingCodes);
-      setClientCode(newCode);
-    }
-  }, [name, editingBrand, brands]);
-
-  const handleOpen = (brand?: Brand) => {
-    if (brand) {
-      setEditingBrand(brand);
-      setCompanyName(brand.companyName || "");
-      setName(brand.name);
-      setBrandAddress(brand.brandAddress || "");
-      setClientCode(brand.clientCode || "");
-      setIndustryCategory(brand.industryCategory || "");
-      setLogo(brand.logo || "");
-      setWebsite(brand.website || "");
-      setColor(brand.color);
-      setStatus(brand.status);
-      setContactName(brand.contactName || "");
-      setContactTitle(brand.contactTitle || "");
-      setContactEmail(brand.contactEmail || "");
-      setContactPhone(brand.contactPhone || "");
-      setPicFinanceName(brand.picFinanceName || "");
-      setPicFinancePhone(brand.picFinancePhone || "");
-      setBusinessUnitId(brand.businessUnitId || "");
-      setDescription(brand.description || "");
-    } else {
-      setEditingBrand(null);
-      setCompanyName("");
-      setName("");
-      setBrandAddress("");
-      setClientCode("");
-      setIndustryCategory("");
-      setLogo("");
-      setWebsite("");
-      setColor("#3b82f6");
-      setStatus("active");
-      setContactName("");
-      setContactTitle("");
-      setContactEmail("");
-      setContactPhone("");
-      setPicFinanceName("");
-      setPicFinancePhone("");
-      setBusinessUnitId("");
-      setDescription("");
-    }
+  const handleOpenView = (brand: Brand) => {
+    setEditingBrand(brand);
+    setCompanyName(brand.companyName || "");
+    setName(brand.name);
+    setBrandAddress(brand.brandAddress || "");
+    setClientCode(brand.clientCode || "");
+    setIndustryCategory(brand.industryCategory || "");
+    setLogo(brand.logo || "");
+    setWebsite(brand.website || "");
+    setColor(brand.color);
+    setStatus(brand.status);
+    setContactName(brand.contactName || "");
+    setContactTitle(brand.contactTitle || "");
+    setContactEmail(brand.contactEmail || "");
+    setContactPhone(brand.contactPhone || "");
+    setPicFinanceName(brand.picFinanceName || "");
+    setPicFinancePhone(brand.picFinancePhone || "");
+    setBusinessUnitId(brand.businessUnitId || "");
+    setDescription(brand.description || "");
     setIsDialogOpen(true);
-  };
-
-  const handleSave = () => {
-    const brandData = {
-      companyName: companyName || null,
-      name,
-      brandAddress: brandAddress || null,
-      clientCode: clientCode || null,
-      industryCategory: industryCategory || null,
-      logo: logo || null,
-      website: website || null,
-      color,
-      status,
-      contactName: contactName || null,
-      contactTitle: contactTitle || null,
-      contactEmail: contactEmail || null,
-      contactPhone: contactPhone || null,
-      picFinanceName: picFinanceName || null,
-      picFinancePhone: picFinancePhone || null,
-      businessUnitId: businessUnitId || null,
-      description: description || null,
-    };
-
-    if (editingBrand) {
-      // Update existing brand
-      updateBrand.mutate({
-        id: editingBrand.id,
-        ...brandData,
-      }, {
-        onSuccess: () => {
-          setIsDialogOpen(false);
-        }
-      });
-    } else {
-      // Create new brand
-      createBrand.mutate(brandData, {
-        onSuccess: () => {
-          setIsDialogOpen(false);
-        }
-      });
-    }
   };
 
   return (
@@ -207,9 +157,17 @@ export const BrandSetup = () => {
       <div ref={sentinelRef} className="h-px -mt-px invisible" />
       <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex justify-between items-center mb-6 transition-shadow duration-200", isStuck && "shadow-sm")}>
         <h2 className="text-xl font-bold tracking-tight">Brand Management</h2>
-        <Button onClick={() => handleOpen()} className="bg-black text-white hover:bg-gray-800 rounded-md">
-          <Icon icon="lucide:plus" className="mr-2 h-4 w-4" /> Add Brand
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search brands..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-64"
+            />
+          </div>
+        </div>
       </div>
 
       {brandsLoading ? (
@@ -232,58 +190,84 @@ export const BrandSetup = () => {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {brands.map((brand) => {
-            return (
-              <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
-                <CardHeader className="pb-2 pt-6 px-6">
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="flex items-center gap-3">
-                       <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
-                       <CardTitle className="text-lg font-bold flex items-center gap-2">
-                         {brand.name}
-                         <button onClick={() => handleOpen(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1">
-                            <Icon icon="lucide:pencil" className="h-4 w-4" />
-                         </button>
-                       </CardTitle>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {brands.map((brand) => {
+              return (
+                <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
+                  <CardHeader className="pb-2 pt-6 px-6">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-3">
+                         <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
+                         <CardTitle className="text-lg font-bold flex items-center gap-2">
+                           {brand.name}
+                           <button onClick={() => handleOpenView(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1">
+                              <Icon icon="lucide:eye" className="h-4 w-4" />
+                           </button>
+                         </CardTitle>
+                      </div>
+                    </div>
+                    <CardDescription className="text-muted-foreground mt-2">
+                      {brand.companyName || "No company name"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-6 pb-6">
+                    <div className="space-y-2 text-sm">
+                      {brand.contactName && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon icon="lucide:user" className="h-4 w-4" />
+                          <span>{brand.contactName}</span>
+                        </div>
+                      )}
+                      {brand.contactEmail && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon icon="lucide:mail" className="h-4 w-4" />
+                          <span>{brand.contactEmail}</span>
+                        </div>
+                      )}
+                      {brand.website && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Icon icon="lucide:globe" className="h-4 w-4" />
+                          <span className="truncate">{brand.website}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+          <InfiniteScrollTrigger
+            onLoadMore={handleLoadMore}
+            hasMore={!!hasNextPage}
+            isLoading={isFetchingNextPage}
+            skeletonCount={2}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {[1, 2].map((i) => (
+                <div key={i} className="border rounded-xl p-6 space-y-4">
+                  <div className="flex items-center space-x-4">
+                    <Skeleton className="h-10 w-2 rounded-full" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-[200px]" />
+                      <Skeleton className="h-3 w-[150px]" />
                     </div>
                   </div>
-                  <CardDescription className="text-muted-foreground mt-2">
-                    {brand.companyName || "No company name"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="px-6 pb-6">
-                  <div className="space-y-2 text-sm">
-                    {brand.contactName && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Icon icon="lucide:user" className="h-4 w-4" />
-                        <span>{brand.contactName}</span>
-                      </div>
-                    )}
-                    {brand.contactEmail && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Icon icon="lucide:mail" className="h-4 w-4" />
-                        <span>{brand.contactEmail}</span>
-                      </div>
-                    )}
-                    {brand.website && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Icon icon="lucide:globe" className="h-4 w-4" />
-                        <span className="truncate">{brand.website}</span>
-                      </div>
-                    )}
+                  <div className="space-y-2 pt-4">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                </div>
+              ))}
+            </div>
+          </InfiniteScrollTrigger>
+        </>
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
+            <DialogTitle>Brand Details</DialogTitle>
           </DialogHeader>
           <div className="grid gap-6 py-4">
             {/* Basic Information Section */}
@@ -298,7 +282,7 @@ export const BrandSetup = () => {
                   <Input
                     id="companyName"
                     value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
+                    disabled
                     placeholder="e.g., PT KAO Indonesia"
                   />
                 </div>
@@ -310,7 +294,7 @@ export const BrandSetup = () => {
                   <Input
                     id="name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    disabled
                     placeholder="e.g., MERRIES"
                   />
                 </div>
@@ -322,7 +306,7 @@ export const BrandSetup = () => {
                   <Textarea
                     id="brandAddress"
                     value={brandAddress}
-                    onChange={(e) => setBrandAddress(e.target.value)}
+                    disabled
                     placeholder="Physical address"
                     rows={3}
                   />
@@ -346,7 +330,7 @@ export const BrandSetup = () => {
                   <label htmlFor="industryCategory" className="text-sm font-medium">
                     Industry Category
                   </label>
-                  <Select value={industryCategory} onValueChange={setIndustryCategory}>
+                  <Select value={industryCategory} disabled>
                     <SelectTrigger>
                       <SelectValue placeholder="Select industry" />
                     </SelectTrigger>
@@ -384,27 +368,6 @@ export const BrandSetup = () => {
                         )}
                       </div>
 
-                      {/* Camera Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const input = document.createElement('input');
-                          input.type = 'file';
-                          input.accept = 'image/*';
-                          input.onchange = async (e) => {
-                            const file = (e.target as HTMLInputElement).files?.[0];
-                            if (file) {
-                              // For now, show a message about uploading to a service
-                              // In production, you'd upload to your storage service here
-                              alert('Please upload your image to a hosting service (Imgur, Cloudinary, etc.) and paste the URL below, or use the URL input field directly.');
-                            }
-                          };
-                          input.click();
-                        }}
-                        className="absolute bottom-1 right-1 w-9 h-9 bg-gray-700 hover:bg-gray-800 rounded-full flex items-center justify-center shadow-md transition-colors"
-                      >
-                        <Icon icon="lucide:camera" className="w-4 h-4 text-white" />
-                      </button>
                     </div>
 
                     {/* URL Input Option */}
@@ -416,7 +379,7 @@ export const BrandSetup = () => {
                         <Input
                           id="logo"
                           value={logo}
-                          onChange={(e) => setLogo(e.target.value)}
+                          disabled
                           placeholder="https://example.com/logo.png"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -434,7 +397,7 @@ export const BrandSetup = () => {
                   <Input
                     id="website"
                     value={website}
-                    onChange={(e) => setWebsite(e.target.value)}
+                    disabled
                     placeholder="https://..."
                   />
                 </div>
@@ -448,7 +411,7 @@ export const BrandSetup = () => {
                       type="color"
                       id="color"
                       value={color}
-                      onChange={(e) => setColor(e.target.value)}
+                      disabled
                       className="w-12 h-10 p-1"
                     />
                     <span className="text-sm text-muted-foreground">{color}</span>
@@ -459,7 +422,7 @@ export const BrandSetup = () => {
                   <label htmlFor="status" className="text-sm font-medium">
                     Status
                   </label>
-                  <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+                  <Select value={status} disabled>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -485,7 +448,7 @@ export const BrandSetup = () => {
                   <Input
                     id="contactName"
                     value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
+                    disabled
                     placeholder="Full name"
                   />
                 </div>
@@ -497,7 +460,7 @@ export const BrandSetup = () => {
                   <Input
                     id="contactTitle"
                     value={contactTitle}
-                    onChange={(e) => setContactTitle(e.target.value)}
+                    disabled
                     placeholder="Job title"
                   />
                 </div>
@@ -510,7 +473,7 @@ export const BrandSetup = () => {
                     id="contactEmail"
                     type="email"
                     value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
+                    disabled
                     placeholder="email@example.com"
                   />
                 </div>
@@ -522,7 +485,7 @@ export const BrandSetup = () => {
                   <Input
                     id="contactPhone"
                     value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
+                    disabled
                     placeholder="Phone number"
                   />
                 </div>
@@ -541,7 +504,7 @@ export const BrandSetup = () => {
                   <Input
                     id="picFinanceName"
                     value={picFinanceName}
-                    onChange={(e) => setPicFinanceName(e.target.value)}
+                    disabled
                     placeholder="Finance person name"
                   />
                 </div>
@@ -553,7 +516,7 @@ export const BrandSetup = () => {
                   <Input
                     id="picFinancePhone"
                     value={picFinancePhone}
-                    onChange={(e) => setPicFinancePhone(e.target.value)}
+                    disabled
                     placeholder="Finance contact phone"
                   />
                 </div>
@@ -569,7 +532,7 @@ export const BrandSetup = () => {
                   <label htmlFor="businessUnit" className="text-sm font-medium">
                     Business Unit
                   </label>
-                  <Select value={businessUnitId} onValueChange={setBusinessUnitId}>
+                  <Select value={businessUnitId} disabled>
                     <SelectTrigger>
                       <SelectValue placeholder="Select business unit" />
                     </SelectTrigger>
@@ -590,7 +553,7 @@ export const BrandSetup = () => {
                   <Textarea
                     id="description"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    disabled
                     placeholder="Additional notes about the brand"
                     rows={3}
                   />
@@ -600,16 +563,9 @@ export const BrandSetup = () => {
           </div>
           <DialogFooter>
             <Button
-              variant="outline"
               onClick={() => setIsDialogOpen(false)}
             >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={createBrand.isPending || updateBrand.isPending || !name}
-            >
-              {createBrand.isPending || updateBrand.isPending ? "Saving..." : "Save Brand"}
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

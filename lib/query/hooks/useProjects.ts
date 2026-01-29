@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 
 // Types
@@ -154,46 +154,45 @@ async function fetchProjectsByBrand(brandId: string): Promise<Project[]> {
   return data.data;
 }
 
-async function createProject(project: NewProject): Promise<Project> {
-  const response = await fetch("/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(project),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to create project");
-  }
-  const data = await response.json();
-  return data.data;
-}
-
-async function updateProject({ id, ...data }: Partial<Project> & { id: string }): Promise<Project> {
-  const response = await fetch(`/api/projects/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to update project");
-  }
-  const result = await response.json();
-  return result.data;
-}
-
-async function deleteProject(id: string): Promise<void> {
-  const response = await fetch(`/api/projects/${id}`, {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    throw new Error("Failed to delete project");
-  }
-}
-
 // Hooks
 export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: fetchProjects,
+  });
+}
+
+const PAGE_SIZE = 20;
+
+interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+async function fetchProjectsPaginated({ pageParam = 0, search }: { pageParam?: number; search?: string }): Promise<PaginatedResponse<Project>> {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const response = await fetch(`/api/projects?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch projects");
+  }
+  const result = await response.json();
+  return {
+    data: result.data,
+    total: result.total,
+    hasMore: result.hasMore,
+  };
+}
+
+export function useInfiniteProjects(search?: string) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.projectsInfinite, search],
+    queryFn: ({ pageParam }) => fetchProjectsPaginated({ pageParam, search }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage.hasMore) return undefined;
+      return allPages.reduce((acc, page) => acc + page.data.length, 0);
+    },
   });
 }
 
@@ -210,45 +209,5 @@ export function useProjectsByBrand(brandId: string) {
     queryKey: queryKeys.projectsByBrand(brandId),
     queryFn: () => fetchProjectsByBrand(brandId),
     enabled: !!brandId,
-  });
-}
-
-export function useCreateProject() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: createProject,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-      if (data.brandId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectsByBrand(data.brandId) });
-      }
-    },
-  });
-}
-
-export function useUpdateProject() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: updateProject,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-      queryClient.invalidateQueries({ queryKey: queryKeys.project(data.id) });
-      if (data.brandId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectsByBrand(data.brandId) });
-      }
-    },
-  });
-}
-
-export function useDeleteProject() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: deleteProject,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-    },
   });
 }

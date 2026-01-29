@@ -1,9 +1,10 @@
 "use client";
 
 import { useIsStuck } from "@/hooks/use-is-stuck";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
-import React, { useState, useEffect } from "react";
-import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, type Project } from "@/lib/query/hooks/useProjects";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useProjects, useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
@@ -23,7 +24,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { CampaignWizard } from "./CampaignWizard";
+import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -58,20 +59,36 @@ const generateProjectNumber = (projectName: string, existingNumbers: string[] = 
 };
 
 export const ProjectSetup = () => {
-  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  
+  const {
+    data: projectsData,
+    isLoading: projectsLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteProjects(debouncedSearch || undefined);
   const { data: brands = [], isLoading: brandsLoading } = useBrands();
   const { data: businessUnits = [] } = useBusinessUnits();
   const { data: projectCategories = [] } = useProjectCategories();
   const { data: channels = [] } = useChannelClassifications();
   const { data: allDeliverables = [] } = useDeliverables();
-  const createProject = useCreateProject();
-  const updateProjectMutation = useUpdateProject();
-  const deleteProjectMutation = useDeleteProject();
+
+  // Flatten all pages into a single array of projects
+  const projects = useMemo(() => {
+    if (!projectsData?.pages) return [];
+    return projectsData.pages.flatMap((page) => page.data);
+  }, [projectsData]);
+
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isCampaignWizardOpen, setIsCampaignWizardOpen] = useState(false);
-  const [isProjectTypeDialogOpen, setIsProjectTypeDialogOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [viewingProject, setViewingProject] = useState<Project | null>(null);
 
   // Form State - Project Type
   const [projectType, setProjectType] = useState<"pitch" | "campaign">("campaign");
@@ -126,92 +143,12 @@ export const ProjectSetup = () => {
     setGrandTotal(total > 0 ? total.toFixed(2) : "");
   }, [budget, asf]);
 
-  // Auto-generate project number when creating new project
-  useEffect(() => {
-    if (!editingProject && name) {
-      const existingNumbers = projects.map((p) => p.projectNumber).filter(Boolean) as string[];
-      const newNumber = generateProjectNumber(name, existingNumbers);
-      setProjectNumber(newNumber);
-    }
-  }, [name, editingProject, projects]);
-
-  const resetForm = () => {
-    setProjectType("campaign");
-    setName("");
-    setProjectNumber("");
-    setBrandId("");
-    setBusinessUnitId("");
-    setProjectCategoryId("");
-    setColor(PROJECT_COLORS[0]);
-    setStatus("active");
-    setCurrency("USD");
-    setBudget("");
-    setAsf("");
-    setGrandTotal("");
-    setQuotationReference("");
-    setIoFile("");
-    setStartDate("");
-    setEndDate("");
-    setDescription("");
-    setNotes("");
-    setFlag("");
-    setRegion("Indonesia");
-    setSubmitDate("");
-    setPitchStatus("introduction");
-    setValueTotalEstimate("");
-    setHsDealId("");
-    setProjectChannels([]);
-    setEditingProject(null);
-  };
-
-  // Project Channels Management
-  const addChannel = () => {
-    setProjectChannels([...projectChannels, {
-      channelId: "",
-      deliverableId: "",
-      quantity: "",
-      channelBudget: "",
-      manHours: "",
-    }]);
-  };
-
-  const removeChannel = (index: number) => {
-    setProjectChannels(projectChannels.filter((_, i) => i !== index));
-  };
-
-  const updateChannel = (index: number, field: string, value: string) => {
-    const updated = [...projectChannels];
-    updated[index] = { ...updated[index], [field]: value };
-    // Reset deliverable when channel changes
-    if (field === 'channelId') {
-      updated[index].deliverableId = "";
-    }
-    setProjectChannels(updated);
-  };
-
   const getDeliverablesForChannel = (channelId: string) => {
     return allDeliverables.filter(d => d.channelId === channelId);
   };
 
-  const handleOpenAdd = () => {
-    // Show project type selection dialog first
-    setIsProjectTypeDialogOpen(true);
-  };
-
-  const handleSelectCampaign = () => {
-    setIsProjectTypeDialogOpen(false);
-    setIsCampaignWizardOpen(true);
-  };
-
-  const handleSelectPitch = () => {
-    setIsProjectTypeDialogOpen(false);
-    resetForm();
-    setProjectType("pitch");
-    setIsDialogOpen(true);
-  };
-
-  const handleOpenEdit = (project: Project) => {
-    // Use existing dialog for editing both campaigns and pitches
+  const handleOpenView = (project: Project) => {
+    setViewingProject(project);
     setProjectType(project.projectType);
     setName(project.name);
     setProjectNumber(project.projectNumber || "");
@@ -243,91 +180,27 @@ export const ProjectSetup = () => {
       channelBudget: pc.channelBudget || "",
       manHours: pc.manHours || "",
     })) || []);
-    setEditingProject(project);
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
-    if (!name.trim() || !brandId) return;
-
-    // Validate pitch-specific required fields
-    if (projectType === 'pitch') {
-      if (!region || !submitDate || !pitchStatus) {
-        alert("Pitch requires region, submit date, and pitch status");
-        return;
-      }
-    }
-
-    const baseProjectData = {
-      name: name.trim(),
-      brandId,
-      projectType,
-      projectNumber: projectNumber || null,
-      businessUnitId: businessUnitId || null,
-      projectCategoryId: projectCategoryId || null,
-      color,
-      status,
-      currency,
-      budget: budget || null,
-      asf: asf || null,
-      grandTotal: grandTotal || null,
-      quotationReference: quotationReference || null,
-      ioFile: ioFile || null,
-      startDate: startDate || null,
-      endDate: endDate || null,
-      description: description || null,
-      notes: notes || null,
-      flag: flag || null,
-    };
-
-    // Add pitch-specific fields
-    const projectData = projectType === 'pitch' ? {
-      ...baseProjectData,
-      region: region || null,
-      submitDate: submitDate || null,
-      pitchStatus: pitchStatus as any || null,
-      valueTotalEstimate: valueTotalEstimate || null,
-      hsDealId: hsDealId || null,
-      projectChannels: projectChannels.filter(pc => pc.channelId).map(pc => ({
-        channelId: pc.channelId,
-        deliverableId: pc.deliverableId || null,
-        quantity: pc.quantity || null,
-        channelBudget: pc.channelBudget || null,
-        manHours: pc.manHours || null,
-      })),
-    } : baseProjectData;
-
-    if (editingProject) {
-      updateProjectMutation.mutate({
-        id: editingProject.id,
-        ...projectData,
-      } as any, {
-        onSuccess: () => {
-          setIsDialogOpen(false);
-          resetForm();
-        }
-      });
-    } else {
-      createProject.mutate(projectData as any, {
-        onSuccess: () => {
-          setIsDialogOpen(false);
-          resetForm();
-        }
-      });
-    }
-  };
-
-  const handleDelete = (projectId: string) => {
-    if (confirm("Are you sure you want to delete this project?")) {
-      deleteProjectMutation.mutate(projectId);
-    }
-  };
-
   // Group projects by brand
-  const projectsByBrand = brands.map((brand) => ({
-    brand,
-    projects: projects.filter((p) => p.brandId === brand.id),
-  }));
+  // In default state: show all brands even if they have no projects
+  // In search state: show brands that match the search OR have matching projects
+  const projectsByBrand = brands
+    .map((brand) => ({
+      brand,
+      projects: projects.filter((p) => p.brandId === brand.id),
+    }))
+    .filter(({ brand, projects: brandProjects }) => {
+      // If there's no search, show all brands
+      if (!debouncedSearch) return true;
+
+      // If searching, show brands that match the search or have matching projects
+      const brandNameMatches = brand.name.toLowerCase().includes(debouncedSearch.toLowerCase());
+      const hasMatchingProjects = brandProjects.length > 0;
+
+      return brandNameMatches || hasMatchingProjects;
+    });
 
   // Get currency symbol
   const getCurrencySymbol = (code: string) => {
@@ -347,147 +220,139 @@ export const ProjectSetup = () => {
             Manage projects within your brands
           </p>
         </div>
-        <Button onClick={handleOpenAdd}>
-          <Icon icon="lucide:plus" className="h-4 w-4 mr-2" />
-          Add Project
-        </Button>
+        <div className="relative">
+          <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 w-64"
+          />
+        </div>
       </div>
 
       {/* Projects List grouped by Brand */}
       <div className="space-y-6">
-        {projectsByBrand.map(({ brand, projects: brandProjects }) => (
-          <div key={brand.id} className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: brand.color }}
-              />
-              <h4 className="font-medium text-sm">{brand.name}</h4>
-              <span className="text-xs text-muted-foreground">
-                ({brandProjects.length} projects)
-              </span>
-            </div>
-
-            {brandProjects.length === 0 ? (
-              projectsLoading ? (
-                 <div className="grid gap-2 pl-5">
-                   {[1, 2].map((i) => (
-                     <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-white">
-                        <div className="flex items-center gap-3">
-                           <Skeleton className="h-8 w-8 rounded-lg" />
-                           <div className="space-y-1">
-                             <Skeleton className="h-4 w-32" />
-                             <Skeleton className="h-3 w-48" />
-                           </div>
-                        </div>
-                        <div className="flex gap-2">
-                           <Skeleton className="h-8 w-8" />
-                           <Skeleton className="h-8 w-8" />
-                        </div>
-                     </div>
-                   ))}
-                 </div>
-              ) : (
-                <div className="text-sm text-muted-foreground pl-5">
-                  No projects yet
-                </div>
-              )
-            ) : (
-              <div className="grid gap-2 pl-5">
-                {brandProjects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ backgroundColor: project.color }}
-                      >
-                        <Icon icon="lucide:folder" className="h-4 w-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="font-medium text-sm">{project.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenEdit(project)}
-                      >
-                        <Icon icon="lucide:pencil" className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(project.id)}
-                      >
-                        <Icon icon="lucide:trash-2" className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {projectsByBrand.length === 0 && !projectsLoading && debouncedSearch ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon icon="lucide:search-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No projects or brands found matching &quot;{debouncedSearch}&quot;</p>
           </div>
-        ))}
+        ) : projectsByBrand.length === 0 && !projectsLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon icon="lucide:folder-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No brands yet. Create one in the Brands tab first.</p>
+          </div>
+        ) : (
+          projectsByBrand.map(({ brand, projects: brandProjects }) => (
+            <div key={brand.id} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: brand.color }}
+                />
+                <h4 className="font-medium text-sm">{brand.name}</h4>
+                <span className="text-xs text-muted-foreground">
+                  ({brandProjects.length} projects)
+                </span>
+              </div>
+
+              {brandProjects.length === 0 ? (
+                projectsLoading ? (
+                   <div className="grid gap-2 pl-5">
+                     {[1, 2].map((i) => (
+                       <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                          <div className="flex items-center gap-3">
+                             <Skeleton className="h-8 w-8 rounded-lg" />
+                             <div className="space-y-1">
+                               <Skeleton className="h-4 w-32" />
+                               <Skeleton className="h-3 w-48" />
+                             </div>
+                          </div>
+                          <div className="flex gap-2">
+                             <Skeleton className="h-8 w-8" />
+                             <Skeleton className="h-8 w-8" />
+                          </div>
+                       </div>
+                     ))}
+                   </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground pl-5">
+                    No projects yet
+                  </div>
+                )
+              ) : (
+                <div className="grid gap-2 pl-5">
+                  {brandProjects.map((project) => (
+                    <div
+                      key={project.id}
+                      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: project.color }}
+                        >
+                          <Icon icon="lucide:folder" className="h-4 w-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm">{project.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenView(project)}
+                      >
+                        <Icon icon="lucide:eye" className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+        
+        {/* Infinite scroll trigger */}
+        <InfiniteScrollTrigger
+          onLoadMore={handleLoadMore}
+          hasMore={!!hasNextPage}
+          isLoading={isFetchingNextPage}
+          skeletonCount={3}
+        >
+          <div className="grid gap-2 pl-5">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <div className="space-y-1">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-48" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Skeleton className="h-8 w-8" />
+                  <Skeleton className="h-8 w-8" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </InfiniteScrollTrigger>
       </div>
 
-      {/* Project Type Selection Dialog */}
-      <Dialog open={isProjectTypeDialogOpen} onOpenChange={setIsProjectTypeDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create New Project</DialogTitle>
-            <DialogDescription>
-              What type of project would you like to create?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <Button
-              onClick={handleSelectCampaign}
-              className="h-20 text-lg flex flex-col items-center justify-center gap-2"
-              variant="outline"
-            >
-              <Icon icon="lucide:folder-plus" className="h-8 w-8" />
-              <span>Campaign</span>
-            </Button>
-            <Button
-              onClick={handleSelectPitch}
-              className="h-20 text-lg flex flex-col items-center justify-center gap-2"
-              variant="outline"
-            >
-              <Icon icon="lucide:presentation" className="h-8 w-8" />
-              <span>Pitch</span>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Campaign Wizard for new campaigns */}
-      <CampaignWizard
-        isOpen={isCampaignWizardOpen}
-        onClose={() => setIsCampaignWizardOpen(false)}
-      />
-
-      {/* Original Dialog for pitches and editing campaigns */}
+      {/* View Project/Pitch Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingProject
-                ? `Edit ${editingProject.projectType === 'pitch' ? 'Pitch' : 'Campaign'}`
-                : `Create New ${projectType === 'pitch' ? 'Pitch' : 'Campaign'}`
-              }
+              {projectType === 'pitch' ? 'Pitch Details' : 'Project Details'}
             </DialogTitle>
             <DialogDescription>
-              {editingProject
-                ? `Update the ${editingProject.projectType} details`
-                : `Create a new ${projectType} within a brand`
-              }
+              View {projectType} information
             </DialogDescription>
           </DialogHeader>
 
@@ -504,7 +369,7 @@ export const ProjectSetup = () => {
                   <Input
                     id="name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    disabled
                     placeholder={projectType === 'pitch' ? "e.g., Nike Q1 2026 Pitch" : "e.g., Website Redesign"}
                   />
                 </div>
@@ -529,7 +394,7 @@ export const ProjectSetup = () => {
                   <label htmlFor="brand" className="text-sm font-medium">
                     Brand <span className="text-red-500">*</span>
                   </label>
-                  <Select value={brandId} onValueChange={setBrandId}>
+                  <Select value={brandId} disabled>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select a brand" />
                     </SelectTrigger>
@@ -549,7 +414,7 @@ export const ProjectSetup = () => {
                       <label htmlFor="region" className="text-sm font-medium">
                         Region <span className="text-red-500">*</span>
                       </label>
-                      <Select value={region} onValueChange={setRegion}>
+                      <Select value={region} disabled>
                         <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
@@ -567,7 +432,7 @@ export const ProjectSetup = () => {
                       <label htmlFor="pitchStatus" className="text-sm font-medium">
                         Status <span className="text-red-500">*</span>
                       </label>
-                      <Select value={pitchStatus} onValueChange={setPitchStatus}>
+                      <Select value={pitchStatus} disabled>
                         <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
@@ -593,7 +458,7 @@ export const ProjectSetup = () => {
                       <label htmlFor="businessUnit" className="text-sm font-medium">
                         Business Unit
                       </label>
-                      <Select value={businessUnitId} onValueChange={setBusinessUnitId}>
+                      <Select value={businessUnitId} disabled>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select business unit" />
                         </SelectTrigger>
@@ -611,7 +476,7 @@ export const ProjectSetup = () => {
                       <label htmlFor="projectCategory" className="text-sm font-medium">
                         Project Category
                       </label>
-                      <Select value={projectCategoryId} onValueChange={setProjectCategoryId}>
+                      <Select value={projectCategoryId} disabled>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
@@ -629,7 +494,7 @@ export const ProjectSetup = () => {
                       <label htmlFor="status" className="text-sm font-medium">
                         Status
                       </label>
-                      <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+                      <Select value={status} disabled>
                         <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
@@ -647,15 +512,13 @@ export const ProjectSetup = () => {
                       <label className="text-sm font-medium">Color</label>
                       <div className="flex gap-2 flex-wrap">
                         {PROJECT_COLORS.map((c) => (
-                          <button
+                          <div
                             key={c}
                             className={cn(
-                              "w-8 h-8 rounded-full transition-all",
+                              "w-8 h-8 rounded-full",
                               color === c && "ring-2 ring-offset-2 ring-primary"
                             )}
                             style={{ backgroundColor: c }}
-                            onClick={() => setColor(c)}
-                            type="button"
                           />
                         ))}
                       </div>
@@ -674,7 +537,7 @@ export const ProjectSetup = () => {
                   <label htmlFor="currency" className="text-sm font-medium">
                     Currency <span className="text-red-500">*</span>
                   </label>
-                  <Select value={currency} onValueChange={setCurrency}>
+                  <Select value={currency} disabled>
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -701,7 +564,7 @@ export const ProjectSetup = () => {
                       type="number"
                       step="0.01"
                       value={budget}
-                      onChange={(e) => setBudget(e.target.value)}
+                      disabled
                       placeholder="0.00"
                       className="pl-8"
                     />
@@ -723,7 +586,7 @@ export const ProjectSetup = () => {
                           type="number"
                           step="0.01"
                           value={asf}
-                          onChange={(e) => setAsf(e.target.value)}
+                          disabled
                           placeholder="0.00"
                           className="pl-8"
                         />
@@ -756,7 +619,7 @@ export const ProjectSetup = () => {
                       <Input
                         id="quotationReference"
                         value={quotationReference}
-                        onChange={(e) => setQuotationReference(e.target.value)}
+                        disabled
                         placeholder="e.g., QT-2026-0001"
                       />
                     </div>
@@ -768,7 +631,7 @@ export const ProjectSetup = () => {
                       <Input
                         id="ioFile"
                         value={ioFile}
-                        onChange={(e) => setIoFile(e.target.value)}
+                        disabled
                         placeholder="https://example.com/io-file.pdf"
                       />
                     </div>
@@ -782,7 +645,7 @@ export const ProjectSetup = () => {
                   <Textarea
                     id="notes"
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    disabled
                     placeholder="Additional notes"
                     rows={3}
                   />
@@ -804,7 +667,7 @@ export const ProjectSetup = () => {
                       id="submitDate"
                       type="date"
                       value={submitDate}
-                      onChange={(e) => setSubmitDate(e.target.value)}
+                      disabled
                     />
                   </div>
                 ) : (
@@ -817,7 +680,7 @@ export const ProjectSetup = () => {
                         id="startDate"
                         type="date"
                         value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
+                        disabled
                       />
                     </div>
 
@@ -829,7 +692,7 @@ export const ProjectSetup = () => {
                         id="endDate"
                         type="date"
                         value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
+                        disabled
                       />
                     </div>
                   </>
@@ -842,10 +705,6 @@ export const ProjectSetup = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b pb-2">
                   <h3 className="text-sm font-semibold text-foreground">Channels & Deliverables</h3>
-                  <Button type="button" variant="outline" size="sm" onClick={addChannel}>
-                    <Icon icon="lucide:plus" className="h-4 w-4 mr-2" />
-                    Add Channel
-                  </Button>
                 </div>
 
                 {projectChannels.length === 0 ? (
@@ -856,17 +715,6 @@ export const ProjectSetup = () => {
                   <div className="space-y-4">
                     {projectChannels.map((channel, index) => (
                       <div key={index} className="border rounded-lg p-4 space-y-4 bg-muted/20">
-                        <div className="flex justify-end">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeChannel(index)}
-                          >
-                            <Icon icon="lucide:trash-2" className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <label className="text-sm font-medium">
@@ -874,7 +722,7 @@ export const ProjectSetup = () => {
                             </label>
                             <Select
                               value={channel.channelId}
-                              onValueChange={(value) => updateChannel(index, 'channelId', value)}
+                              disabled
                             >
                               <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Select channel" />
@@ -895,8 +743,7 @@ export const ProjectSetup = () => {
                             </label>
                             <Select
                               value={channel.deliverableId}
-                              onValueChange={(value) => updateChannel(index, 'deliverableId', value)}
-                              disabled={!channel.channelId}
+                              disabled
                             >
                               <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Select deliverable" />
@@ -915,7 +762,7 @@ export const ProjectSetup = () => {
                             <label className="text-sm font-medium">Quantity</label>
                             <Input
                               value={channel.quantity}
-                              onChange={(e) => updateChannel(index, 'quantity', e.target.value)}
+                              disabled
                               placeholder="e.g., 5 posts"
                             />
                           </div>
@@ -930,7 +777,7 @@ export const ProjectSetup = () => {
                                 type="number"
                                 step="0.01"
                                 value={channel.channelBudget}
-                                onChange={(e) => updateChannel(index, 'channelBudget', e.target.value)}
+                                disabled
                                 placeholder="0.00"
                                 className="pl-8"
                               />
@@ -941,7 +788,7 @@ export const ProjectSetup = () => {
                             <label className="text-sm font-medium">Man Hours</label>
                             <Input
                               value={channel.manHours}
-                              onChange={(e) => updateChannel(index, 'manHours', e.target.value)}
+                              disabled
                               placeholder="e.g., 40 hours"
                             />
                           </div>
@@ -966,7 +813,7 @@ export const ProjectSetup = () => {
                     <Textarea
                       id="description"
                       value={description}
-                      onChange={(e) => setDescription(e.target.value)}
+                      disabled
                       placeholder="Project description and objectives"
                       rows={3}
                     />
@@ -979,7 +826,7 @@ export const ProjectSetup = () => {
                     <Input
                       id="flag"
                       value={flag}
-                      onChange={(e) => setFlag(e.target.value)}
+                      disabled
                       placeholder="e.g., High Priority, Internal, etc."
                     />
                   </div>
@@ -989,21 +836,8 @@ export const ProjectSetup = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={!name.trim() || !brandId || createProject.isPending || updateProjectMutation.isPending}
-            >
-              {createProject.isPending || updateProjectMutation.isPending
-                ? "Saving..."
-                : editingProject
-                  ? "Save Changes"
-                  : projectType === 'pitch'
-                    ? "Create Pitch"
-                    : "Create Campaign"
-              }
+            <Button onClick={() => setIsDialogOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

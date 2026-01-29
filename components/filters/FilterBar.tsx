@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Icon } from "@iconify/react";
 
 interface FilterBarProps {
@@ -18,6 +19,8 @@ interface FilterBarProps {
   onBrandChange: (brandId: string | null) => void;
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
   onOpenSetup: () => void;
   onOpenInsights: () => void;
 }
@@ -27,6 +30,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onBrandChange,
   selectedDepartment,
   onDepartmentChange,
+  searchQuery,
+  onSearchChange,
   onOpenSetup,
   onOpenInsights,
 }) => {
@@ -39,6 +44,17 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <div className="flex items-center gap-2">
            <Icon icon="lucide:filter" className="text-muted-foreground" />
            <span className="font-medium">Filters:</span>
+        </div>
+        
+        {/* Search Input */}
+        <div className="relative">
+          <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search name, position, project, brand..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-9 w-80"
+          />
         </div>
         
         <Select

@@ -10,10 +10,12 @@ export const queryKeys = {
 
   // Brands
   brands: ["brands"] as const,
+  brandsInfinite: ["brands", "infinite"] as const,
   brand: (id: string) => ["brands", id] as const,
 
   // Employees
   employees: ["employees"] as const,
+  employeesInfinite: ["employees", "infinite"] as const,
   employee: (id: string) => ["employees", id] as const,
   employeeBrands: (employeeId: string) => ["employees", employeeId, "brands"] as const,
 
@@ -23,6 +25,7 @@ export const queryKeys = {
 
   // Projects
   projects: ["projects"] as const,
+  projectsInfinite: ["projects", "infinite"] as const,
   project: (id: string) => ["projects", id] as const,
   projectsByBrand: (brandId: string) => ["projects", "brand", brandId] as const,
 
@@ -41,3 +44,4 @@ export const queryKeys = {
   assignmentsByEmployee: (employeeId: string) => ["assignments", "employee", employeeId] as const,
   assignmentsByProject: (projectId: string) => ["assignments", "project", projectId] as const,
 } as const;
+
