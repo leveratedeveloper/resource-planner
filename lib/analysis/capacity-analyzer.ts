@@ -4,12 +4,78 @@
  * Designed to run in Web Worker for performance
  */
 
-import { Assignment, Resource, Project } from "@/types";
+import { Resource, Project } from "@/types";
 import {
   DailyUtilization,
   ResourceCapacityAnalysis,
   AnalysisInput,
 } from "./types";
+
+// ============================================================================
+// Types for Optimized Analysis
+// ============================================================================
+
+/**
+ * Assignment type used internally by the analysis engine.
+ * This matches the transformed data from AppContext where employeeId becomes resourceId.
+ */
+export interface AnalysisAssignment {
+  id: string;
+  resourceId: string;  // Mapped from employeeId in AppContext
+  projectId: string;
+  startDate: Date;
+  endDate: Date;
+  hoursPerDay: number;
+  isTimeOff: boolean;
+  category: string;
+  isBillable: boolean;
+  note: string | null;
+}
+
+/**
+ * Assignment with pre-parsed date timestamps for fast comparison
+ */
+export interface ParsedAssignment extends AnalysisAssignment {
+  _startTime: number;
+  _endTime: number;
+}
+
+// ============================================================================
+// Pre-indexing and Date Parsing (Performance Optimization)
+// ============================================================================
+
+/**
+ * Pre-index assignments by resourceId for O(1) lookup
+ */
+export function indexAssignmentsByResource(
+  assignments: ParsedAssignment[]
+): Map<string, ParsedAssignment[]> {
+  const index = new Map<string, ParsedAssignment[]>();
+  for (const a of assignments) {
+    const existing = index.get(a.resourceId) || [];
+    existing.push(a);
+    index.set(a.resourceId, existing);
+  }
+  return index;
+}
+
+/**
+ * Pre-parse assignment dates to avoid repeated Date object creation
+ */
+export function parseAssignmentDates(assignments: AnalysisAssignment[]): ParsedAssignment[] {
+  return assignments.map((a) => ({
+    ...a,
+    _startTime: new Date(a.startDate).setHours(0, 0, 0, 0),
+    _endTime: new Date(a.endDate).setHours(0, 0, 0, 0),
+  }));
+}
+
+/**
+ * Parse date strings to timestamps for fast comparison
+ */
+export function parseDateRangeToTimestamps(dates: string[]): number[] {
+  return dates.map((d) => new Date(d).setHours(0, 0, 0, 0));
+}
 
 // ============================================================================
 // Utility Functions
@@ -32,11 +98,22 @@ export function getDateRange(start: string, end: string): string[] {
 }
 
 /**
- * Check if a date falls within an assignment's date range
+ * Check if a timestamp falls within an assignment's date range (optimized)
  */
 export function isDateInAssignment(
+  dateTime: number,
+  assignment: ParsedAssignment
+): boolean {
+  return dateTime >= assignment._startTime && dateTime <= assignment._endTime;
+}
+
+/**
+ * Legacy: Check if a date string falls within an assignment's date range
+ * @deprecated Use isDateInAssignment with pre-parsed timestamps instead
+ */
+export function isDateStrInAssignment(
   dateStr: string,
-  assignment: Assignment
+  assignment: { startDate: Date; endDate: Date }
 ): boolean {
   const date = new Date(dateStr);
   const start = new Date(assignment.startDate);
@@ -62,21 +139,21 @@ export function getDailyCapacity(weeklyCapacity: number): number {
 // ============================================================================
 
 /**
- * Calculate daily utilization for a single resource
+ * Calculate daily utilization for a single resource (optimized)
+ * Uses pre-parsed assignments and timestamps for fast comparison
  */
 export function calculateDailyUtilization(
   resource: Resource,
-  assignments: Assignment[],
-  dateRange: string[]
+  resourceAssignments: ParsedAssignment[],
+  dateRange: string[],
+  dateTimestamps: number[]
 ): DailyUtilization[] {
   const dailyCapacity = getDailyCapacity(resource.capacity);
-  const resourceAssignments = assignments.filter(
-    (a) => a.resourceId === resource.id
-  );
 
-  return dateRange.map((dateStr) => {
+  return dateRange.map((dateStr, idx) => {
+    const dateTime = dateTimestamps[idx];
     const dayAssignments = resourceAssignments.filter((a) =>
-      isDateInAssignment(dateStr, a)
+      isDateInAssignment(dateTime, a)
     );
 
     const hasTimeOff = dayAssignments.some((a) => a.isTimeOff);
@@ -107,33 +184,27 @@ export function calculateDailyUtilization(
 }
 
 /**
- * Calculate billable percentage for a resource's assignments
+ * Calculate billable percentage for a resource's assignments (optimized)
+ * Uses pre-parsed assignments with cached timestamps
  */
 export function calculateBillablePercent(
-  resourceId: string,
-  assignments: Assignment[]
+  resourceAssignments: ParsedAssignment[]
 ): number {
-  const resourceAssignments = assignments.filter(
-    (a) => a.resourceId === resourceId && !a.isTimeOff
-  );
+  const workAssignments = resourceAssignments.filter((a) => !a.isTimeOff);
 
-  if (resourceAssignments.length === 0) return 0;
+  if (workAssignments.length === 0) return 0;
 
-  const totalHours = resourceAssignments.reduce((sum, a) => {
-    const days = Math.ceil(
-      (new Date(a.endDate).getTime() - new Date(a.startDate).getTime()) /
-        (1000 * 60 * 60 * 24)
-    ) + 1;
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+  const totalHours = workAssignments.reduce((sum, a) => {
+    const days = Math.ceil((a._endTime - a._startTime) / MS_PER_DAY) + 1;
     return sum + a.hoursPerDay * days;
   }, 0);
 
-  const billableHours = resourceAssignments
+  const billableHours = workAssignments
     .filter((a) => a.isBillable)
     .reduce((sum, a) => {
-      const days = Math.ceil(
-        (new Date(a.endDate).getTime() - new Date(a.startDate).getTime()) /
-          (1000 * 60 * 60 * 24)
-      ) + 1;
+      const days = Math.ceil((a._endTime - a._startTime) / MS_PER_DAY) + 1;
       return sum + a.hoursPerDay * days;
     }, 0);
 
@@ -167,17 +238,19 @@ export function determineResourceStatus(
 }
 
 /**
- * Analyze capacity for a single resource
+ * Analyze capacity for a single resource (optimized)
  */
 export function analyzeResourceCapacity(
   resource: Resource,
-  assignments: Assignment[],
-  dateRange: string[]
+  resourceAssignments: ParsedAssignment[],
+  dateRange: string[],
+  dateTimestamps: number[]
 ): ResourceCapacityAnalysis {
   const dailyUtilization = calculateDailyUtilization(
     resource,
-    assignments,
-    dateRange
+    resourceAssignments,
+    dateRange,
+    dateTimestamps
   );
 
   const workingDays = dailyUtilization.filter((d) => !d.hasTimeOff);
@@ -202,20 +275,34 @@ export function analyzeResourceCapacity(
     peakUtilization,
     overallocatedDays: workingDays.filter((d) => d.isOverallocated).length,
     underutilizedDays: workingDays.filter((d) => d.isUnderutilized).length,
-    billablePercent: calculateBillablePercent(resource.id, assignments),
+    billablePercent: calculateBillablePercent(resourceAssignments),
     status: determineResourceStatus(dailyUtilization),
   };
 }
 
 /**
- * Main analysis function - analyzes all resources
+ * Main analysis function - analyzes all resources (optimized)
+ * Pre-indexes assignments by resource and pre-parses dates for performance
  */
 export function analyzeCapacity(
   input: AnalysisInput
 ): ResourceCapacityAnalysis[] {
+  // Pre-compute date range and timestamps once
   const dateRange = getDateRange(input.dateRange.start, input.dateRange.end);
+  const dateTimestamps = parseDateRangeToTimestamps(dateRange);
+  
+  // Pre-parse all assignment dates once
+  const parsedAssignments = parseAssignmentDates(input.assignments as unknown as AnalysisAssignment[]);
+  
+  // Pre-index assignments by resourceId for O(1) lookup
+  const assignmentIndex = indexAssignmentsByResource(parsedAssignments);
 
   return input.resources.map((resource) =>
-    analyzeResourceCapacity(resource, input.assignments, dateRange)
+    analyzeResourceCapacity(
+      resource,
+      assignmentIndex.get(resource.id) || [],
+      dateRange,
+      dateTimestamps
+    )
   );
 }

@@ -130,6 +130,7 @@ export const employees = pgTable('employees', {
   dateOfBirth: date('date_of_birth'),
   employmentStatus: employmentStatusEnum('employment_status').notNull().default('active'),
   visibility: visibilityEnum('visibility').notNull().default('active'),
+  gender: text('gender'), // 'MALE' or 'FEMALE'
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

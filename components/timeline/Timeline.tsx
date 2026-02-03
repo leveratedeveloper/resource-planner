@@ -272,7 +272,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         onScroll={handleBodyScroll}
         className="flex-1 overflow-auto"
       >
-        <div className="flex flex-col" style={{ minWidth: `${250 + days.length * cellWidth}px` }}>
+        <div className="flex flex-col" style={{ width: `${250 + days.length * cellWidth}px` }}>
           {isLoadingEmployees ? (
              <div className="space-y-0">
                {[1, 2, 3, 4, 5].map((i) => (

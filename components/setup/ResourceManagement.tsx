@@ -1,19 +1,29 @@
 "use client";
 
 import React, { useState, useMemo, useCallback } from "react";
-import { useEmployees, useInfiniteEmployees, useCreateEmployee, useUpdateEmployee, type Employee } from "@/lib/query/hooks/useEmployees";
+import { useInfiniteEmployees, type Employee } from "@/lib/query/hooks/useEmployees";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@iconify/react";
 import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { cn } from "@/lib/utils";
+
+// Helper to format date for display
+const formatDate = (dateStr: string | null): string => {
+    if (!dateStr) return '-';
+    try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+        return dateStr;
+    }
+};
 
 export const ResourceManagement = () => {
     const [searchQuery, setSearchQuery] = useState("");
@@ -27,8 +37,6 @@ export const ResourceManagement = () => {
         fetchNextPage,
     } = useInfiniteEmployees(debouncedSearch || undefined);
     const { data: departments = [] } = useDepartments();
-    const createEmployee = useCreateEmployee();
-    const updateEmployee = useUpdateEmployee();
 
     // Flatten all pages into a single array of employees
     const employees = useMemo(() => {
@@ -43,68 +51,19 @@ export const ResourceManagement = () => {
     }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-    // Form State
-    const [fullName, setFullName] = useState("");
-    const [position, setPosition] = useState("");
-    const [departmentId, setDepartmentId] = useState("");
-    const [weeklyCapacity, setWeeklyCapacity] = useState(40);
-    const [email, setEmail] = useState("");
-
-    const handleOpen = (employee?: Employee) => {
-        if (employee) {
-            setEditingEmployee(employee);
-            setFullName(employee.fullName);
-            setPosition(employee.position);
-            setDepartmentId(employee.departmentId || "");
-            setWeeklyCapacity(employee.weeklyCapacity);
-            setEmail(employee.email || "");
-        } else {
-            setEditingEmployee(null);
-            setFullName("");
-            setPosition("");
-            setDepartmentId("");
-            setWeeklyCapacity(40);
-            setEmail("");
-        }
+    const handleViewEmployee = (employee: Employee) => {
+        setSelectedEmployee(employee);
         setIsDialogOpen(true);
     };
 
-    const handleSave = () => {
-        if (editingEmployee) {
-            // Update existing employee
-            updateEmployee.mutate({
-                id: editingEmployee.id,
-                fullName,
-                position,
-                departmentId: departmentId || null,
-                weeklyCapacity,
-                email: email || null,
-            }, {
-                onSuccess: () => {
-                    setIsDialogOpen(false);
-                }
-            });
-        } else {
-            // Create new employee
-            createEmployee.mutate({
-                fullName,
-                position,
-                departmentId: departmentId || null,
-                weeklyCapacity,
-                email: email || null,
-                employmentStatus: 'active',
-                visibility: 'active',
-            }, {
-                onSuccess: () => {
-                    setIsDialogOpen(false);
-                }
-            });
-        }
-    };
-
     const { sentinelRef, isStuck } = useIsStuck(40);
+
+    // Get department info for selected employee
+    const selectedDepartment = selectedEmployee 
+        ? departments.find(d => d.id === selectedEmployee.departmentId) 
+        : null;
 
     return (
         <div className="space-y-6">
@@ -121,9 +80,6 @@ export const ResourceManagement = () => {
                             className="pl-9 w-64"
                         />
                     </div>
-                    <Button onClick={() => handleOpen()}>
-                        <Icon icon="lucide:plus" className="mr-2 h-4 w-4" /> Add Member
-                    </Button>
                 </div>
             </div>
 
@@ -152,8 +108,8 @@ export const ResourceManagement = () => {
                                     <CardHeader className="pb-2">
                                         <div className="flex justify-between items-start">
                                             <CardTitle className="text-lg">{employee.fullName}</CardTitle>
-                                            <Button variant="ghost" size="icon" onClick={() => handleOpen(employee)}>
-                                                <Icon icon="lucide:edit-2" className="h-4 w-4 text-muted-foreground" />
+                                            <Button variant="ghost" size="icon" onClick={() => handleViewEmployee(employee)}>
+                                                <Icon icon="lucide:eye" className="h-4 w-4 text-muted-foreground" />
                                             </Button>
                                         </div>
                                         <CardDescription>{employee.position} • {dept?.name || 'No Department'}</CardDescription>
@@ -162,9 +118,9 @@ export const ResourceManagement = () => {
                                        <div className="text-sm text-muted-foreground">
                                            Capacity: <span className="font-medium text-foreground">{employee.weeklyCapacity}h/week</span>
                                        </div>
-                                       {employee.email && (
+                                       {employee.employeeNumber && (
                                            <div className="text-sm text-muted-foreground mt-1">
-                                               {employee.email}
+                                               ID: <span className="font-medium text-foreground">{employee.employeeNumber}</span>
                                            </div>
                                        )}
                                     </CardContent>
@@ -196,55 +152,136 @@ export const ResourceManagement = () => {
                 </>
             )}
 
+            {/* View Employee Modal - Read Only */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>{editingEmployee ? "Edit Employee" : "Add New Employee"}</DialogTitle>
+                        <DialogTitle className="flex items-center gap-3">
+                            <Icon icon="lucide:user" className="h-5 w-5" />
+                            Employee Details
+                        </DialogTitle>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <label className="text-right text-sm font-medium">Full Name</label>
-                            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} className="col-span-3" placeholder="e.g. John Doe" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <label className="text-right text-sm font-medium">Email</label>
-                            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="col-span-3" placeholder="john.doe@company.com" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <label className="text-right text-sm font-medium">Position</label>
-                            <Input value={position} onChange={(e) => setPosition(e.target.value)} className="col-span-3" placeholder="e.g. Senior Designer" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <label className="text-right text-sm font-medium">Department</label>
-                            <Select value={departmentId} onValueChange={setDepartmentId}>
-                                <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Select department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {departments.map((dept) => (
-                                        <SelectItem key={dept.id} value={dept.id}>
-                                            <div className="flex items-center gap-2">
+                    {selectedEmployee && (
+                        <div className="grid gap-4 py-4">
+                            {/* Basic Info Section */}
+                            <div className="space-y-3">
+                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Basic Information</h4>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Employee ID</span>
+                                    <span className="col-span-2 text-sm font-medium">{selectedEmployee.employeeNumber || '-'}</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Full Name</span>
+                                    <span className="col-span-2 text-sm font-medium">{selectedEmployee.fullName}</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Nickname</span>
+                                    <span className="col-span-2 text-sm font-medium">{selectedEmployee.nickname || '-'}</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Email</span>
+                                    <span className="col-span-2 text-sm font-medium">{selectedEmployee.email || '-'}</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Gender</span>
+                                    <div className="col-span-2 flex items-center gap-2">
+                                        {selectedEmployee.gender ? (
+                                            <>
+                                                <Icon 
+                                                    icon={selectedEmployee.gender === 'MALE' ? 'lucide:user' : 'lucide:user'} 
+                                                    className={`h-4 w-4 ${selectedEmployee.gender === 'MALE' ? 'text-blue-500' : 'text-pink-500'}`} 
+                                                />
+                                                <span className="text-sm font-medium">
+                                                    {selectedEmployee.gender === 'MALE' ? 'Male' : 'Female'}
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <span className="text-sm font-medium">-</span>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Date of Birth</span>
+                                    <span className="col-span-2 text-sm font-medium">{formatDate(selectedEmployee.dateOfBirth)}</span>
+                                </div>
+                            </div>
+
+                            <hr className="my-2" />
+
+                            {/* Work Info Section */}
+                            <div className="space-y-3">
+                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Work Information</h4>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Position</span>
+                                    <span className="col-span-2 text-sm font-medium">{selectedEmployee.position}</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Department</span>
+                                    <div className="col-span-2 flex items-center gap-2">
+                                        {selectedDepartment ? (
+                                            <>
                                                 <div
                                                     className="w-3 h-3 rounded-full"
-                                                    style={{ backgroundColor: dept.color }}
+                                                    style={{ backgroundColor: selectedDepartment.color }}
                                                 />
-                                                {dept.name}
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                                <span className="text-sm font-medium">{selectedDepartment.name}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-sm font-medium text-muted-foreground">-</span>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Date Joined</span>
+                                    <span className="col-span-2 text-sm font-medium">{formatDate(selectedEmployee.workStartDate)}</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Capacity</span>
+                                    <span className="col-span-2 text-sm font-medium">{selectedEmployee.weeklyCapacity} hours/week</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Status</span>
+                                    <div className="col-span-2">
+                                        <span className={cn(
+                                            "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                            selectedEmployee.employmentStatus === 'active' 
+                                                ? "bg-green-100 text-green-800" 
+                                                : selectedEmployee.employmentStatus === 'contractor'
+                                                ? "bg-blue-100 text-blue-800"
+                                                : "bg-gray-100 text-gray-800"
+                                        )}>
+                                            {selectedEmployee.employmentStatus.charAt(0).toUpperCase() + selectedEmployee.employmentStatus.slice(1)}
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Visibility</span>
+                                    <div className="col-span-2">
+                                        <span className={cn(
+                                            "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                            selectedEmployee.visibility === 'active' 
+                                                ? "bg-green-100 text-green-800" 
+                                                : "bg-gray-100 text-gray-800"
+                                        )}>
+                                            {selectedEmployee.visibility.charAt(0).toUpperCase() + selectedEmployee.visibility.slice(1)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <label className="text-right text-sm font-medium">Capacity (h/week)</label>
-                            <Input type="number" value={weeklyCapacity} onChange={(e) => setWeeklyCapacity(Number(e.target.value))} className="col-span-3" />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button onClick={handleSave} disabled={createEmployee.isPending || updateEmployee.isPending}>
-                            {createEmployee.isPending || updateEmployee.isPending ? "Saving..." : "Save Employee"}
-                        </Button>
-                    </DialogFooter>
+                    )}
                 </DialogContent>
             </Dialog>
         </div>

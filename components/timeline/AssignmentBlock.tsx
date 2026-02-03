@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
-import { Assignment } from "@/types";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { cn } from "@/lib/utils";
+import { MoreVertical } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { EditAssignmentDialog } from "./EditAssignmentDialog";
 
 interface AssignmentBlockProps {
   assignment: Assignment;
@@ -18,8 +20,11 @@ interface AssignmentBlockProps {
   resourceRowHeight: number;
   cellWidth?: number;
   isWeekView?: boolean; // true for quarter/halfYear/year views where each cell = 1 week
-  onUpdate?: (id: string, updates: { startDate?: Date; endDate?: Date }) => void;
+  onUpdate?: (id: string, updates: any) => void;
+  onDelete?: (id: string) => void;
   timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
+  isDeleting?: boolean; // Show deleting state
+  isUpdating?: boolean; // Show updating state (during drag/resize)
 }
 
 export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
@@ -29,7 +34,10 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   cellWidth = 100,
   isWeekView = false,
   onUpdate,
+  onDelete,
   timeOffAssignments = [],
+  isDeleting = false,
+  isUpdating = false,
 }) => {
   const { data: projects = [] } = useProjects();
   const project = projects.find((p) => p.id === assignment.projectId);
@@ -42,6 +50,16 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0); // Days to move
+
+  // Edit dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  // Processing state for showing loading indicator after operation
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Use ref to avoid stale closure in event handlers
+  const offsetRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
 
   // Calculate Position and Width
   const startDate = startOfDay(new Date(assignment.startDate));
@@ -56,6 +74,9 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   let visibleDuration: number;
   let useVisibleIndices: boolean;
 
+  // Get the timeline end date for clipping
+  const timelineEnd = startOfDay(days[days.length - 1]);
+
   if (isWeekView) {
     // In week view, each cell represents a week (Monday)
     // Find which week column the start/end dates fall into
@@ -66,28 +87,48 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentStartWeek.getTime());
     endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentEndWeek.getTime());
 
-    // If not found, find the closest week before/after
+    // If start not found, check if assignment starts before visible range
     if (startVisibleIdx === -1) {
       const assignmentStartWeekTime = assignmentStartWeek.getTime();
-      for (let i = 0; i < days.length; i++) {
-        if (startOfDay(days[i]).getTime() >= assignmentStartWeekTime) {
-          startVisibleIdx = i;
-          break;
+      const timelineStartTime = timelineStart.getTime();
+      
+      if (assignmentStartWeekTime < timelineStartTime) {
+        // Assignment starts before visible range, clip to start
+        startVisibleIdx = 0;
+      } else {
+        // Find the closest week
+        for (let i = 0; i < days.length; i++) {
+          if (startOfDay(days[i]).getTime() >= assignmentStartWeekTime) {
+            startVisibleIdx = i;
+            break;
+          }
         }
+        if (startVisibleIdx === -1) startVisibleIdx = 0;
       }
-      if (startVisibleIdx === -1) startVisibleIdx = 0;
     }
 
+    // If end not found, check if assignment ends after visible range
     if (endVisibleIdx === -1) {
       const assignmentEndWeekTime = assignmentEndWeek.getTime();
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= assignmentEndWeekTime) {
-          endVisibleIdx = i;
-          break;
+      const timelineEndTime = timelineEnd.getTime();
+      
+      if (assignmentEndWeekTime > timelineEndTime) {
+        // Assignment ends after visible range, clip to end
+        endVisibleIdx = days.length - 1;
+      } else {
+        for (let i = days.length - 1; i >= 0; i--) {
+          if (startOfDay(days[i]).getTime() <= assignmentEndWeekTime) {
+            endVisibleIdx = i;
+            break;
+          }
         }
+        if (endVisibleIdx === -1) endVisibleIdx = days.length - 1;
       }
-      if (endVisibleIdx === -1) endVisibleIdx = days.length - 1;
     }
+
+    // Clamp indices to valid range
+    startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
+    endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
 
     visibleDuration = endVisibleIdx - startVisibleIdx + 1;
     useVisibleIndices = true;
@@ -101,16 +142,35 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     // Find positions in visible days array - inline calculation
     startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
 
-    // Find correct end index even if it falls on a hidden weekend
+    // If start is before visible range, clip to start
+    if (startVisibleIdx === -1 && startDate < timelineStart) {
+      startVisibleIdx = 0;
+    }
+
+    // Find correct end index even if it falls on a hidden weekend or beyond visible range
     endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
-    if (endVisibleIdx === -1 && startVisibleIdx >= 0) {
-      const endDateTime = endDate.getTime();
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= endDateTime) {
-          endVisibleIdx = i;
-          break;
+    
+    // If end is after visible range, clip to end
+    if (endVisibleIdx === -1) {
+      if (endDate > timelineEnd) {
+        endVisibleIdx = days.length - 1;
+      } else if (startVisibleIdx >= 0) {
+        const endDateTime = endDate.getTime();
+        for (let i = days.length - 1; i >= 0; i--) {
+          if (startOfDay(days[i]).getTime() <= endDateTime) {
+            endVisibleIdx = i;
+            break;
+          }
         }
       }
+    }
+
+    // Clamp indices to valid range
+    if (startVisibleIdx >= 0) {
+      startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
+    }
+    if (endVisibleIdx >= 0) {
+      endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
     }
 
     // Calculate duration in visible days (how many columns it spans)
@@ -157,13 +217,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     if (day !== 0 && day !== 6) workingDays++;
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  
-  const totalHours = workingDays * assignment.hoursPerDay;
+
+  const hoursPerDay = parseFloat(assignment.hoursPerDay);
+  const totalHours = workingDays * hoursPerDay;
   const formattedStartDate = format(startDate, "dd MMM");
   const formattedEndDate = format(endDate, "dd MMM");
-
-  // Use ref to avoid stale closure in event handlers
-  const offsetRef = useRef(0);
 
   // Check if a specific date has time-off
   const hasTimeOffOnDate = useCallback((date: Date) => {
@@ -258,8 +316,16 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaColumns = Math.round(deltaX / cellWidth);
-      offsetRef.current = deltaColumns;
-      setTempOffset(deltaColumns);
+      
+      // Only update if value changed to reduce re-renders
+      if (offsetRef.current !== deltaColumns) {
+        offsetRef.current = deltaColumns;
+        // Use RAF for smooth 60fps updates
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          setTempOffset(deltaColumns);
+        });
+      }
     };
     
     const handleMouseUp = () => {
@@ -299,8 +365,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               offsetRef.current = 0;
               return; // Cancel the resize
             }
-            if (newStartDate < endDate) {
+            if (newStartDate <= endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
+              // Clear state - optimistic update will position the block correctly
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return;
             }
           } else {
             let newEndDate = addDays(endDate, daysToMove);
@@ -315,8 +386,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               offsetRef.current = 0;
               return; // Cancel the resize
             }
-            if (newEndDate > startDate) {
+            if (newEndDate >= startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
+              // Clear state - optimistic update will position the block correctly
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return;
             }
           }
         } else {
@@ -345,8 +421,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               return; // Cancel the resize
             }
 
-            if (newStartDate && newStartDate < endDate) {
+            if (newStartDate && newStartDate <= endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
+              // Clear state - optimistic update will position the block correctly
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return;
             }
           } else {
             // For right edge: find new end date from days array
@@ -372,8 +453,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               return; // Cancel the resize
             }
 
-            if (newEndDate && newEndDate > startDate) {
+            if (newEndDate && newEndDate >= startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
+              // Clear state - optimistic update will position the block correctly
+              setIsResizing(null);
+              setTempOffset(0);
+              offsetRef.current = 0;
+              return;
             }
           }
         }
@@ -388,11 +474,26 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     document.addEventListener('mouseup', handleMouseUp);
   }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, today, hasTimeOffOnDate]);
 
+  // Edit dialog handlers
+  const handleSave = useCallback((updates: Partial<Assignment>) => {
+    if (onUpdate) {
+      onUpdate(assignment.id, updates);
+    }
+    setIsEditDialogOpen(false);
+  }, [assignment.id, onUpdate]);
+
+  const handleDelete = useCallback(() => {
+    if (onDelete) {
+      onDelete(assignment.id);
+    }
+    setIsEditDialogOpen(false);
+  }, [assignment.id, onDelete]);
+
   // Drag to move handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
-    // Don't start drag if clicking on resize handles
+    // Don't start drag if clicking on resize handles or edit menu
     const target = e.target as HTMLElement;
-    if (target.closest('[data-resize-handle]')) {
+    if (target.closest('[data-resize-handle]') || target.closest('[data-edit-menu]')) {
       return;
     }
 
@@ -411,7 +512,16 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaDays = Math.round(deltaX / cellWidth);
-      setDragOffset(deltaDays);
+      
+      // Only update if value changed to reduce re-renders
+      if (offsetRef.current !== deltaDays) {
+        offsetRef.current = deltaDays;
+        // Use RAF for smooth 60fps updates
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          setDragOffset(deltaDays);
+        });
+      }
     };
 
     const handleMouseUp = (upEvent: MouseEvent) => {
@@ -421,11 +531,8 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       const deltaX = upEvent.clientX - startX;
       const deltaColumns = Math.round(deltaX / cellWidth);
 
-      setIsDragging(false);
-      setDragOffset(0);
-
       // Apply the move
-      if (deltaColumns !== 0 && onUpdate && startVisibleIdx >= 0 && endVisibleIdx >= 0) {
+      if (deltaColumns !== 0 && onUpdate) {
         if (isWeekView) {
           // In week view, each column represents 1 week (7 days)
           // Move by the number of weeks
@@ -435,38 +542,98 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           
           // Prevent moving start date into the past
           if (isBefore(newStartDate, today)) {
+            setIsDragging(false);
+            setDragOffset(0);
             return; // Cancel the move
           }
           
           // Prevent moving into time-off (check if new range overlaps with any time-off)
           if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
+            setIsDragging(false);
+            setDragOffset(0);
             return; // Cancel the move
           }
           
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+          // Clear state - optimistic update will position the block correctly
+          setIsDragging(false);
+          setDragOffset(0);
+          return;
         } else {
           // In day view, use the visible days array
-          const newStartIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx + deltaColumns));
-          const newEndIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx + deltaColumns));
 
+          // Handle partial visibility - calculate indices with fallbacks
+          let newStartIdx: number;
+          let newEndIdx: number;
+
+          if (startVisibleIdx >= 0) {
+            // Start is visible, calculate from index
+            newStartIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx + deltaColumns));
+          } else {
+            // Start is not visible (before range or on hidden weekend)
+            // Calculate from actual date
+            const daysToMove = deltaColumns; // In day view, 1 column = 1 visible day
+            const newStartDate = addDays(startDate, daysToMove);
+            newStartIdx = findCorrectVisibleIndex(newStartDate);
+
+            // If still not found, clip to timeline bounds
+            if (newStartIdx < 0) {
+              newStartIdx = newStartDate < days[0] ? 0 : days.length - 1;
+            }
+          }
+
+          if (endVisibleIdx >= 0) {
+            // End is visible, calculate from index
+            newEndIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx + deltaColumns));
+          } else {
+            // End is not visible (after range or on hidden weekend)
+            // Calculate from actual date
+            const daysToMove = deltaColumns;
+            const newEndDate = addDays(endDate, daysToMove);
+            newEndIdx = findCorrectVisibleIndex(newEndDate);
+
+            // If still not found, clip to timeline bounds
+            if (newEndIdx < 0) {
+              newEndIdx = newEndDate < days[0] ? 0 : days.length - 1;
+            }
+          }
+
+          // Add null checks before using dates
           const newStartDate = days[newStartIdx];
           const newEndDate = days[newEndIdx];
 
+          // Validate before updating
+          if (!newStartDate || !newEndDate) {
+            setIsDragging(false);
+            setDragOffset(0);
+            return; // Cancel if dates are invalid
+          }
+
           // Prevent moving start date into the past
-          if (newStartDate && isBefore(newStartDate, today)) {
+          if (isBefore(newStartDate, today)) {
+            setIsDragging(false);
+            setDragOffset(0);
             return; // Cancel the move
           }
 
-          // Prevent moving into time-off (check if new range overlaps with any time-off)
-          if (newStartDate && newEndDate && hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
+          // Prevent moving into time-off
+          if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
+            setIsDragging(false);
+            setDragOffset(0);
             return; // Cancel the move
           }
 
-          if (newStartDate && newEndDate) {
-            onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
-          }
+          onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
+          // Clear state - optimistic update will position the block correctly
+          setIsDragging(false);
+          setDragOffset(0);
+          return;
         }
       }
+
+      // Only clear immediately if validation failed or no update
+      setIsDragging(false);
+      setDragOffset(0);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -480,10 +647,15 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           <div
             ref={blockRef}
             className={cn(
-              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group transition-all",
+              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
+              // Only apply transitions when NOT actively resizing or dragging to prevent bounce
+              !isResizing && !isDragging && "transition-all duration-100 ease-out",
               isTimeOff && "bg-gray-500 opacity-80",
               isResizing && "cursor-col-resize ring-2 ring-blue-400",
-              isDragging ? "cursor-grabbing opacity-60 ring-2 ring-blue-400" : "cursor-grab"
+              isDragging ? "cursor-grabbing opacity-70 ring-2 ring-blue-400 scale-[1.01]" : "cursor-grab",
+              isDeleting && "opacity-50 pointer-events-none animate-pulse",
+              // Show subtle processing state when API call is in flight
+              isUpdating && !isResizing && !isDragging && "opacity-80 ring-1 ring-blue-300"
             )}
             style={{
               left: LEFT_OFFSET,
@@ -497,20 +669,36 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             {/* Left resize handle */}
             <div
               data-resize-handle="left"
-              className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-10"
+              className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-30"
               onMouseDown={(e) => handleResizeStart('left', e)}
             />
-            
+
+            {/* Edit menu button */}
+            <button
+              data-edit-menu="true"
+              className="absolute right-3 top-1 w-5 h-5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-20 flex items-center justify-center"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsEditDialogOpen(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="h-3 w-3" />
+            </button>
+
             {/* Content */}
             <div className="flex-1 px-2 py-1 min-w-0">
-              <div className="font-bold truncate">{displayName}</div>
-              <div className="truncate opacity-90">{assignment.hoursPerDay}h/day</div>
+              <div className="font-bold truncate">
+                {isDeleting ? "Deleting..." : displayName}
+              </div>
+              <div className="truncate opacity-90">{hoursPerDay}h/day</div>
             </div>
-            
+
             {/* Right resize handle */}
             <div
               data-resize-handle="right"
-              className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-10"
+              className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-30"
               onMouseDown={(e) => handleResizeStart('right', e)}
             />
           </div>
@@ -521,7 +709,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               Dates: <span className="font-normal text-slate-300">{formattedStartDate} - {formattedEndDate} ({durationDays} days)</span>
             </div>
             <div className="font-semibold mb-1 text-sm">
-              Total Effort: <span className="font-normal text-slate-300">{totalHours}h @ {assignment.hoursPerDay}h/day</span>
+              Total Effort: <span className="font-normal text-slate-300">{totalHours}h @ {hoursPerDay}h/day</span>
             </div>
             {assignment.category && (
               <div className="font-semibold text-sm">
@@ -536,6 +724,15 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           </div>
         </TooltipContent>
       </Tooltip>
+
+      <EditAssignmentDialog
+        assignment={assignment}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        isDeleting={isDeleting}
+      />
     </TooltipProvider>
   );
 };

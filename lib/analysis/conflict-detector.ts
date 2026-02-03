@@ -12,7 +12,7 @@ import {
   ResourceCapacityAnalysis,
   AnalysisInput,
 } from "./types";
-import { getDateRange, isDateInAssignment } from "./capacity-analyzer";
+import { getDateRange, isDateStrInAssignment } from "./capacity-analyzer";
 
 // ============================================================================
 // Utility Functions

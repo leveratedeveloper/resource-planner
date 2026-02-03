@@ -1,6 +1,11 @@
 /**
  * useCapacityAnalysis Hook
  * React hook for managing Web Worker-based capacity analysis
+ * 
+ * Performance optimizations:
+ * - Uses AnalysisCache for result caching
+ * - Content-hash fingerprinting for smarter change detection
+ * - Request cancellation to prevent stale results
  */
 
 "use client";
@@ -9,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Resource, Assignment, Project, Brand } from "@/types";
 import { AnalysisResult, AnalysisInput } from "@/lib/analysis/types";
 import { createAnalysisWorker, AnalysisWorkerClient } from "@/lib/analysis/worker/client";
+import { AnalysisCache, analysisResultCache } from "@/lib/analysis/analysis-cache";
 
 type UseCapacityAnalysisOptions = {
   /** Delay in ms before running analysis after data changes (debounce) */
@@ -51,6 +57,9 @@ export function useCapacityAnalysis(
   // Worker instance ref
   const workerRef = useRef<AnalysisWorkerClient | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Track current request for cancellation support
+  const currentRequestIdRef = useRef<string | null>(null);
 
   // Memoize input to detect changes
   const analysisInput = useMemo<AnalysisInput>(
@@ -67,17 +76,22 @@ export function useCapacityAnalysis(
     [resources, assignments, projects, brands, dateRange.start, dateRange.end]
   );
 
-  // Create fingerprint for change detection
+  // Create content-hash fingerprint for smarter change detection (Fix 2)
   const inputFingerprint = useMemo(() => {
-    return JSON.stringify({
-      resourceCount: resources.length,
-      assignmentCount: assignments.length,
-      projectCount: projects.length,
+    return AnalysisCache.generateFingerprint({
+      resources: resources.map(r => ({ id: r.id, capacity: r.capacity })),
+      assignments: assignments.map(a => ({
+        id: a.id,
+        employeeId: a.employeeId,  // Use employeeId (base Assignment type)
+        startDate: a.startDate,
+        endDate: a.endDate,
+        hoursPerDay: a.hoursPerDay,
+        isTimeOff: a.isTimeOff,
+        isBillable: a.isBillable,
+      })),
       dateRange: analysisInput.dateRange,
-      // Include assignment IDs and dates for change detection
-      assignmentIds: assignments.map((a) => `${a.id}-${a.startDate}-${a.endDate}`).sort(),
     });
-  }, [resources.length, assignments, projects.length, analysisInput.dateRange]);
+  }, [resources, assignments, analysisInput.dateRange]);
 
   // Initialize worker on mount
   useEffect(() => {
@@ -94,9 +108,23 @@ export function useCapacityAnalysis(
     };
   }, []);
 
-  // Run analysis function
-  const runAnalysis = useCallback(async () => {
+  // Run analysis function with caching and cancellation support
+  const runAnalysis = useCallback(async (forceRefresh = false) => {
     if (!workerRef.current || !enabled) return;
+
+    // Check cache first (Fix 1)
+    if (!forceRefresh) {
+      const cachedResult = analysisResultCache.get('main', inputFingerprint);
+      if (cachedResult) {
+        console.log("[useCapacityAnalysis] Cache hit - using cached result");
+        setResult(cachedResult as AnalysisResult);
+        return;
+      }
+    }
+
+    // Generate unique request ID for cancellation support (Fix 5)
+    const requestId = `analysis-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    currentRequestIdRef.current = requestId;
 
     setIsAnalyzing(true);
     setError(null);
@@ -104,16 +132,30 @@ export function useCapacityAnalysis(
     try {
       console.log("[useCapacityAnalysis] Triggering analysis...");
       const analysisResult = await workerRef.current.analyze(analysisInput);
-      setResult(analysisResult);
-      setLastAnalyzedAt(new Date());
-      console.log("[useCapacityAnalysis] Analysis complete", analysisResult.summary);
+      
+      // Only update state if this is still the current request (Fix 5)
+      if (currentRequestIdRef.current === requestId) {
+        setResult(analysisResult);
+        setLastAnalyzedAt(new Date());
+        // Cache the result (Fix 1)
+        analysisResultCache.set('main', analysisResult, inputFingerprint);
+        console.log("[useCapacityAnalysis] Analysis complete", analysisResult.summary);
+      } else {
+        console.log("[useCapacityAnalysis] Stale result ignored");
+      }
     } catch (err) {
-      console.error("[useCapacityAnalysis] Analysis failed:", err);
-      setError(err instanceof Error ? err : new Error("Analysis failed"));
+      // Only update error state if this is still the current request
+      if (currentRequestIdRef.current === requestId) {
+        console.error("[useCapacityAnalysis] Analysis failed:", err);
+        setError(err instanceof Error ? err : new Error("Analysis failed"));
+      }
     } finally {
-      setIsAnalyzing(false);
+      // Only update loading state if this is still the current request
+      if (currentRequestIdRef.current === requestId) {
+        setIsAnalyzing(false);
+      }
     }
-  }, [analysisInput, enabled]);
+  }, [analysisInput, enabled, inputFingerprint]);
 
   // Auto-run analysis when input changes (debounced)
   useEffect(() => {
@@ -136,9 +178,9 @@ export function useCapacityAnalysis(
     };
   }, [inputFingerprint, enabled, debounceMs, runAnalysis]);
 
-  // Manual refresh function
+  // Manual refresh function (bypasses cache)
   const refresh = useCallback(() => {
-    runAnalysis();
+    runAnalysis(true);
   }, [runAnalysis]);
 
   return {
@@ -151,3 +193,4 @@ export function useCapacityAnalysis(
 }
 
 export default useCapacityAnalysis;
+

@@ -10,7 +10,7 @@ import {
   WeeklyForecast,
   ForecastResult,
 } from "./types";
-import { getDateRange, getDailyCapacity, isDateInAssignment } from "./capacity-analyzer";
+import { getDateRange, getDailyCapacity, isDateStrInAssignment } from "./capacity-analyzer";
 
 /**
  * Get the Monday of a given week
@@ -72,7 +72,7 @@ function calculateWeekUtilization(
 
     for (const day of weekdays) {
       const dayAssignments = resourceAssignments.filter((a) =>
-        isDateInAssignment(day, a)
+        isDateStrInAssignment(day, a)
       );
 
       const hasTimeOff = dayAssignments.some((a) => a.isTimeOff);

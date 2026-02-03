@@ -19,10 +19,12 @@ interface AssignmentPopoverProps {
   onClose: () => void;
   onSave: (assignment: {
     hoursPerDay: number;
+    workDays: number;
     category: AssignmentCategory;
     isBillable: boolean;
     note?: string;
   }) => void;
+  isCreating?: boolean;
 }
 
 export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
@@ -33,6 +35,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   position,
   onClose,
   onSave,
+  isCreating = false,
 }) => {
   const { data: employees = [] } = useEmployees();
   const { data: projects = [] } = useProjects();
@@ -57,6 +60,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   const handleSave = () => {
     onSave({
       hoursPerDay,
+      workDays,
       category,
       isBillable,
       note: note || undefined,
@@ -230,14 +234,23 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
 
       {/* Actions */}
       <div className="flex items-center justify-between pt-3 border-t mt-4">
-        <Button variant="link" onClick={onClose} className="text-sm px-0">
+        <Button variant="link" onClick={onClose} className="text-sm px-0" disabled={isCreating}>
           Cancel
         </Button>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" disabled={isCreating}>
             <Icon icon="lucide:calendar" className="h-4 w-4" />
           </Button>
-          <Button onClick={handleSave}>Save</Button>
+          <Button onClick={handleSave} disabled={isCreating}>
+            {isCreating ? (
+              <>
+                <span className="animate-spin mr-2">⏳</span>
+                Creating...
+              </>
+            ) : (
+              'Save'
+            )}
+          </Button>
         </div>
       </div>
     </div>

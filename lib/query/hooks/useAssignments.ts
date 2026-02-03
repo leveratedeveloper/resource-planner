@@ -165,14 +165,64 @@ export function useCreateAssignment() {
 
   return useMutation({
     mutationFn: createAssignment,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByEmployee(data.employeeId) });
-      if (data.projectId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(data.projectId) });
+
+    // Optimistic update - add to cache immediately with temp ID
+    onMutate: async (newAssignment) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
+      await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+
+      // Snapshot for rollback
+      const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
+      const previousEmployees = queryClient.getQueryData(queryKeys.employees);
+
+      // Create optimistic assignment with temp ID
+      const optimisticAssignment: Assignment = {
+        id: `temp-${Date.now()}`,
+        employeeId: newAssignment.employeeId,
+        projectId: newAssignment.projectId,
+        taskId: newAssignment.taskId,
+        startDate: newAssignment.startDate,
+        endDate: newAssignment.endDate,
+        hoursPerDay: newAssignment.hoursPerDay,
+        allocationPercentage: newAssignment.allocationPercentage,
+        isTimeOff: newAssignment.isTimeOff,
+        timeOffTypeId: newAssignment.timeOffTypeId,
+        category: newAssignment.category,
+        isBillable: newAssignment.isBillable,
+        status: newAssignment.status,
+        note: newAssignment.note,
+        createdById: newAssignment.createdById,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Add to assignments cache
+      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
+        if (!old) return [optimisticAssignment];
+        return [...old, optimisticAssignment];
+      });
+
+      return { previousAssignments, previousEmployees, optimisticId: optimisticAssignment.id };
+    },
+
+    // Rollback on error
+    onError: (err, newAssignment, context) => {
+      if (context?.previousAssignments) {
+        queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
       }
-      // Also invalidate employees as their assignments change
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+      if (context?.previousEmployees) {
+        queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
+      }
+    },
+
+    // Replace temp ID with real data (no refetch needed)
+    onSuccess: (data, variables, context) => {
+      // Replace the optimistic assignment with real server data
+      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
+        if (!old) return [data];
+        return old.map((a) => (a.id === context?.optimisticId ? data : a));
+      });
     },
   });
 }
@@ -182,14 +232,69 @@ export function useUpdateAssignment() {
 
   return useMutation({
     mutationFn: updateAssignment,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignment(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByEmployee(data.employeeId) });
-      if (data.projectId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(data.projectId) });
+
+    // Optimistic update before API call
+    onMutate: async (variables) => {
+      const { id, ...updates } = variables;
+
+      // Cancel outgoing refetches to prevent overwriting
+      await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
+      await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+
+      // Snapshot for rollback
+      const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
+      const previousEmployees = queryClient.getQueryData(queryKeys.employees);
+
+      // Immediately update cache
+      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
+        if (!old) return old;
+        return old.map((assignment) =>
+          assignment.id === id ? { ...assignment, ...updates } : assignment
+        );
+      });
+
+      // Update employees cache (assignments nested within)
+      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+        if (!old) return old;
+        return old.map((employee) => ({
+          ...employee,
+          assignments: employee.assignments?.map((assignment: Assignment) =>
+            assignment.id === id ? { ...assignment, ...updates } : assignment
+          ),
+        }));
+      });
+
+      return { previousAssignments, previousEmployees };
+    },
+
+    // Rollback on error
+    onError: (err, variables, context) => {
+      if (context?.previousAssignments) {
+        queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
       }
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+      if (context?.previousEmployees) {
+        queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
+      }
+    },
+
+    // Server sync - update cache with actual server data (no refetch needed)
+    onSuccess: (data) => {
+      // Update assignments cache with server response
+      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
+        if (!old) return [data];
+        return old.map((a) => (a.id === data.id ? data : a));
+      });
+
+      // Update employees cache with server response
+      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+        if (!old) return old;
+        return old.map((employee) => ({
+          ...employee,
+          assignments: employee.assignments?.map((a: Assignment) =>
+            a.id === data.id ? data : a
+          ),
+        }));
+      });
     },
   });
 }
@@ -199,9 +304,45 @@ export function useDeleteAssignment() {
 
   return useMutation({
     mutationFn: deleteAssignment,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+
+    // Optimistic delete - remove from cache immediately
+    onMutate: async (id: string) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
+      await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+
+      // Snapshot for rollback
+      const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
+      const previousEmployees = queryClient.getQueryData(queryKeys.employees);
+
+      // Remove from assignments cache immediately
+      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
+        if (!old) return old;
+        return old.filter((a) => a.id !== id);
+      });
+
+      // Remove from employees cache (nested assignments)
+      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+        if (!old) return old;
+        return old.map((employee) => ({
+          ...employee,
+          assignments: employee.assignments?.filter((a: Assignment) => a.id !== id),
+        }));
+      });
+
+      return { previousAssignments, previousEmployees };
     },
+
+    // Rollback on error
+    onError: (err, id, context) => {
+      if (context?.previousAssignments) {
+        queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
+      }
+      if (context?.previousEmployees) {
+        queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
+      }
+    },
+
+    // No refetch needed - item already removed from cache in onMutate
   });
 }

@@ -4,7 +4,7 @@ import React, { useState, useRef, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 import { format, startOfDay, isBefore, isWithinInterval } from "date-fns";
-import { Assignment } from "@/types";
+import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import {
   Popover,
   PopoverContent,
@@ -28,6 +28,7 @@ interface DraggableTimelineCellProps {
   cellHeight?: number;
   timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
   isTimeOffMode?: boolean; // True when used for adding time-off (skip time-off blocking)
+  disabled?: boolean; // Disable dragging (e.g., while creating/deleting)
 }
 
 export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
@@ -40,6 +41,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   cellHeight = 60,
   timeOffAssignments = [],
   isTimeOffMode = false,
+  disabled = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -71,6 +73,11 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      // Prevent dragging when disabled (e.g., during create/delete operations)
+      if (disabled) {
+        return;
+      }
+
       // Prevent scheduling on blocked dates (past or time-off)
       if (isBlocked) {
         return;
@@ -119,7 +126,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     },
-    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth, isWeekend, showWeekendConfirm, isBlocked]
+    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth, isWeekend, showWeekendConfirm, isBlocked, disabled]
   );
 
   // Handle weekend confirmation

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
+import { AssignEmployeesDialog } from "@/components/projects/AssignEmployeesDialog";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -89,6 +90,7 @@ export const ProjectSetup = () => {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [viewingProject, setViewingProject] = useState<Project | null>(null);
+  const [isAssignEmployeesOpen, setIsAssignEmployeesOpen] = useState(false);
 
   // Form State - Project Type
   const [projectType, setProjectType] = useState<"pitch" | "campaign">("campaign");
@@ -836,12 +838,30 @@ export const ProjectSetup = () => {
           </div>
 
           <DialogFooter>
-            <Button onClick={() => setIsDialogOpen(false)}>
+            <Button
+              variant="default"
+              onClick={() => setIsAssignEmployeesOpen(true)}
+            >
+              <Icon icon="lucide:users" className="h-4 w-4 mr-2" />
+              Manage Team
+            </Button>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Close
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Assign Employees Dialog */}
+      {viewingProject && (
+        <AssignEmployeesDialog
+          open={isAssignEmployeesOpen}
+          onOpenChange={setIsAssignEmployeesOpen}
+          projectId={viewingProject.id}
+          projectName={viewingProject.name}
+          projectColor={viewingProject.color}
+        />
+      )}
     </div>
   );
 };

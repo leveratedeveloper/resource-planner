@@ -32,6 +32,7 @@ export interface Employee {
   dateOfBirth: string | null;
   employmentStatus: "active" | "inactive" | "contractor";
   visibility: "active" | "archived";
+  gender: "MALE" | "FEMALE" | null;
   createdAt: string;
   updatedAt: string;
   department?: {

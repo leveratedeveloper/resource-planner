@@ -162,7 +162,7 @@ export function useProjects() {
   });
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 interface PaginatedResponse<T> {
   data: T[];

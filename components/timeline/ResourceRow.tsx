@@ -2,15 +2,17 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { Resource, AssignmentCategory } from "@/types";
+import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import { differenceInDays, startOfWeek, endOfWeek, isWithinInterval, startOfDay, addWeeks, addDays } from "date-fns";
-import { useAssignments, useCreateAssignment, useUpdateAssignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignments, useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { AssignmentBlock } from "./AssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
 import { AssignmentPopover } from "./AssignmentPopover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Icon } from "@iconify/react";
-import { cn } from "@/lib/utils";
+import { cn, toLocalDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 interface ResourceRowProps {
@@ -64,14 +66,14 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: any
     
     const dayHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
       if (assignment.employeeId !== resource.id) return total;
-      
+
       const assignStart = startOfDay(new Date(assignment.startDate));
       const assignEnd = startOfDay(new Date(assignment.endDate));
-      
+
       if (currentDay >= assignStart && currentDay <= assignEnd) {
-        return total + assignment.hoursPerDay;
+        return total + parseFloat(assignment.hoursPerDay);
       }
-      
+
       return total;
     }, 0);
     
@@ -169,11 +171,13 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: any
 
 export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, onAssignProject, cellWidth = 100, isWeekView = false }) => {
   const { data: assignments = [] } = useAssignments();
-  const { data: projects = [] } = useProjects();
+  const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const { data: brands = [] } = useBrands();
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
+  const deleteAssignmentMutation = useDeleteAssignment();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
   // Popover state for creating assignments
   const [popoverData, setPopoverData] = useState<{
@@ -209,53 +213,105 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   // Handle save assignment
   const handleSaveAssignment = useCallback((data: {
     hoursPerDay: number;
+    workDays: number;
     category: AssignmentCategory;
     isBillable: boolean;
     note?: string;
   }) => {
     if (!popoverData) return;
 
+    // Calculate end date based on workDays (skip weekends)
+    let endDate = new Date(popoverData.startDate);
+    let daysAdded = 1; // Start date counts as day 1
+    
+    while (daysAdded < data.workDays) {
+      endDate = addDays(endDate, 1);
+      const dayOfWeek = endDate.getDay();
+      // Skip weekends (Saturday = 6, Sunday = 0)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        daysAdded++;
+      }
+    }
+
+    // Close popover immediately - optimistic update will show the block
+    setPopoverData(null);
+
     createAssignment.mutate({
       employeeId: resource.id,
       projectId: popoverData.projectId,
-      startDate: popoverData.startDate.toISOString(),
-      endDate: popoverData.endDate.toISOString(),
-      hoursPerDay: data.hoursPerDay,
+      taskId: null,
+      startDate: toLocalDateString(popoverData.startDate),
+      endDate: toLocalDateString(endDate),
+      hoursPerDay: data.hoursPerDay.toString(),
+      allocationPercentage: null,
       isTimeOff: false,
+      timeOffTypeId: null,
       category: data.category,
       isBillable: data.isBillable,
-      note: data.note,
+      status: 'draft',
+      note: data.note || null,
+      createdById: null,
     });
-
-    setPopoverData(null);
   }, [popoverData, resource.id, createAssignment]);
 
   // Handle time-off drag complete - create time-off directly (no popover needed)
   const handleTimeOffDragComplete = useCallback((startDay: Date, endDay: Date) => {
+    // Optimistic update will show the block immediately
     createAssignment.mutate({
       employeeId: resource.id,
       projectId: null, // No project for time-off
-      startDate: startDay.toISOString(),
-      endDate: endDay.toISOString(),
-      hoursPerDay: 8, // Full day time-off
+      taskId: null,
+      startDate: toLocalDateString(startDay),
+      endDate: toLocalDateString(endDay),
+      hoursPerDay: '8', // Full day time-off
+      allocationPercentage: null,
       isTimeOff: true,
-      category: 'other' as AssignmentCategory,
+      timeOffTypeId: null,
+      category: 'Other',
       isBillable: false,
+      status: 'confirmed',
       note: 'Time Off',
+      createdById: null,
     });
   }, [resource.id, createAssignment]);
 
-  // Handle resize update
-  const handleUpdateAssignment = useCallback((id: string, updates: { startDate?: Date; endDate?: Date }) => {
-    const assignment = assignments.find(a => a.id === id);
-    if (!assignment) return;
+  // Handle assignment update (resize/drag or field updates)
+  const handleUpdateAssignment = useCallback((id: string, updates: any) => {
+    const payload: any = { id };
 
-    updateAssignmentMutation.mutate({
-      id,
-      startDate: updates.startDate?.toISOString() || new Date(assignment.startDate).toISOString(),
-      endDate: updates.endDate?.toISOString() || new Date(assignment.endDate).toISOString(),
+    // Handle date conversions if updates contain Date objects
+    if (updates.startDate) {
+      payload.startDate = updates.startDate instanceof Date
+        ? toLocalDateString(updates.startDate)
+        : updates.startDate;
+    }
+    if (updates.endDate) {
+      payload.endDate = updates.endDate instanceof Date
+        ? toLocalDateString(updates.endDate)
+        : updates.endDate;
+    }
+
+    // Add other fields
+    if (updates.hoursPerDay !== undefined) payload.hoursPerDay = updates.hoursPerDay;
+    if (updates.category) payload.category = updates.category;
+    if (updates.isBillable !== undefined) payload.isBillable = updates.isBillable;
+    if (updates.status) payload.status = updates.status;
+    if (updates.note !== undefined) payload.note = updates.note;
+
+    // Track which assignment is being updated
+    setUpdatingAssignmentId(id);
+    updateAssignmentMutation.mutate(payload, {
+      onSettled: () => {
+        setUpdatingAssignmentId(null);
+      },
     });
-  }, [assignments, updateAssignmentMutation]);
+  }, [updateAssignmentMutation]);
+
+  // Handle assignment delete
+  const handleDeleteAssignment = useCallback((id: string) => {
+    // Optimistic update removes the block immediately
+    deleteAssignmentMutation.mutate(id);
+  }, [deleteAssignmentMutation]);
 
   // Collapsed row content
   if (!isExpanded) {
@@ -279,7 +335,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         </div>
 
         {/* Allocation Bar - Collapsed */}
-        <div className="flex relative flex-1">
+        <div className="flex relative flex-1 overflow-hidden">
           {days.map((day) => (
             <AllocationCell 
               key={day.toISOString()}
@@ -317,7 +373,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         </div>
 
         {/* Allocation Bar - Expanded (Header) */}
-        <div className="flex relative flex-1">
+        <div className="flex relative flex-1 overflow-hidden">
           {days.map((day) => (
             <AllocationCell 
               key={day.toISOString()}
@@ -337,7 +393,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           <Icon icon="lucide:calendar-off" className="h-4 w-4 text-gray-500" />
           <span className="text-sm text-gray-600">Time Off</span>
         </div>
-        <div className="flex relative flex-1 h-[50px]">
+        <div className="flex relative flex-1 h-[50px] overflow-hidden">
           {days.map((day) => (
             <DraggableTimelineCell
               key={day.toISOString()}
@@ -348,9 +404,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               cellWidth={cellWidth}
               cellHeight={50}
               isTimeOffMode={true}
-              onDragComplete={(startDay, endDay) => 
+              onDragComplete={(startDay, endDay) =>
                 handleTimeOffDragComplete(startDay, endDay)
               }
+              disabled={createAssignment.isPending}
             />
           ))}
           {/* Time Off Assignments */}
@@ -363,15 +420,42 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               cellWidth={cellWidth}
               isWeekView={isWeekView}
               onUpdate={handleUpdateAssignment}
+              onDelete={handleDeleteAssignment}
+              isUpdating={updatingAssignmentId === assignment.id}
             />
           ))}
         </div>
       </div>
 
+      {/* Loading Skeletons */}
+      {isLoadingProjects && (
+        <>
+          {[1, 2].map((i) => (
+            <div key={`skeleton-${i}`} className="flex bg-white border-b">
+              <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-white z-20 flex items-center gap-2 pl-12 h-[60px]">
+                <Skeleton className="w-4 h-4 rounded" />
+                <div className="flex-1 min-w-0 space-y-1">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+              <div className="flex relative flex-1 overflow-hidden" style={{ height: 60 }}>
+                <div className="w-full h-full p-2">
+                   <Skeleton className="h-full w-full opacity-20" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
       {/* Project Rows */}
       {resourceProjects.map((project) => {
         const brand = brands.find(b => b.id === project.brandId);
-        const projectAssignments = resourceAssignments.filter(a => a.projectId === project.id && !a.isTimeOff);
+        // Filter out 0-hour placeholder assignments from timeline (they exist just to keep project in list)
+        const projectAssignments = resourceAssignments.filter(
+          a => a.projectId === project.id && !a.isTimeOff && parseFloat(a.hoursPerDay) > 0
+        );
         
         return (
           <div key={project.id} className="flex bg-white">
@@ -387,7 +471,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 <div className="text-xs text-muted-foreground truncate">{brand?.name}</div>
               </div>
             </div>
-            <div className="flex relative flex-1" style={{ height: 60 }}>
+            <div className="flex relative flex-1 overflow-hidden" style={{ height: 60 }}>
               {days.map((day) => (
                 <DraggableTimelineCell
                   key={day.toISOString()}
@@ -398,9 +482,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                   cellWidth={cellWidth}
                   cellHeight={60}
                   timeOffAssignments={timeOffAssignments}
-                  onDragComplete={(startDay, endDay, position) => 
+                  onDragComplete={(startDay, endDay, position) =>
                     handleDragComplete(project.id, startDay, endDay, position)
                   }
+                  disabled={createAssignment.isPending}
                 />
               ))}
               {/* Project Assignments */}
@@ -413,7 +498,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
                   onUpdate={handleUpdateAssignment}
+                  onDelete={handleDeleteAssignment}
                   timeOffAssignments={timeOffAssignments}
+                  isUpdating={updatingAssignmentId === assignment.id}
                 />
               ))}
             </div>
@@ -460,6 +547,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           position={popoverData.position}
           onClose={() => setPopoverData(null)}
           onSave={handleSaveAssignment}
+          isCreating={createAssignment.isPending}
         />
       )}
     </div>
