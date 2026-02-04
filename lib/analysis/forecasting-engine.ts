@@ -4,11 +4,12 @@
  * Pure function - can run in Web Worker
  */
 
-import { Assignment, Resource } from "@/types";
+import { Resource } from "@/types";
 import {
   ResourceCapacityAnalysis,
   WeeklyForecast,
   ForecastResult,
+  AnalysisAssignment,
 } from "./types";
 import { getDateRange, getDailyCapacity, isDateStrInAssignment } from "./capacity-analyzer";
 
@@ -39,7 +40,7 @@ function getWeekEnd(date: Date): Date {
  */
 function calculateWeekUtilization(
   resources: Resource[],
-  assignments: Assignment[],
+  assignments: AnalysisAssignment[],
   weekStart: Date,
   weekEnd: Date
 ): { average: number; peak: number; atRiskResources: string[] } {
@@ -147,7 +148,7 @@ function calculateTrend(
  */
 export function generateForecast(
   resources: Resource[],
-  assignments: Assignment[],
+  assignments: AnalysisAssignment[],
   weeksAhead: number = 4
 ): ForecastResult {
   const forecasts: WeeklyForecast[] = [];

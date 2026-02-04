@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tansta
 import { queryKeys } from "../queryKeys";
 
 // Types
-export interface EmployeeBrandAssignment {
+interface EmployeeBrandAssignment {
   id: string;
   employeeId: string;
   brandId: string;

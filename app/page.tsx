@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { SetupManager } from "@/components/setup/SetupManager";
 import { Timeline } from "@/components/timeline/Timeline";
@@ -10,6 +10,7 @@ import { useApp } from "@/context/AppContext";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { useDebounce } from "@/hooks/use-debounce";
+import type { AnalysisAssignment } from "@/lib/analysis/types";
 
 export default function Home() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -22,6 +23,35 @@ export default function Home() {
   const { analysisResult, isAnalyzing, refreshAnalysis } = useApp();
   const { data: employees = [] } = useEmployees();
   const { data: assignments = [] } = useAssignments();
+
+  const mappedAssignments: AnalysisAssignment[] = useMemo(
+    () =>
+      assignments.map((a) => ({
+        id: a.id,
+        resourceId: a.employeeId,
+        projectId: a.projectId || "",
+        startDate: new Date(a.startDate),
+        endDate: new Date(a.endDate),
+        hoursPerDay: parseFloat(a.hoursPerDay),
+        isTimeOff: a.isTimeOff,
+        category: a.category || "Other",
+        isBillable: a.isBillable,
+        note: a.note,
+      })),
+    [assignments]
+  );
+
+  const resources = useMemo(
+    () =>
+      employees.map((emp) => ({
+        id: emp.id,
+        name: emp.fullName,
+        role: emp.position,
+        department: emp.department?.name || "",
+        capacity: emp.weeklyCapacity,
+      })),
+    [employees]
+  );
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -62,8 +92,8 @@ export default function Home() {
         result={analysisResult}
         isAnalyzing={isAnalyzing}
         onRefresh={refreshAnalysis}
-        resources={employees}
-        assignments={assignments}
+        resources={resources}
+        assignments={mappedAssignments}
       />
     </div>
   );

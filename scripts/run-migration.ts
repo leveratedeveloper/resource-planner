@@ -17,7 +17,7 @@ if (!connectionString) {
 async function runMigration() {
   console.log('🚀 Running database migration...\n');
 
-  const sql = postgres(connectionString, { max: 1 });
+  const sql = postgres(connectionString!, { max: 1 });
 
   try {
     // Read the migration SQL file

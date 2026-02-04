@@ -15,7 +15,7 @@ if (!connectionString) {
 async function addColumn() {
   console.log('🚀 Adding project_category_id column to projects table...\n');
 
-  const sql = postgres(connectionString);
+  const sql = postgres(connectionString!);
 
   try {
     // Add the column

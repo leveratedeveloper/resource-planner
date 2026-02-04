@@ -4,41 +4,14 @@
  * Designed to run in Web Worker for performance
  */
 
-import { Resource, Project } from "@/types";
+import { Resource } from "@/types";
 import {
   DailyUtilization,
   ResourceCapacityAnalysis,
   AnalysisInput,
+  AnalysisAssignment,
+  ParsedAssignment,
 } from "./types";
-
-// ============================================================================
-// Types for Optimized Analysis
-// ============================================================================
-
-/**
- * Assignment type used internally by the analysis engine.
- * This matches the transformed data from AppContext where employeeId becomes resourceId.
- */
-export interface AnalysisAssignment {
-  id: string;
-  resourceId: string;  // Mapped from employeeId in AppContext
-  projectId: string;
-  startDate: Date;
-  endDate: Date;
-  hoursPerDay: number;
-  isTimeOff: boolean;
-  category: string;
-  isBillable: boolean;
-  note: string | null;
-}
-
-/**
- * Assignment with pre-parsed date timestamps for fast comparison
- */
-export interface ParsedAssignment extends AnalysisAssignment {
-  _startTime: number;
-  _endTime: number;
-}
 
 // ============================================================================
 // Pre-indexing and Date Parsing (Performance Optimization)
@@ -292,7 +265,7 @@ export function analyzeCapacity(
   const dateTimestamps = parseDateRangeToTimestamps(dateRange);
   
   // Pre-parse all assignment dates once
-  const parsedAssignments = parseAssignmentDates(input.assignments as unknown as AnalysisAssignment[]);
+  const parsedAssignments = parseAssignmentDates(input.assignments);
   
   // Pre-index assignments by resourceId for O(1) lookup
   const assignmentIndex = indexAssignmentsByResource(parsedAssignments);

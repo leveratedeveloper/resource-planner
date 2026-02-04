@@ -11,8 +11,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Resource, Assignment, Project, Brand } from "@/types";
-import { AnalysisResult, AnalysisInput } from "@/lib/analysis/types";
+import { Resource } from "@/types";
+import { AnalysisResult, AnalysisInput, AnalysisAssignment, AnalysisProject, AnalysisBrand } from "@/lib/analysis/types";
 import { createAnalysisWorker, AnalysisWorkerClient } from "@/lib/analysis/worker/client";
 import { AnalysisCache, analysisResultCache } from "@/lib/analysis/analysis-cache";
 
@@ -41,9 +41,9 @@ type UseCapacityAnalysisReturn = {
  */
 export function useCapacityAnalysis(
   resources: Resource[],
-  assignments: Assignment[],
-  projects: Project[],
-  brands: Brand[],
+  assignments: AnalysisAssignment[],
+  projects: AnalysisProject[],
+  brands: AnalysisBrand[],
   dateRange: { start: Date; end: Date },
   options: UseCapacityAnalysisOptions = {}
 ): UseCapacityAnalysisReturn {
@@ -82,7 +82,7 @@ export function useCapacityAnalysis(
       resources: resources.map(r => ({ id: r.id, capacity: r.capacity })),
       assignments: assignments.map(a => ({
         id: a.id,
-        employeeId: a.employeeId,  // Use employeeId (base Assignment type)
+        resourceId: a.resourceId,
         startDate: a.startDate,
         endDate: a.endDate,
         hoursPerDay: a.hoursPerDay,

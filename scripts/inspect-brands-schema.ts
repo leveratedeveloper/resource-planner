@@ -19,8 +19,7 @@ async function inspectBrandsSchema() {
 
     console.log('📋 Brands Table Columns:');
     console.log('='.repeat(80));
-    const columnRows = Array.isArray(columns) ? columns : columns.rows || [];
-    columnRows.forEach((col: any) => {
+    (columns as any[]).forEach((col: any) => {
       console.log(`${col.column_name.padEnd(25)} | ${col.data_type.padEnd(20)} | Nullable: ${col.is_nullable}`);
     });
     console.log('='.repeat(80));
@@ -33,7 +32,7 @@ async function inspectBrandsSchema() {
 
     console.log('📊 Sample Brand Records:');
     console.log('='.repeat(80));
-    const brandRows = Array.isArray(sampleBrands) ? sampleBrands : sampleBrands.rows || [];
+    const brandRows = sampleBrands as any[];
     if (brandRows.length > 0) {
       brandRows.forEach((brand: any, index: number) => {
         console.log(`\nBrand ${index + 1}:`);

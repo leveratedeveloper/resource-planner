@@ -3,7 +3,57 @@
  * Shared interfaces for capacity analysis, conflict detection, and forecasting
  */
 
-import { Assignment, Resource, Project, Brand } from "@/types";
+import { Resource } from "@/types";
+
+// ============================================================================
+// Assignment type used internally by the analysis engine
+// ============================================================================
+
+/**
+ * Assignment type used internally by the analysis engine.
+ * This matches the transformed data from AppContext where employeeId becomes resourceId.
+ */
+export interface AnalysisAssignment {
+  id: string;
+  resourceId: string;
+  projectId: string;
+  startDate: Date;
+  endDate: Date;
+  hoursPerDay: number;
+  isTimeOff: boolean;
+  category: string;
+  isBillable: boolean;
+  note: string | null;
+}
+
+/**
+ * Assignment with pre-parsed date timestamps for fast comparison
+ */
+export interface ParsedAssignment extends AnalysisAssignment {
+  _startTime: number;
+  _endTime: number;
+}
+
+/**
+ * Project shape used internally by the analysis engine.
+ */
+export interface AnalysisProject {
+  id: string;
+  name: string;
+  brandId: string;
+  color: string;
+  resourceIds: string[];
+}
+
+/**
+ * Brand shape used internally by the analysis engine.
+ */
+export interface AnalysisBrand {
+  id: string;
+  name: string;
+  color: string;
+  resourceIds: string[];
+}
 
 // ============================================================================
 // Core Analysis Types
@@ -127,9 +177,9 @@ export type CapacityRecommendation = {
 
 export type AnalysisInput = {
   resources: Resource[];
-  assignments: Assignment[];
-  projects: Project[];
-  brands: Brand[];
+  assignments: AnalysisAssignment[];
+  projects: AnalysisProject[];
+  brands: AnalysisBrand[];
   dateRange: {
     start: string; // ISO date string
     end: string;   // ISO date string

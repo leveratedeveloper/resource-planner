@@ -28,7 +28,7 @@ async function checkDatabase() {
     `);
     
     console.log('\n📋 Tables in database:');
-    tables.rows.forEach((row: any) => {
+    tables.forEach((row: any) => {
       console.log('  -', row.table_name);
     });
     
@@ -36,22 +36,22 @@ async function checkDatabase() {
     console.log('\n📊 Record counts:');
     try {
       const counts = await Promise.all([
-        db.execute(sql`SELECT COUNT(*) FROM business_units`).catch(() => ({ rows: [{ count: 'N/A' }] })),
-        db.execute(sql`SELECT COUNT(*) FROM departments`).catch(() => ({ rows: [{ count: 'N/A' }] })),
-        db.execute(sql`SELECT COUNT(*) FROM brands`).catch(() => ({ rows: [{ count: 'N/A' }] })),
-        db.execute(sql`SELECT COUNT(*) FROM employees`).catch(() => ({ rows: [{ count: 'N/A' }] })),
-        db.execute(sql`SELECT COUNT(*) FROM employee_brand_assignments`).catch(() => ({ rows: [{ count: 'N/A' }] })),
-        db.execute(sql`SELECT COUNT(*) FROM projects`).catch(() => ({ rows: [{ count: 'N/A' }] })),
-        db.execute(sql`SELECT COUNT(*) FROM assignments`).catch(() => ({ rows: [{ count: 'N/A' }] })),
+        db.execute(sql`SELECT COUNT(*) FROM business_units`).catch(() => [{ count: 'N/A' }]),
+        db.execute(sql`SELECT COUNT(*) FROM departments`).catch(() => [{ count: 'N/A' }]),
+        db.execute(sql`SELECT COUNT(*) FROM brands`).catch(() => [{ count: 'N/A' }]),
+        db.execute(sql`SELECT COUNT(*) FROM employees`).catch(() => [{ count: 'N/A' }]),
+        db.execute(sql`SELECT COUNT(*) FROM employee_brand_assignments`).catch(() => [{ count: 'N/A' }]),
+        db.execute(sql`SELECT COUNT(*) FROM projects`).catch(() => [{ count: 'N/A' }]),
+        db.execute(sql`SELECT COUNT(*) FROM assignments`).catch(() => [{ count: 'N/A' }]),
       ]);
       
-      console.log('  - business_units:', counts[0].rows[0].count);
-      console.log('  - departments:', counts[1].rows[0].count);
-      console.log('  - brands:', counts[2].rows[0].count);
-      console.log('  - employees:', counts[3].rows[0].count);
-      console.log('  - employee_brand_assignments:', counts[4].rows[0].count);
-      console.log('  - projects:', counts[5].rows[0].count);
-      console.log('  - assignments:', counts[6].rows[0].count);
+      console.log('  - business_units:', counts[0][0].count);
+      console.log('  - departments:', counts[1][0].count);
+      console.log('  - brands:', counts[2][0].count);
+      console.log('  - employees:', counts[3][0].count);
+      console.log('  - employee_brand_assignments:', counts[4][0].count);
+      console.log('  - projects:', counts[5][0].count);
+      console.log('  - assignments:', counts[6][0].count);
     } catch (error: any) {
       console.error('⚠️  Could not get record counts:', error.message);
     }

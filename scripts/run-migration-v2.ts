@@ -15,7 +15,7 @@ if (!connectionString) {
 async function runMigration() {
   console.log('🚀 Running database migration...\n');
 
-  const sql = postgres(connectionString);
+  const sql = postgres(connectionString!);
 
   try {
     // Step 1: Create ENUMs (if they don't exist)

@@ -4,8 +4,8 @@
  * Pure function - can run in Web Worker
  */
 
-import { Assignment, Resource, Project, Brand } from "@/types";
-import { ResourceCapacityAnalysis, ReassignmentSuggestion } from "./types";
+import { Resource } from "@/types";
+import { ResourceCapacityAnalysis, ReassignmentSuggestion, AnalysisAssignment, AnalysisProject, AnalysisBrand } from "./types";
 
 type ScoringFactors = {
   utilizationBalance: number; // Weight: 40%
@@ -76,7 +76,7 @@ function calculateSkillMatchScore(
  * Calculate billable optimization score
  */
 function calculateBillableScore(
-  assignment: Assignment,
+  assignment: AnalysisAssignment,
   toResourceBillablePercent: number
 ): number {
   // Billable assignment to resource with low billable = good
@@ -96,10 +96,10 @@ function calculateBillableScore(
  * Calculate project continuity score
  */
 function calculateContinuityScore(
-  assignment: Assignment,
+  assignment: AnalysisAssignment,
   toResource: Resource,
-  toResourceAssignments: Assignment[],
-  projects: Project[]
+  toResourceAssignments: AnalysisAssignment[],
+  projects: AnalysisProject[]
 ): number {
   const project = projects.find((p) => p.id === assignment.projectId);
   if (!project) return 0;
@@ -125,10 +125,10 @@ function calculateContinuityScore(
  */
 export function generateReassignmentSuggestions(
   capacityAnalysis: ResourceCapacityAnalysis[],
-  assignments: Assignment[],
+  assignments: AnalysisAssignment[],
   resources: Resource[],
-  projects: Project[],
-  brands: Brand[],
+  projects: AnalysisProject[],
+  brands: AnalysisBrand[],
   maxSuggestions: number = 5
 ): ReassignmentSuggestion[] {
   const suggestions: ReassignmentSuggestion[] = [];

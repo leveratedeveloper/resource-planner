@@ -2,15 +2,15 @@
 
 import React, { useMemo } from "react";
 import { Icon } from "@iconify/react";
-import { Resource, Assignment } from "@/types";
-import { ForecastResult, WeeklyForecast } from "@/lib/analysis/types";
+import { Resource } from "@/types";
+import { ForecastResult, WeeklyForecast, AnalysisAssignment } from "@/lib/analysis/types";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface ForecastTabProps {
   resources: Resource[];
-  assignments: Assignment[];
+  assignments: AnalysisAssignment[];
   isLoading: boolean;
 }
 

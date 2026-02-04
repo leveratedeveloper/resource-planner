@@ -93,7 +93,7 @@ function parseCommandLineArgs() {
   return options;
 }
 
-async function clearExistingData(db: ReturnType<typeof drizzle>, verbose: boolean) {
+async function clearExistingData(db: any, verbose: boolean) {
   if (verbose) console.log('\n🗑️  Clearing existing data...');
 
   await db.delete(assignments);
@@ -119,7 +119,7 @@ async function clearExistingData(db: ReturnType<typeof drizzle>, verbose: boolea
 }
 
 async function createBusinessUnits(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   parsedData: ParsedData,
   idMaps: IdMaps,
   verbose: boolean
@@ -159,7 +159,7 @@ async function createBusinessUnits(
 }
 
 async function createDepartments(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   parsedData: ParsedData,
   idMaps: IdMaps,
   verbose: boolean
@@ -175,7 +175,7 @@ async function createDepartments(
     let businessUnitId: string | undefined;
     for (const [ttId, rpId] of idMaps.businessUnits.entries()) {
       const buRecord = await db.query.businessUnits.findFirst({
-        where: (bu, { eq }) => eq(bu.id, rpId)
+        where: (bu: any, { eq }: any) => eq(bu.id, rpId)
       });
       if (buRecord?.code === buCode) {
         businessUnitId = rpId;
@@ -209,7 +209,7 @@ async function createDepartments(
 }
 
 async function createBrands(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   parsedData: ParsedData,
   idMaps: IdMaps,
   verbose: boolean
@@ -266,7 +266,7 @@ async function createBrands(
 }
 
 async function createEmployees(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   parsedData: ParsedData,
   idMaps: IdMaps,
   verbose: boolean
@@ -280,7 +280,7 @@ async function createEmployees(
     const departmentId = emp.dept_id ? idMaps.departments.get(emp.dept_id) : undefined;
     const businessUnitId = departmentId
       ? (await db.query.departments.findFirst({
-          where: (d, { eq }) => eq(d.id, departmentId)
+          where: (d: any, { eq }: any) => eq(d.id, departmentId)
         }))?.businessUnitId
       : undefined;
 
@@ -335,7 +335,7 @@ async function createEmployees(
       if (employeeId && supervisorId) {
         await db.update(employees)
           .set({ directSupervisorId: supervisorId })
-          .where((e, { eq }) => eq(e.id, employeeId));
+          .where((e: any, { eq }: any) => eq(e.id, employeeId));
         supervisorCount++;
       }
     }
@@ -345,7 +345,7 @@ async function createEmployees(
 }
 
 async function createProjects(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   parsedData: ParsedData,
   idMaps: IdMaps,
   verbose: boolean
@@ -354,7 +354,7 @@ async function createProjects(
 
   // Get default project category
   const defaultCategory = await db.query.projectCategories.findFirst({
-    where: (pc, { eq }) => eq(pc.name, 'Digital Marketing')
+    where: (pc: any, { eq }: any) => eq(pc.name, 'Digital Marketing')
   });
 
   for (const campaign of parsedData.campaigns) {
@@ -408,7 +408,7 @@ async function createProjects(
 }
 
 async function updateRecentTimestamps(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   verbose: boolean
 ) {
   if (verbose) console.log('\n📅 Updating recent timestamps...');
@@ -416,7 +416,7 @@ async function updateRecentTimestamps(
   // Update some projects to have recent updatedAt dates
   const recentProjects = await db.query.projects.findMany({
     limit: 50,
-    orderBy: (p, { desc }) => [desc(p.createdAt)]
+    orderBy: (p: any, { desc }: any) => [desc(p.createdAt)]
   });
 
   const now = new Date();
@@ -426,7 +426,7 @@ async function updateRecentTimestamps(
 
     await db.update(projects)
       .set({ updatedAt })
-      .where((p, { eq }) => eq(p.id, recentProjects[i].id));
+      .where((p: any, { eq }: any) => eq(p.id, recentProjects[i].id));
   }
 
   if (verbose) console.log(`   ✅ Updated timestamps for ${recentProjects.length} recent projects`);

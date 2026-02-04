@@ -4,13 +4,15 @@
  * Designed to run in Web Worker for performance
  */
 
-import { Assignment, Resource, Project } from "@/types";
+import { Resource } from "@/types";
 import {
   Conflict,
   ConflictType,
   ConflictSeverity,
   ResourceCapacityAnalysis,
   AnalysisInput,
+  AnalysisAssignment,
+  AnalysisProject,
 } from "./types";
 import { getDateRange, isDateStrInAssignment } from "./capacity-analyzer";
 
@@ -79,9 +81,9 @@ export function detectOverallocationConflicts(
  * Detect resource unavailability conflicts (assigned during time-off)
  */
 export function detectTimeOffConflicts(
-  assignments: Assignment[],
+  assignments: AnalysisAssignment[],
   resources: Resource[],
-  projects: Project[]
+  projects: AnalysisProject[]
 ): Conflict[] {
   const conflicts: Conflict[] = [];
   const resourceMap = new Map(resources.map((r) => [r.id, r]));
@@ -158,9 +160,9 @@ export function detectBillableTargetConflicts(
  * Detect time-off vs deadline conflicts (within 3 days)
  */
 export function detectDeadlineConflicts(
-  assignments: Assignment[],
+  assignments: AnalysisAssignment[],
   resources: Resource[],
-  projects: Project[]
+  projects: AnalysisProject[]
 ): Conflict[] {
   const conflicts: Conflict[] = [];
   const resourceMap = new Map(resources.map((r) => [r.id, r]));
@@ -217,7 +219,7 @@ export function detectDeadlineConflicts(
 // Helper Functions
 // ============================================================================
 
-function datesOverlap(a1: Assignment, a2: Assignment): boolean {
+function datesOverlap(a1: AnalysisAssignment, a2: AnalysisAssignment): boolean {
   const a1Start = new Date(a1.startDate);
   const a1End = new Date(a1.endDate);
   const a2Start = new Date(a2.startDate);
@@ -226,7 +228,7 @@ function datesOverlap(a1: Assignment, a2: Assignment): boolean {
   return a1Start <= a2End && a2Start <= a1End;
 }
 
-function getOverlapDates(a1: Assignment, a2: Assignment): string[] {
+function getOverlapDates(a1: AnalysisAssignment, a2: AnalysisAssignment): string[] {
   const start = new Date(Math.max(
     new Date(a1.startDate).getTime(),
     new Date(a2.startDate).getTime()

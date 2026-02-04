@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.local' });
 
 import { db } from '../lib/db';
-import { brands, resources, projects, assignments } from '../lib/db/schema';
+import { brands } from '../lib/db/schema';
 import { sql } from 'drizzle-orm';
 
 async function testConnection() {

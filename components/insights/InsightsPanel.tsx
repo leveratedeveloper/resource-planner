@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AnalysisResult } from "@/lib/analysis/types";
-import { Resource, Assignment } from "@/types";
+import { Resource } from "@/types";
+import { AnalysisAssignment } from "@/lib/analysis/types";
 import { InsightsSummary } from "./InsightsSummary";
 import { CapacityTab } from "./CapacityTab";
 import { ConflictsTab } from "./ConflictsTab";
@@ -20,7 +21,7 @@ interface InsightsPanelProps {
   isAnalyzing: boolean;
   onRefresh: () => void;
   resources: Resource[];
-  assignments: Assignment[];
+  assignments: AnalysisAssignment[];
 }
 
 export const InsightsPanel: React.FC<InsightsPanelProps> = ({

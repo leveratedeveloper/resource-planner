@@ -379,17 +379,17 @@ function categorizeProject(row: any, categoryMapping: Map<string, string>): stri
 
   // Check for specific categories
   if (name.includes('operation')) {
-    return categoryMapping.get('operational');
+    return categoryMapping.get('operational') ?? null;
   }
   if (name.includes('pitch') || name.includes('tentative')) {
-    return categoryMapping.get('pitch');
+    return categoryMapping.get('pitch') ?? null;
   }
   if (budget === 0) {
-    return categoryMapping.get('operational');
+    return categoryMapping.get('operational') ?? null;
   }
 
   // Default to Campaign
-  return categoryMapping.get('campaign');
+  return categoryMapping.get('campaign') ?? null;
 }
 
 async function migrateCampaigns() {

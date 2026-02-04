@@ -1,4 +1,5 @@
-import { Resource, Brand, Project, Assignment } from "@/types";
+import { Resource } from "@/types";
+import { AnalysisAssignment, AnalysisProject, AnalysisBrand } from "@/lib/analysis/types";
 
 // Helper to create dates relative to start of current week (for consistency)
 const getBaseDate = () => {
@@ -32,12 +33,12 @@ export const mockResources: Resource[] = [
   { id: "4", name: "Diana Prince", role: "Designer", department: "Creative", capacity: 32 },
 ];
 
-export const mockBrands: Brand[] = [
+export const mockBrands: AnalysisBrand[] = [
   { id: "b1", name: "Acme Corp", color: "#3b82f6", resourceIds: ["1", "2"] },
   { id: "b2", name: "Globex", color: "#ef4444", resourceIds: ["2", "3"] },
 ];
 
-export const mockProjects: Project[] = [
+export const mockProjects: AnalysisProject[] = [
   { id: "p1", name: "Website Redesign", brandId: "b1", color: "#3b82f6", resourceIds: ["1", "2"] },
   { id: "p2", name: "Mobile App v2", brandId: "b1", color: "#10b981", resourceIds: ["2"] },
   { id: "p3", name: "Brand Campaign", brandId: "b2", color: "#ef4444", resourceIds: ["2", "3"] },
@@ -45,7 +46,7 @@ export const mockProjects: Project[] = [
 ];
 
 // Function to generate assignments dynamically (client-side only)
-export const createMockAssignments = (): Assignment[] => {
+export const createMockAssignments = (): AnalysisAssignment[] => {
   const base = getConsistentBaseDate();
   
   return [
@@ -59,6 +60,7 @@ export const createMockAssignments = (): Assignment[] => {
       isTimeOff: false,
       category: "Design",
       isBillable: true,
+      note: null,
     },
     {
       id: "a2",
@@ -70,6 +72,7 @@ export const createMockAssignments = (): Assignment[] => {
       isTimeOff: false,
       category: "Development",
       isBillable: true,
+      note: null,
     },
     {
       id: "a3",
@@ -81,6 +84,7 @@ export const createMockAssignments = (): Assignment[] => {
       isTimeOff: false,
       category: "Meeting",
       isBillable: false,
+      note: null,
     },
     {
       id: "a4",
@@ -122,4 +126,4 @@ export const createMockAssignments = (): Assignment[] => {
 };
 
 // For backwards compatibility, export empty array (will be initialized in context)
-export const mockAssignments: Assignment[] = [];
+export const mockAssignments: AnalysisAssignment[] = [];

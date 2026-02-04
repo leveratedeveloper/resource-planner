@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, boolean, date, decimal, pgEnum, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, boolean, date, decimal, pgEnum, unique, foreignKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // ============ ENUMS ============
@@ -124,7 +124,7 @@ export const employees = pgTable('employees', {
   position: text('position').notNull(),
   departmentId: uuid('department_id').references(() => departments.id),
   businessUnitId: uuid('business_unit_id').references(() => businessUnits.id),
-  directSupervisorId: uuid('direct_supervisor_id').references(() => employees.id),
+  directSupervisorId: uuid('direct_supervisor_id'),
   weeklyCapacity: integer('weekly_capacity').notNull().default(40),
   workStartDate: date('work_start_date'),
   dateOfBirth: date('date_of_birth'),
@@ -133,7 +133,9 @@ export const employees = pgTable('employees', {
   gender: text('gender'), // 'MALE' or 'FEMALE'
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  foreignKey({ columns: [table.directSupervisorId], foreignColumns: [table.id] }),
+]);
 
 // 5. Employee Brand Assignments table (NEW - junction table for many-to-many)
 export const employeeBrandAssignments = pgTable('employee_brand_assignments', {

@@ -3,10 +3,9 @@
  * Simulate changes and predict impact on capacity
  */
 
-import { Assignment, Resource, Project, Brand } from "@/types";
 import { analyzeCapacity } from "./capacity-analyzer";
 import { detectConflicts } from "./conflict-detector";
-import { AnalysisResult, AnalysisInput, ResourceCapacityAnalysis } from "./types";
+import { AnalysisResult, AnalysisInput, ResourceCapacityAnalysis, AnalysisAssignment } from "./types";
 
 export type ScenarioChange = {
   type: "reassign" | "reschedule" | "add_assignment" | "remove_assignment";
@@ -38,9 +37,9 @@ export type ScenarioResult = {
  * Apply scenario changes to assignments
  */
 function applyScenarioChanges(
-  assignments: Assignment[],
+  assignments: AnalysisAssignment[],
   changes: ScenarioChange[]
-): Assignment[] {
+): AnalysisAssignment[] {
   let modifiedAssignments = [...assignments];
 
   for (const change of changes) {
