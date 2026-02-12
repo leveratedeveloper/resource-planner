@@ -7,12 +7,14 @@ import { Badge } from "@/components/ui/badge";
 
 interface ConflictAlertProps {
   conflict: Conflict;
-  onResolve?: () => void;
+  onDismiss?: () => void;
+  onRemoveAssignment?: (assignmentId: string) => void;
 }
 
 export const ConflictAlert: React.FC<ConflictAlertProps> = ({
   conflict,
-  onResolve,
+  onDismiss,
+  onRemoveAssignment,
 }) => {
   const getSeverityConfig = () => {
     switch (conflict.severity) {
@@ -95,15 +97,36 @@ export const ConflictAlert: React.FC<ConflictAlertProps> = ({
               </p>
             </div>
           )}
-          {onResolve && conflict.severity === "critical" && (
-            <button
-              onClick={onResolve}
-              className="mt-3 text-xs font-medium text-primary hover:underline flex items-center gap-1"
-            >
-              <Icon icon="lucide:check" className="w-3 h-3" />
-              Mark as Resolved
-            </button>
-          )}
+          {/* Action Buttons */}
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            {/* Dismiss button - always shown */}
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              >
+                <Icon icon="lucide:eye-off" className="w-3 h-3" />
+                Dismiss
+              </button>
+            )}
+
+            {/* Remove Assignment button - only for actionable conflicts */}
+            {onRemoveAssignment &&
+             conflict.affectedAssignments.length > 0 &&
+             (conflict.type === "overallocation" || conflict.type === "resource_unavailable") && (
+              <button
+                onClick={() => {
+                  // Remove the last affected assignment (the one that caused/contributed to the conflict)
+                  const targetId = conflict.affectedAssignments[conflict.affectedAssignments.length - 1];
+                  onRemoveAssignment(targetId);
+                }}
+                className="text-xs font-medium text-red-500 hover:text-red-700 flex items-center gap-1 transition-colors"
+              >
+                <Icon icon="lucide:trash-2" className="w-3 h-3" />
+                Remove Assignment
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

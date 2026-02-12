@@ -18,7 +18,7 @@ import {
 // ============================================================================
 
 /**
- * Pre-index assignments by resourceId for O(1) lookup
+ * Pre-index assignments by employeeId for O(1) lookup
  */
 export function indexAssignmentsByResource(
   assignments: ParsedAssignment[]

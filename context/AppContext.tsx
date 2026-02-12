@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useMemo } from "react";
 import { useEmployees, useAssignments, useProjects, useBrands } from "@/lib/query/hooks";
 import { useCapacityAnalysis } from "@/hooks/useCapacityAnalysis";
-import { AnalysisResult } from "@/lib/analysis/types";
+import { AnalysisResult, AnalysisAssignment, AnalysisProject, AnalysisBrand } from "@/lib/analysis/types";
 
 // Simplified context for UI state only - data fetching is handled by React Query
 type AppContextType = {
@@ -57,14 +57,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, [employees]);
 
-  const analysisAssignments = useMemo(() => {
+  const analysisAssignments = useMemo<AnalysisAssignment[]>(() => {
     return assignments.map((assign) => ({
       id: assign.id,
       resourceId: assign.employeeId,
       projectId: assign.projectId || "",
       startDate: new Date(assign.startDate),
       endDate: new Date(assign.endDate),
-      hoursPerDay: parseFloat(assign.hoursPerDay),
+      hoursPerDay: parseFloat(String(assign.hoursPerDay)),
       isTimeOff: assign.isTimeOff,
       category: assign.category || "Other",
       isBillable: assign.isBillable,
@@ -72,24 +72,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, [assignments]);
 
-  const analysisProjects = useMemo(() => {
+  // Index assignments by projectId for deriving resourceIds
+  const assignmentsByProject = useMemo(() => {
+    const index = new Map<string, Set<string>>();
+    for (const a of assignments) {
+      if (!a.projectId) continue;
+      const set = index.get(a.projectId) ?? new Set();
+      set.add(a.employeeId);
+      index.set(a.projectId, set);
+    }
+    return index;
+  }, [assignments]);
+
+  const analysisProjects = useMemo<AnalysisProject[]>(() => {
     return projects.map((proj) => ({
       id: proj.id,
       name: proj.name,
       brandId: proj.brandId,
-      color: proj.color,
-      resourceIds: proj.assignments?.map((a) => a.employeeId) || [],
+      color: proj.color || "#6366f1",
+      resourceIds: [...(assignmentsByProject.get(proj.id) ?? [])],
     }));
-  }, [projects]);
+  }, [projects, assignmentsByProject]);
 
-  const analysisBrands = useMemo(() => {
-    return brands.map((brand) => ({
-      id: brand.id,
-      name: brand.name,
-      color: brand.color,
-      resourceIds: brand.employeeBrandAssignments?.map((a) => a.employeeId) || [],
-    }));
-  }, [brands]);
+  const analysisBrands = useMemo<AnalysisBrand[]>(() => {
+    return brands.map((brand) => {
+      const resourceSet = new Set<string>();
+      for (const proj of projects) {
+        if (proj.brandId === brand.id) {
+          for (const id of assignmentsByProject.get(proj.id) ?? []) {
+            resourceSet.add(id);
+          }
+        }
+      }
+      return {
+        id: brand.id,
+        name: brand.name,
+        color: brand.color || "#6366f1",
+        resourceIds: [...resourceSet],
+      };
+    });
+  }, [brands, projects, assignmentsByProject]);
 
   // Capacity analysis (runs in Web Worker)
   const {

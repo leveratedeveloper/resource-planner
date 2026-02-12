@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/constants";
 
 interface AssignProjectModalProps {
   resourceId: string | null;
@@ -27,17 +29,18 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
   const { data: assignments = [] } = useAssignments();
   const createAssignment = useCreateAssignment();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
 
-  // Use infinite query for projects with search
+  // Use infinite query for projects with debounced search
   const {
     data: projectsData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading: isLoadingProjects,
-  } = useInfiniteProjects(search);
+  } = useInfiniteProjects(debouncedSearch);
 
   // Flatten projects from all pages
   const projects = useMemo(() => {
@@ -96,10 +99,22 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
 
   const resource = employees.find((r) => r.id === resourceId);
 
-  // Check if resource is already assigned to a project
-  const isAssigned = (projectId: string) => {
-    return assignments.some((a) => a.employeeId === resourceId && a.projectId === projectId);
-  };
+  // O(1) brand lookup using Map
+  const brandMap = useMemo(() => 
+    new Map(brands.map(b => [b.id, b])), 
+    [brands]
+  );
+
+  // O(1) check if resource is already assigned to a project
+  const assignedProjectIds = useMemo(() => {
+    const set = new Set<string>();
+    assignments
+      .filter(a => a.employeeId === resourceId)
+      .forEach(a => a.projectId && set.add(a.projectId));
+    return set;
+  }, [assignments, resourceId]);
+
+  const isAssigned = (projectId: string) => assignedProjectIds.has(projectId);
 
   const toggleProject = (projectId: string) => {
     setSelectedProjectIds((prev) => {
@@ -222,7 +237,7 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
           ) : (
             <>
               {projects.map((project) => {
-                const brand = brands.find((b) => b.id === project.brandId);
+                const brand = brandMap.get(project.brandId);
                 const alreadyAssigned = isAssigned(project.id);
                 const isSelected = selectedProjectIds.has(project.id);
 

@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Icon } from "@iconify/react";
 import { cn, toLocalDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
 
 interface ResourceRowProps {
   resource: Resource;
@@ -24,15 +25,24 @@ interface ResourceRowProps {
   isWeekView?: boolean;
 }
 
-// Allocation Cell Component
-const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: any[]; cellWidth: number; isWeekView?: boolean }> = ({
+// Props for AllocationCell
+interface AllocationCellProps {
+  day: Date;
+  resource: Resource;
+  assignments: Assignment[];
+  cellWidth: number;
+  isWeekView?: boolean;
+}
+
+// Memoized Allocation Cell Component for performance
+const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   day,
   resource,
   assignments,
   cellWidth,
   isWeekView = false
-}) => {
-  const dailyCapacity = resource.capacity / 5; // Assuming 5 day week
+}) {
+  const dailyCapacity = resource.capacity / WORK_DAYS_PER_WEEK;
   
   // For week view, aggregate hours across the week (Mon-Fri)
   // For day view, just check the single day
@@ -167,7 +177,7 @@ const AllocationCell: React.FC<{ day: Date; resource: Resource; assignments: any
       {showLabel && label}
     </div>
   );
-};
+});
 
 export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, onAssignProject, cellWidth = 100, isWeekView = false }) => {
   const { data: assignments = [] } = useAssignments();
@@ -195,6 +205,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     const projectIds = new Set(resourceAssignments.filter(a => !a.isTimeOff).map(a => a.projectId));
     return projects.filter(p => projectIds.has(p.id));
   }, [resourceAssignments, projects]);
+
+  // O(1) project lookup by ID
+  const projectMap = useMemo(() => 
+    new Map(projects.map(p => [p.id, p])), 
+    [projects]
+  );
 
   // Check if has time off
   const hasTimeOff = resourceAssignments.some(a => a.isTimeOff);
@@ -415,6 +431,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             <AssignmentBlock
               key={assignment.id}
               assignment={assignment}
+              project={undefined}
               days={days}
               resourceRowHeight={50}
               cellWidth={cellWidth}
@@ -493,6 +510,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 <AssignmentBlock
                   key={assignment.id}
                   assignment={assignment}
+                  project={projectMap.get(assignment.projectId ?? '')}
                   days={days}
                   resourceRowHeight={60}
                   cellWidth={cellWidth}

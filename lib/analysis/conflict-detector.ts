@@ -105,7 +105,7 @@ export function detectTimeOffConflicts(
     );
 
     for (const work of overlappingWork) {
-      const project = projectMap.get(work.projectId);
+      const project = work.projectId ? projectMap.get(work.projectId) : undefined;
       const overlapDates = getOverlapDates(timeOff, work);
 
       conflicts.push({
@@ -190,7 +190,7 @@ export function detectDeadlineConflicts(
     });
 
     for (const work of nearbyDeadlines) {
-      const project = projectMap.get(work.projectId);
+      const project = work.projectId ? projectMap.get(work.projectId) : undefined;
       const workEnd = new Date(work.endDate);
       const daysBeforeTimeOff = Math.ceil(
         (timeOffStart.getTime() - workEnd.getTime()) / (1000 * 60 * 60 * 24)

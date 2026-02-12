@@ -53,6 +53,7 @@ export default function Home() {
     [employees]
   );
 
+
   return (
     <div className="flex flex-col h-screen bg-background">
       <FilterBar

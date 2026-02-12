@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
 import { Conflict, ConflictSeverity, ConflictType } from "@/lib/analysis/types";
 import { ConflictAlert } from "./ConflictAlert";
+import { useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,14 @@ interface ConflictsTabProps {
 type FilterSeverity = "all" | ConflictSeverity;
 type FilterType = "all" | ConflictType;
 
+/**
+ * Generate a stable key for a conflict based on its semantic content.
+ * This allows tracking dismissed conflicts even when their IDs change on re-analysis.
+ */
+function getConflictStableKey(conflict: Conflict): string {
+  return `${conflict.type}|${conflict.resourceId}|${conflict.date}|${conflict.affectedAssignments.slice().sort().join(",")}`;
+}
+
 export const ConflictsTab: React.FC<ConflictsTabProps> = ({
   conflicts,
   isLoading,
@@ -28,8 +37,17 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>("all");
   const [filterType, setFilterType] = useState<FilterType>("all");
 
+  // Track dismissed conflicts by stable key (session-only state)
+  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set());
+
+  // Delete assignment mutation
+  const deleteAssignment = useDeleteAssignment();
+
   const filteredConflicts = useMemo(() => {
     let result = [...conflicts];
+
+    // Filter out dismissed conflicts first
+    result = result.filter((c) => !dismissedKeys.has(getConflictStableKey(c)));
 
     if (filterSeverity !== "all") {
       result = result.filter((c) => c.severity === filterSeverity);
@@ -40,10 +58,31 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
     }
 
     return result;
-  }, [conflicts, filterSeverity, filterType]);
+  }, [conflicts, filterSeverity, filterType, dismissedKeys]);
 
-  const criticalCount = conflicts.filter((c) => c.severity === "critical").length;
-  const warningCount = conflicts.filter((c) => c.severity === "warning").length;
+  const activeConflicts = useMemo(
+    () => conflicts.filter((c) => !dismissedKeys.has(getConflictStableKey(c))),
+    [conflicts, dismissedKeys]
+  );
+  const criticalCount = activeConflicts.filter((c) => c.severity === "critical").length;
+  const warningCount = activeConflicts.filter((c) => c.severity === "warning").length;
+
+  // Handler: Dismiss a conflict
+  const handleDismiss = useCallback((conflict: Conflict) => {
+    const key = getConflictStableKey(conflict);
+    setDismissedKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Handler: Remove an assignment (resolves conflict at the source)
+  const handleRemoveAssignment = useCallback((assignmentId: string) => {
+    deleteAssignment.mutate(assignmentId);
+    // The optimistic update from useDeleteAssignment will remove it from the cache,
+    // which triggers re-analysis via the useCapacityAnalysis hook's dependency on assignments.
+  }, [deleteAssignment]);
 
   if (isLoading) {
     return (
@@ -133,7 +172,15 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
         </Select>
 
         <span className="ml-auto text-xs text-muted-foreground">
-          {filteredConflicts.length} of {conflicts.length} conflicts
+          {filteredConflicts.length} of {activeConflicts.length} conflicts
+          {dismissedKeys.size > 0 && (
+            <button
+              onClick={() => setDismissedKeys(new Set())}
+              className="ml-2 text-primary hover:underline"
+            >
+              ({dismissedKeys.size} dismissed - click to restore)
+            </button>
+          )}
         </span>
       </div>
 
@@ -149,10 +196,8 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
             <ConflictAlert
               key={conflict.id}
               conflict={conflict}
-              onResolve={() => {
-                // TODO: Handle conflict resolution
-                console.log("Resolve conflict:", conflict.id);
-              }}
+              onDismiss={() => handleDismiss(conflict)}
+              onRemoveAssignment={handleRemoveAssignment}
             />
           ))
         )}

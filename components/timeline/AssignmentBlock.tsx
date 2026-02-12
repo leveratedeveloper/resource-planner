@@ -2,8 +2,8 @@
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
+import type { Project } from "@/lib/query/hooks/useProjects";
 import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
-import { useProjects } from "@/lib/query/hooks/useProjects";
 import { cn } from "@/lib/utils";
 import { MoreVertical } from "lucide-react";
 import {
@@ -16,6 +16,7 @@ import { EditAssignmentDialog } from "./EditAssignmentDialog";
 
 interface AssignmentBlockProps {
   assignment: Assignment;
+  project?: Project;  // Passed from parent for O(1) lookup
   days: Date[];
   resourceRowHeight: number;
   cellWidth?: number;
@@ -29,6 +30,7 @@ interface AssignmentBlockProps {
 
 export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   assignment,
+  project,
   days,
   resourceRowHeight,
   cellWidth = 100,
@@ -39,8 +41,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   isDeleting = false,
   isUpdating = false,
 }) => {
-  const { data: projects = [] } = useProjects();
-  const project = projects.find((p) => p.id === assignment.projectId);
   const blockRef = useRef<HTMLDivElement>(null);
 
   // Resize state
@@ -60,6 +60,15 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   // Use ref to avoid stale closure in event handlers
   const offsetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+
+  // Cleanup animation frame on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
 
   // Calculate Position and Width
   const startDate = startOfDay(new Date(assignment.startDate));
