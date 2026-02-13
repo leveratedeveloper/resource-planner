@@ -33,6 +33,14 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
+
+    // Basic validation
+    if (!body.name) {
+      return NextResponse.json(
+        { success: false, error: "Brand name is required" },
+        { status: 400 }
+      );
+    }
     
     const brand = await updateBrand(id, {
       businessUnitId: body.businessUnitId,

@@ -33,7 +33,15 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
+    // Basic validation
+    if (!body.employeeId || !body.startDate || !body.endDate) {
+      return NextResponse.json(
+        { success: false, error: "Employee ID, start date, and end date are required" },
+        { status: 400 }
+      );
+    }
+
     const assignment = await updateAssignment(id, {
       employeeId: body.employeeId,
       projectId: body.projectId,

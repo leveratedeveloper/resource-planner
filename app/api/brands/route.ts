@@ -10,9 +10,19 @@ export async function GET(request: Request) {
     
     // If pagination params are provided, use paginated query
     if (limit !== null && offset !== null) {
+      const parsedLimit = parseInt(limit, 10);
+      const parsedOffset = parseInt(offset, 10);
+
+      if (isNaN(parsedLimit) || isNaN(parsedOffset)) {
+        return NextResponse.json(
+          { success: false, error: "Limit and offset must be valid numbers" },
+          { status: 400 }
+        );
+      }
+
       const result = await getBrandsPaginated(
-        parseInt(limit, 10),
-        parseInt(offset, 10),
+        parsedLimit,
+        parsedOffset,
         search || undefined
       );
       return NextResponse.json({ 
