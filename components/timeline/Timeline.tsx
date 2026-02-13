@@ -3,6 +3,7 @@
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { useEmployees, useBrands } from "@/lib/query/hooks";
+import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
@@ -20,6 +21,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   // Fetch data using React Query
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [] } = useBrands();
+  const { data: allAssignments = [] } = useAssignments();
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   
@@ -121,12 +123,19 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     let filtered = employees;
 
     if (brandId) {
-       // Find employees assigned to this brand
+       // Hybrid brand visibility: explicit membership OR assignment to a project in this brand
        const brand = brands.find((b) => b.id === brandId);
-       if (brand && brand.employeeBrandAssignments) {
-         const assignedEmployeeIds = brand.employeeBrandAssignments.map((a) => a.employeeId);
-         filtered = filtered.filter((emp) => assignedEmployeeIds.includes(emp.id));
-       }
+       const memberIds = new Set(
+         brand?.employeeBrandAssignments?.map((a) => a.employeeId) ?? []
+       );
+       const assignmentIds = new Set(
+         allAssignments
+           .filter((a) => a.project?.brand?.id === brandId)
+           .map((a) => a.employeeId)
+       );
+       filtered = filtered.filter(
+         (emp) => memberIds.has(emp.id) || assignmentIds.has(emp.id)
+       );
     }
 
     if (department) {
@@ -166,7 +175,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
 
     return filtered;
-  }, [brandId, department, searchQuery, employees, brands]);
+  }, [brandId, department, searchQuery, employees, brands, allAssignments]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
@@ -211,7 +220,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="timeline-root">
       {/* Timeline Controls */}
       <TimelineHeaderControls
         currentDate={currentDate}
@@ -247,6 +256,9 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                     isWeekend && !isWeekView ? "bg-muted/50" : "bg-background"
                   )}
                   style={{ width: cellWidth }}
+                  data-testid="timeline-day-cell"
+                  data-date={format(day, "yyyy-MM-dd")}
+                  data-weekend={String(isWeekend)}
                 >
                   {isWeekView ? (
                     <>

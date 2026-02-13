@@ -51,6 +51,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
 
   const dayIndex = days.findIndex((d) => d.toISOString() === day.toISOString());
+  const dateKey = format(day, "yyyy-MM-dd");
   
   // Check if this is a weekend day
   const isWeekend = day.getDay() === 0 || day.getDay() === 6;
@@ -170,6 +171,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         style={{ width: cellWidth, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
+        data-date={dateKey}
+        data-project-id={projectId}
+        data-cell-state="weekend"
       >
         {/* Show lock icon for blocked weekend dates (past or time-off) */}
         {isHovered && !isDragging && isBlocked && (
@@ -236,6 +241,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
                     variant="outline" 
                     size="sm"
                     onClick={handleWeekendConfirm}
+                    data-testid="weekend-schedule-confirm"
                   >
                     Schedule
                   </Button>
@@ -260,6 +266,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         style={{ width: cellWidth, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
+        data-date={dateKey}
+        data-project-id={projectId}
+        data-cell-state="blocked"
       >
         {/* Lock icon with tooltip - shown on hover */}
         {isHovered && !isDragging && (
@@ -297,6 +307,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onMouseDown={handleMouseDown}
+      data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
+      data-date={dateKey}
+      data-project-id={projectId}
+      data-cell-state="weekday"
     >
       {/* Add button - shown on hover */}
       {isHovered && !isDragging && (

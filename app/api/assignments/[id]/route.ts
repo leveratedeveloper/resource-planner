@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAssignmentById, updateAssignment, deleteAssignment } from "@/lib/db/queries";
+import { AssignmentUpdateSchema, AssignmentPutSchema, formatZodErrors } from "@/lib/validations/schemas";
 
 export async function GET(
   request: Request,
@@ -32,32 +33,20 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
+    const rawBody = await request.json();
 
-    // Basic validation
-    if (!body.employeeId || !body.startDate || !body.endDate) {
+    // Validate with Zod
+    const parsed = AssignmentPutSchema.safeParse(rawBody);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Employee ID, start date, and end date are required" },
+        { success: false, error: formatZodErrors(parsed.error) },
         { status: 400 }
       );
     }
 
-    const assignment = await updateAssignment(id, {
-      employeeId: body.employeeId,
-      projectId: body.projectId,
-      taskId: body.taskId,
-      startDate: body.startDate,
-      endDate: body.endDate,
-      hoursPerDay: body.hoursPerDay,
-      allocationPercentage: body.allocationPercentage,
-      isTimeOff: body.isTimeOff,
-      timeOffTypeId: body.timeOffTypeId,
-      category: body.category,
-      isBillable: body.isBillable,
-      status: body.status,
-      note: body.note,
-      createdById: body.createdById,
-    });
+    // Only pass fields that were actually provided (partial update)
+    const body = parsed.data;
+    const assignment = await updateAssignment(id, body);
     
     if (!assignment) {
       return NextResponse.json(

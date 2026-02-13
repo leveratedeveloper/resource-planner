@@ -12,6 +12,7 @@ import {
   AnalysisAssignment,
   ParsedAssignment,
 } from "./types";
+import { toLocalDateKey, parseLocalDateKey } from "./date-utils";
 
 // ============================================================================
 // Pre-indexing and Date Parsing (Performance Optimization)
@@ -36,18 +37,27 @@ export function indexAssignmentsByResource(
  * Pre-parse assignment dates to avoid repeated Date object creation
  */
 export function parseAssignmentDates(assignments: AnalysisAssignment[]): ParsedAssignment[] {
-  return assignments.map((a) => ({
-    ...a,
-    _startTime: new Date(a.startDate).setHours(0, 0, 0, 0),
-    _endTime: new Date(a.endDate).setHours(0, 0, 0, 0),
-  }));
+  return assignments.map((a) => {
+    const start = new Date(a.startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(a.endDate);
+    end.setHours(0, 0, 0, 0);
+    return {
+      ...a,
+      _startTime: start.getTime(),
+      _endTime: end.getTime(),
+    };
+  });
 }
 
 /**
  * Parse date strings to timestamps for fast comparison
  */
 export function parseDateRangeToTimestamps(dates: string[]): number[] {
-  return dates.map((d) => new Date(d).setHours(0, 0, 0, 0));
+  return dates.map((d) => {
+    const parsed = parseLocalDateKey(d);
+    return parsed.getTime();
+  });
 }
 
 // ============================================================================
@@ -59,11 +69,11 @@ export function parseDateRangeToTimestamps(dates: string[]): number[] {
  */
 export function getDateRange(start: string, end: string): string[] {
   const dates: string[] = [];
-  const current = new Date(start);
-  const endDate = new Date(end);
+  const current = parseLocalDateKey(start);
+  const endDate = parseLocalDateKey(end);
 
   while (current <= endDate) {
-    dates.push(current.toISOString().split("T")[0]);
+    dates.push(toLocalDateKey(current));
     current.setDate(current.getDate() + 1);
   }
 
@@ -88,7 +98,7 @@ export function isDateStrInAssignment(
   dateStr: string,
   assignment: { startDate: Date; endDate: Date }
 ): boolean {
-  const date = new Date(dateStr);
+  const date = parseLocalDateKey(dateStr);
   const start = new Date(assignment.startDate);
   const end = new Date(assignment.endDate);
 

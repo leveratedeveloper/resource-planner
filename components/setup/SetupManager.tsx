@@ -19,18 +19,21 @@ export const SetupManager = () => {
           <TabsTrigger
             value="brands"
             className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+            data-testid="setup-tab-brands"
           >
             Brands
           </TabsTrigger>
           <TabsTrigger
             value="projects"
             className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+            data-testid="setup-tab-projects"
           >
             Projects
           </TabsTrigger>
           <TabsTrigger
             value="resources"
             className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+            data-testid="setup-tab-resources"
           >
             Team
           </TabsTrigger>

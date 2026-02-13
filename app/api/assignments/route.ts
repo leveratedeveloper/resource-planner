@@ -5,6 +5,7 @@ import {
   getAssignmentsByProject,
   createAssignment 
 } from "@/lib/db/queries";
+import { AssignmentCreateSchema, formatZodErrors } from "@/lib/validations/schemas";
 
 export async function GET(request: Request) {
   try {
@@ -33,16 +34,18 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const rawBody = await request.json();
     
-    // Basic validation
-    if (!body.employeeId || !body.startDate || !body.endDate) {
+    // Validate with Zod
+    const parsed = AssignmentCreateSchema.safeParse(rawBody);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Employee ID, start date, and end date are required" },
+        { success: false, error: formatZodErrors(parsed.error) },
         { status: 400 }
       );
     }
     
+    const body = parsed.data;
     const assignment = await createAssignment({
       employeeId: body.employeeId,
       projectId: body.projectId || null,

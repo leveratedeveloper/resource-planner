@@ -74,6 +74,7 @@ export const ResourceManagement = () => {
                     <div className="relative">
                         <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
+                            data-testid="resource-search-input"
                             placeholder="Search employees..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}

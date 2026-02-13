@@ -105,6 +105,10 @@ export function EditAssignmentDialog({
 
     setHoursError(null);
     onSave({
+      employeeId: assignment.employeeId,
+      projectId: assignment.projectId,
+      startDate: assignment.startDate,
+      endDate: assignment.endDate,
       hoursPerDay: hoursPerDay.toString(),
       category,
       isBillable,
@@ -124,7 +128,7 @@ export function EditAssignmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[480px]">
+      <DialogContent className="max-w-[480px]" data-testid="edit-assignment-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div
@@ -177,6 +181,7 @@ export function EditAssignmentDialog({
               <Label htmlFor="hoursPerDay">Hours per Day</Label>
               <Input
                 id="hoursPerDay"
+                data-testid="edit-assignment-hours"
                 type="number"
                 min="0.5"
                 max="24"
@@ -196,7 +201,7 @@ export function EditAssignmentDialog({
             <div>
               <Label htmlFor="category">Category</Label>
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger id="category" className="mt-1.5">
+                <SelectTrigger id="category" className="mt-1.5" data-testid="edit-assignment-category">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -212,7 +217,7 @@ export function EditAssignmentDialog({
             <div>
               <Label htmlFor="status">Status</Label>
               <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
-                <SelectTrigger id="status" className="mt-1.5">
+                <SelectTrigger id="status" className="mt-1.5" data-testid="edit-assignment-status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -243,6 +248,7 @@ export function EditAssignmentDialog({
               <Label htmlFor="note">Note</Label>
               <Textarea
                 id="note"
+                data-testid="edit-assignment-note"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add a note..."
@@ -270,6 +276,7 @@ export function EditAssignmentDialog({
             variant="destructive"
             onClick={handleDelete}
             disabled={isDeleting}
+            data-testid="edit-assignment-delete"
           >
             {isDeleting ? (
               <>
@@ -284,7 +291,7 @@ export function EditAssignmentDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isDeleting}>
+            <Button onClick={handleSave} disabled={isDeleting} data-testid="edit-assignment-save">
               Save
             </Button>
           </div>
@@ -308,6 +315,7 @@ export function EditAssignmentDialog({
               onClick={handleConfirmDelete}
               disabled={isDeleting}
               className="bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50"
+              data-testid="edit-assignment-delete-confirm"
             >
               {isDeleting ? (
                 <>

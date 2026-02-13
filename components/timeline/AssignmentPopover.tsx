@@ -83,6 +83,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
         left: Math.min(position.x, window.innerWidth - 360),
         top: Math.min(position.y, window.innerHeight - 400),
       }}
+      data-testid="assignment-popover"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -114,6 +115,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           </label>
           <div className="flex items-center gap-1">
             <Input
+              data-testid="assignment-hours-input"
               type="number"
               value={hoursPerDay}
               onChange={(e) => setHoursPerDay(Number(e.target.value))}
@@ -131,6 +133,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           </label>
           <div className="flex items-center gap-1">
             <Input
+              data-testid="assignment-workdays-input"
               type="number"
               value={workDays}
               onChange={(e) => setWorkDays(Number(e.target.value))}
@@ -177,6 +180,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
             style={{ backgroundColor: project?.color || "#ccc" }}
           />
           <select
+            data-testid="assignment-category-select"
             value={category}
             onChange={(e) => setCategory(e.target.value as AssignmentCategory)}
             className="flex-1 border rounded px-2 py-1.5 text-sm bg-background"
@@ -241,7 +245,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           <Button variant="ghost" size="icon" disabled={isCreating}>
             <Icon icon="lucide:calendar" className="h-4 w-4" />
           </Button>
-          <Button onClick={handleSave} disabled={isCreating}>
+          <Button onClick={handleSave} disabled={isCreating} data-testid="assignment-save-button">
             {isCreating ? (
               <>
                 <span className="animate-spin mr-2">⏳</span>
@@ -256,4 +260,3 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
     </div>
   );
 };
-

@@ -65,6 +65,9 @@ export const ConflictAlert: React.FC<ConflictAlertProps> = ({
   return (
     <div
       className={`p-4 rounded-lg border ${config.borderColor} ${config.bgColor} transition-all`}
+      data-testid="conflict-alert"
+      data-conflict-type={conflict.type}
+      data-conflict-severity={conflict.severity}
     >
       <div className="flex items-start gap-3">
         <div className={`mt-0.5 ${config.color}`}>
@@ -121,6 +124,7 @@ export const ConflictAlert: React.FC<ConflictAlertProps> = ({
                   onRemoveAssignment(targetId);
                 }}
                 className="text-xs font-medium text-red-500 hover:text-red-700 flex items-center gap-1 transition-colors"
+                data-testid="conflict-remove-assignment"
               >
                 <Icon icon="lucide:trash-2" className="w-3 h-3" />
                 Remove Assignment

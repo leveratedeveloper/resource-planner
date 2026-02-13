@@ -100,6 +100,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         className={`fixed inset-0 bg-background/80 backdrop-blur-sm z-40 transition-opacity duration-300 ${
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
+        data-testid="insights-backdrop"
       />
 
       {/* Panel */}
@@ -108,6 +109,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         className={`fixed top-0 right-0 h-full w-full max-w-md bg-card border-l shadow-xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
+        data-testid="insights-panel"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
@@ -131,6 +133,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
               onClick={onRefresh}
               disabled={isAnalyzing}
               className="h-8 w-8"
+              data-testid="insights-refresh-button"
             >
               <Icon
                 icon="lucide:refresh-cw"
@@ -142,6 +145,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
               size="icon"
               onClick={onClose}
               className="h-8 w-8"
+              data-testid="insights-close-button"
             >
               <Icon icon="lucide:x" className="w-4 h-4" />
             </Button>
@@ -154,11 +158,11 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         {/* Tabs */}
         <Tabs defaultValue="capacity" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="mx-4 grid grid-cols-3">
-            <TabsTrigger value="capacity" className="text-xs">
+            <TabsTrigger value="capacity" className="text-xs" data-testid="insights-tab-capacity">
               <Icon icon="lucide:users" className="w-3.5 h-3.5 mr-1" />
               Capacity
             </TabsTrigger>
-            <TabsTrigger value="conflicts" className="text-xs relative">
+            <TabsTrigger value="conflicts" className="text-xs relative" data-testid="insights-tab-conflicts">
               <Icon icon="lucide:alert-triangle" className="w-3.5 h-3.5 mr-1" />
               Conflicts
               {criticalCount > 0 && (
@@ -167,7 +171,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="forecast" className="text-xs">
+            <TabsTrigger value="forecast" className="text-xs" data-testid="insights-tab-forecast">
               <Icon icon="lucide:calendar-range" className="w-3.5 h-3.5 mr-1" />
               Forecast
             </TabsTrigger>

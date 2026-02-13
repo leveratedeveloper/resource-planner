@@ -224,6 +224,12 @@ export function useCreateAssignment() {
         return old.map((a) => (a.id === context?.optimisticId ? data : a));
       });
     },
+
+    // Invalidate related queries so brand-filtered views stay in sync
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.brands });
+      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+    },
   });
 }
 
@@ -343,6 +349,10 @@ export function useDeleteAssignment() {
       }
     },
 
-    // No refetch needed - item already removed from cache in onMutate
+    // Invalidate related queries so brand-filtered views stay in sync
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.brands });
+      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+    },
   });
 }

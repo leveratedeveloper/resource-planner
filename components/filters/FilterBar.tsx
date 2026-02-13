@@ -39,7 +39,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const { data: departments = [], isLoading: departmentsLoading } = useDepartments();
 
   return (
-    <div className="flex items-center justify-between p-4 border-b bg-card">
+    <div className="flex items-center justify-between p-4 border-b bg-card" data-testid="filter-bar">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
            <Icon icon="lucide:filter" className="text-muted-foreground" />
@@ -50,6 +50,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <div className="relative">
           <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
+            data-testid="filter-search-input"
             placeholder="Search name, position, project, brand..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -61,7 +62,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           value={selectedBrandId || "all"}
           onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[200px]" data-testid="filter-brand-trigger">
             <SelectValue placeholder="All Brands" />
           </SelectTrigger>
           <SelectContent>
@@ -84,7 +85,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           value={selectedDepartment || "all"}
           onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[200px]" data-testid="filter-department-trigger">
             <SelectValue placeholder="All Departments" />
           </SelectTrigger>
           <SelectContent>
@@ -105,11 +106,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <Button onClick={onOpenInsights} variant="default">
+        <Button onClick={onOpenInsights} variant="default" data-testid="open-insights-button">
           <Icon icon="lucide:brain" className="mr-2 h-4 w-4" />
           AI Insights
         </Button>
-        <Button onClick={onOpenSetup} variant="outline">
+        <Button onClick={onOpenSetup} variant="outline" data-testid="open-setup-button">
           <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
           Setup / Manage Brands
         </Button>

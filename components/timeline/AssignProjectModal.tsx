@@ -182,7 +182,7 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl" data-testid="assign-project-modal">
         <DialogHeader>
           <DialogTitle>Add to project(s)</DialogTitle>
           <DialogDescription>{resource.fullName}</DialogDescription>
@@ -204,6 +204,7 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
               className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
             />
             <Input
+              data-testid="assign-project-search-input"
               placeholder="Search projects..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -253,6 +254,8 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
                         : "hover:bg-accent/50 border-transparent"
                     )}
                     onClick={() => !alreadyAssigned && toggleProject(project.id)}
+                    data-testid="assign-project-item"
+                    data-project-id={project.id}
                   >
                     {/* Project Icon */}
                     <div
@@ -334,12 +337,13 @@ export const AssignProjectModal: React.FC<AssignProjectModalProps> = ({
 
         {/* Footer */}
         <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="assign-project-cancel">
             Cancel
           </Button>
           <Button
             onClick={handleAssign}
             disabled={selectedProjectIds.size === 0 || isCreating}
+            data-testid="assign-project-confirm"
           >
             {isCreating ? (
               <>

@@ -332,12 +332,13 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   // Collapsed row content
   if (!isExpanded) {
     return (
-      <div className="flex border-b hover:bg-accent/5 transition-colors group">
+      <div className="flex border-b hover:bg-accent/5 transition-colors group" data-testid="resource-row" data-resource-id={resource.id}>
         {/* Sidebar Info - Collapsed */}
         <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
           <button 
             onClick={() => setIsExpanded(true)}
             className="text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="resource-row-expand"
           >
             <Icon icon="lucide:chevron-right" className="h-4 w-4" />
           </button>
@@ -369,13 +370,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Expanded row content
   return (
-    <div className="border-b">
+    <div className="border-b" data-testid="resource-row" data-resource-id={resource.id}>
       {/* Main Row Header */}
       <div className="flex hover:bg-accent/5 transition-colors group">
         <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
           <button 
             onClick={() => setIsExpanded(false)}
             className="text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="resource-row-collapse"
           >
             <Icon icon="lucide:chevron-down" className="h-4 w-4" />
           </button>
@@ -404,7 +406,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       </div>
 
       {/* Time Off Row */}
-      <div className="flex bg-gray-50/50 h-[50px]">
+      <div className="flex bg-gray-50/50 h-[50px]" data-testid="timeoff-row" data-resource-id={resource.id}>
         <div className="w-[250px] shrink-0 px-4 border-r sticky left-0 bg-gray-50/50 z-20 flex items-center gap-2 pl-12 h-[50px]">
           <Icon icon="lucide:calendar-off" className="h-4 w-4 text-gray-500" />
           <span className="text-sm text-gray-600">Time Off</span>
@@ -475,7 +477,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         );
         
         return (
-          <div key={project.id} className="flex bg-white">
+          <div key={project.id} className="flex bg-white" data-testid="project-row" data-resource-id={resource.id} data-project-id={project.id}>
             <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-white z-20 flex items-center gap-2 pl-12">
               <div 
                 className="w-4 h-4 rounded flex items-center justify-center"
@@ -534,6 +536,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             size="sm" 
             className="text-xs"
             onClick={() => onAssignProject?.(resource.id)}
+            data-testid="assign-project-button"
           >
             <Icon icon="lucide:plus" className="h-3 w-3 mr-1" />
             Assign Project

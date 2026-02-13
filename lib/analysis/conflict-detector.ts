@@ -15,15 +15,24 @@ import {
   AnalysisProject,
 } from "./types";
 import { getDateRange, isDateStrInAssignment } from "./capacity-analyzer";
+import { toLocalDateKey } from "./date-utils";
 
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
-let conflictIdCounter = 0;
-
-function generateConflictId(): string {
-  return `conflict-${Date.now()}-${++conflictIdCounter}`;
+/**
+ * Generate a deterministic conflict ID from its key properties.
+ * This ensures stable before/after comparison in scenario simulation.
+ */
+function generateConflictId(
+  type: ConflictType,
+  resourceId: string,
+  date: string,
+  affectedAssignments: string[]
+): string {
+  const sortedAssignments = [...affectedAssignments].sort().join(",");
+  return `conflict-${type}-${resourceId}-${date}-${sortedAssignments}`;
 }
 
 function getSeverity(type: ConflictType): ConflictSeverity {
@@ -60,15 +69,16 @@ export function detectOverallocationConflicts(
     );
 
     for (const day of overallocatedDays) {
+      const affectedAssignments = day.assignments;
       conflicts.push({
-        id: generateConflictId(),
+        id: generateConflictId("overallocation", analysis.resourceId, day.date, affectedAssignments),
         type: "overallocation",
         severity: day.utilizationPercent > 150 ? "critical" : "warning",
         resourceId: analysis.resourceId,
         resourceName: analysis.resourceName,
         date: day.date,
         description: `${analysis.resourceName} is at ${Math.round(day.utilizationPercent)}% capacity (${day.hoursAllocated}h allocated, ${day.hoursAvailable}h available)`,
-        affectedAssignments: day.assignments,
+        affectedAssignments,
         suggestedResolution: `Consider reassigning ${Math.round(day.hoursAllocated - day.hoursAvailable)}h to another team member`,
       });
     }
@@ -109,7 +119,7 @@ export function detectTimeOffConflicts(
       const overlapDates = getOverlapDates(timeOff, work);
 
       conflicts.push({
-        id: generateConflictId(),
+        id: generateConflictId("resource_unavailable", resource.id, overlapDates[0], [timeOff.id, work.id]),
         type: "resource_unavailable",
         severity: "critical",
         resourceId: resource.id,
@@ -140,12 +150,12 @@ export function detectBillableTargetConflicts(
       analysis.billablePercent < 80
     ) {
       conflicts.push({
-        id: generateConflictId(),
+        id: generateConflictId("billable_target", analysis.resourceId, toLocalDateKey(new Date()), []),
         type: "billable_target",
         severity: "info",
         resourceId: analysis.resourceId,
         resourceName: analysis.resourceName,
-        date: new Date().toISOString().split("T")[0],
+        date: toLocalDateKey(new Date()),
         description: `${analysis.resourceName} is at ${Math.round(analysis.averageUtilization)}% utilization but only ${Math.round(analysis.billablePercent)}% billable`,
         affectedAssignments: [],
         suggestedResolution: `Review non-billable assignments and consider reallocating to billable projects`,
@@ -197,7 +207,7 @@ export function detectDeadlineConflicts(
       );
 
       conflicts.push({
-        id: generateConflictId(),
+        id: generateConflictId("time_off_deadline", resource.id, formatDate(work.endDate), [work.id, timeOff.id]),
         type: "time_off_deadline",
         severity: daysBeforeTimeOff <= 1 ? "critical" : "warning",
         resourceId: resource.id,
@@ -239,8 +249,8 @@ function getOverlapDates(a1: AnalysisAssignment, a2: AnalysisAssignment): string
   ));
 
   return getDateRange(
-    start.toISOString().split("T")[0],
-    end.toISOString().split("T")[0]
+    toLocalDateKey(start),
+    toLocalDateKey(end)
   );
 }
 

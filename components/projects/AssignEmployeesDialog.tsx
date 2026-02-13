@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
+import { format } from "date-fns";
 
 interface AssignEmployeesDialogProps {
   open: boolean;
@@ -134,7 +135,7 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
 
     try {
       // Create minimal draft assignments for each selected employee
-      const today = new Date().toISOString().split("T")[0];
+      const today = format(new Date(), "yyyy-MM-dd");
 
       const promises = Array.from(selectedEmployeeIds).map((employeeId) =>
         createAssignment.mutateAsync({

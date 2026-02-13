@@ -674,10 +674,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               height: resourceRowHeight - 8,
             }}
             onMouseDown={handleDragStart}
+            data-testid="assignment-block"
+            data-assignment-id={assignment.id}
           >
             {/* Left resize handle */}
             <div
               data-resize-handle="left"
+              data-testid="assignment-resize-left"
               className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-30"
               onMouseDown={(e) => handleResizeStart('left', e)}
             />
@@ -685,6 +688,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             {/* Edit menu button */}
             <button
               data-edit-menu="true"
+              data-testid="assignment-edit-button"
               className="absolute right-3 top-1 w-5 h-5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-20 flex items-center justify-center"
               onClick={(e) => {
                 e.preventDefault();
@@ -707,6 +711,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             {/* Right resize handle */}
             <div
               data-resize-handle="right"
+              data-testid="assignment-resize-right"
               className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-30"
               onMouseDown={(e) => handleResizeStart('right', e)}
             />

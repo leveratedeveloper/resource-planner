@@ -15,6 +15,7 @@ import { Resource } from "@/types";
 import { AnalysisResult, AnalysisInput, AnalysisAssignment, AnalysisProject, AnalysisBrand } from "@/lib/analysis/types";
 import { createAnalysisWorker, AnalysisWorkerClient } from "@/lib/analysis/worker/client";
 import { AnalysisCache, analysisResultCache } from "@/lib/analysis/analysis-cache";
+import { toLocalDateKey } from "@/lib/analysis/date-utils";
 
 type UseCapacityAnalysisOptions = {
   /** Delay in ms before running analysis after data changes (debounce) */
@@ -69,8 +70,8 @@ export function useCapacityAnalysis(
       projects,
       brands,
       dateRange: {
-        start: dateRange.start.toISOString().split("T")[0],
-        end: dateRange.end.toISOString().split("T")[0],
+        start: toLocalDateKey(dateRange.start),
+        end: toLocalDateKey(dateRange.end),
       },
     }),
     [resources, assignments, projects, brands, dateRange.start, dateRange.end]

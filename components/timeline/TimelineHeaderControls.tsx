@@ -68,7 +68,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
+    <div className="flex items-center justify-between px-4 py-2 border-b bg-background" data-testid="timeline-header-controls">
       {/* Left: Navigation */}
       <div className="flex items-center gap-2">
         <Button
@@ -76,14 +76,15 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
           size="sm"
           onClick={onToday}
           className="text-xs"
+          data-testid="timeline-today-button"
         >
           Today
         </Button>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={handlePrev} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={handlePrev} className="h-8 w-8" data-testid="timeline-prev-button">
             <Icon icon="lucide:chevron-left" className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleNext} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={handleNext} className="h-8 w-8" data-testid="timeline-next-button">
             <Icon icon="lucide:chevron-right" className="h-4 w-4" />
           </Button>
         </div>
@@ -102,6 +103,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             "text-xs h-7 px-3",
             viewMode === "week" && "bg-background shadow-sm"
           )}
+          data-testid="timeline-view-week"
         >
           Week
         </Button>
@@ -113,6 +115,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             "text-xs h-7 px-3",
             viewMode === "month" && "bg-background shadow-sm"
           )}
+          data-testid="timeline-view-month"
         >
           Month
         </Button>
@@ -124,6 +127,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             "text-xs h-7 px-3",
             viewMode === "quarter" && "bg-background shadow-sm"
           )}
+          data-testid="timeline-view-quarter"
         >
           Quarter
         </Button>
@@ -135,6 +139,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             "text-xs h-7 px-3",
             viewMode === "halfYear" && "bg-background shadow-sm"
           )}
+          data-testid="timeline-view-half-year"
         >
           Half Year
         </Button>
@@ -146,6 +151,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             "text-xs h-7 px-3",
             viewMode === "year" && "bg-background shadow-sm"
           )}
+          data-testid="timeline-view-year"
         >
           Year
         </Button>
@@ -159,6 +165,7 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             size="sm"
             onClick={onToggleWeekends}
             className="text-xs gap-1"
+            data-testid="timeline-weekend-toggle"
           >
             <Icon
               icon={showWeekends ? "lucide:calendar" : "lucide:calendar-off"}

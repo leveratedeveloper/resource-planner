@@ -170,10 +170,15 @@ export function simulateScenario(
   const afterAvgUtil = calculateAverageUtilization(afterCapacity);
   const utilizationChange = afterAvgUtil - beforeAvgUtil;
 
-  const beforeConflictIds = new Set(beforeConflicts.map((c) => c.id));
-  const afterConflictIds = new Set(afterConflicts.map((c) => c.id));
-  const conflictsAdded = afterConflicts.filter((c) => !beforeConflictIds.has(c.id)).length;
-  const conflictsResolved = beforeConflicts.filter((c) => !afterConflictIds.has(c.id)).length;
+  // Compare conflicts using stable keys (deterministic IDs ensure correct delta computation)
+  const conflictKey = (c: { type: string; resourceId: string; date: string; affectedAssignments: string[] }) => {
+    const sorted = [...c.affectedAssignments].sort().join(",");
+    return `${c.type}-${c.resourceId}-${c.date}-${sorted}`;
+  };
+  const beforeConflictKeys = new Set(beforeConflicts.map(conflictKey));
+  const afterConflictKeys = new Set(afterConflicts.map(conflictKey));
+  const conflictsAdded = afterConflicts.filter((c) => !beforeConflictKeys.has(conflictKey(c))).length;
+  const conflictsResolved = beforeConflicts.filter((c) => !afterConflictKeys.has(conflictKey(c))).length;
 
   const resourcesImproved: string[] = [];
   const resourcesWorsened: string[] = [];

@@ -161,6 +161,7 @@ export const BrandSetup = () => {
           <div className="relative">
             <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              data-testid="brand-search-input"
               placeholder="Search brands..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

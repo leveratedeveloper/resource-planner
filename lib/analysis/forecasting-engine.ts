@@ -12,6 +12,7 @@ import {
   AnalysisAssignment,
 } from "./types";
 import { getDateRange, getDailyCapacity, isDateStrInAssignment } from "./capacity-analyzer";
+import { toLocalDateKey, parseLocalDateKey } from "./date-utils";
 
 /**
  * Get the Monday of a given week
@@ -45,18 +46,23 @@ function calculateWeekUtilization(
   weekEnd: Date
 ): { average: number; peak: number; atRiskResources: string[] } {
   const dateRange = getDateRange(
-    weekStart.toISOString().split("T")[0],
-    weekEnd.toISOString().split("T")[0]
+    toLocalDateKey(weekStart),
+    toLocalDateKey(weekEnd)
   );
 
   // Only include weekdays (Mon-Fri)
   const weekdays = dateRange.filter((d) => {
-    const date = new Date(d);
+    const date = parseLocalDateKey(d);
     const day = date.getDay();
     return day !== 0 && day !== 6;
   });
 
   if (weekdays.length === 0) {
+    return { average: 0, peak: 0, atRiskResources: [] };
+  }
+
+  // Guard: if no resources, return safe defaults
+  if (resources.length === 0) {
     return { average: 0, peak: 0, atRiskResources: [] };
   }
 
@@ -118,7 +124,7 @@ function determineRiskLevel(
   atRiskCount: number,
   totalResources: number
 ): "low" | "medium" | "high" {
-  const atRiskRatio = atRiskCount / totalResources;
+  const atRiskRatio = totalResources > 0 ? atRiskCount / totalResources : 0;
 
   if (avgUtilization > 95 || atRiskRatio > 0.5) {
     return "high";
@@ -179,8 +185,8 @@ export function generateForecast(
     );
 
     forecasts.push({
-      weekStart: weekStart.toISOString().split("T")[0],
-      weekEnd: weekEnd.toISOString().split("T")[0],
+      weekStart: toLocalDateKey(weekStart),
+      weekEnd: toLocalDateKey(weekEnd),
       averageUtilization: average,
       peakUtilization: peak,
       resourcesAtRisk: atRiskResources,

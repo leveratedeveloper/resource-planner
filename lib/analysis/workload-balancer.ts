@@ -6,6 +6,7 @@
 
 import { Resource } from "@/types";
 import { ResourceCapacityAnalysis, ReassignmentSuggestion, AnalysisAssignment, AnalysisProject, AnalysisBrand } from "./types";
+import { toLocalDateKey } from "./date-utils";
 
 type ScoringFactors = {
   utilizationBalance: number; // Weight: 40%
@@ -171,14 +172,15 @@ export function generateReassignmentSuggestions(
         
         // Calculate utilization changes
         const dailyHoursImpact = assignment.hoursPerDay;
-        const dailyCapacity = fromResourceData.capacity / 5;
+        const fromDailyCapacity = fromResourceData.capacity / 5;
+        const toDailyCapacity = toResourceData.capacity / 5;
         
         const fromUtilAfter =
           overResource.averageUtilization -
-          (dailyHoursImpact / dailyCapacity) * 100;
+          (dailyHoursImpact / fromDailyCapacity) * 100;
         const toUtilAfter =
           candidate.averageUtilization +
-          (dailyHoursImpact / dailyCapacity) * 100;
+          (dailyHoursImpact / toDailyCapacity) * 100;
         
         // Skip if this would overload the candidate
         if (toUtilAfter > 100) continue;
@@ -226,8 +228,8 @@ export function generateReassignmentSuggestions(
           projectName: project?.name || "Unknown Project",
           hoursPerDay: assignment.hoursPerDay,
           dateRange: {
-            start: new Date(assignment.startDate).toISOString().split("T")[0],
-            end: new Date(assignment.endDate).toISOString().split("T")[0],
+            start: toLocalDateKey(new Date(assignment.startDate)),
+            end: toLocalDateKey(new Date(assignment.endDate)),
           },
           score: totalScore,
           reasoning: generateReasoning(
