@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { format, differenceInDays } from 'date-fns';
 import type { Assignment } from '@/lib/query/hooks/useAssignments';
 import { useProjects } from '@/lib/query/hooks/useProjects';
@@ -80,15 +80,6 @@ export function EditAssignmentDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hoursError, setHoursError] = useState<string | null>(null);
 
-  // Reset form when assignment changes
-  useEffect(() => {
-    setHoursPerDay(parseFloat(assignment.hoursPerDay) || 8);
-    setCategory(assignment.category || 'Development');
-    setIsBillable(assignment.isBillable ?? true);
-    setStatus(assignment.status || 'draft');
-    setNote(assignment.note || '');
-  }, [assignment]);
-
   const project = projects?.find((p) => p.id === assignment.projectId);
   const employee = employees?.find((e) => e.id === assignment.employeeId);
   const createdBy = employees?.find((e) => e.id === assignment.createdById);
@@ -128,7 +119,10 @@ export function EditAssignmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[480px]" data-testid="edit-assignment-dialog">
+      <DialogContent
+        className="max-w-[480px] max-h-[90vh] overflow-y-auto"
+        data-testid="edit-assignment-dialog"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div

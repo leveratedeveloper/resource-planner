@@ -97,7 +97,10 @@ export const CapacityTab: React.FC<CapacityTabProps> = ({
           value={filterStatus}
           onValueChange={(val) => setFilterStatus(val as FilterStatus)}
         >
-          <SelectTrigger className="w-[140px] h-8 text-xs">
+          <SelectTrigger
+            className="w-[140px] h-8 text-xs"
+            aria-label="Filter capacity by status"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -109,7 +112,10 @@ export const CapacityTab: React.FC<CapacityTabProps> = ({
         </Select>
 
         <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortBy)}>
-          <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectTrigger
+            className="w-[130px] h-8 text-xs"
+            aria-label="Sort capacity resources"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -2,7 +2,7 @@
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
-import { useEmployees, useBrands } from "@/lib/query/hooks";
+import { useEmployees, useBrands, useProjects } from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
@@ -22,6 +22,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [] } = useBrands();
   const { data: allAssignments = [] } = useAssignments();
+  const { data: projects = [] } = useProjects();
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   
@@ -130,7 +131,12 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
        );
        const assignmentIds = new Set(
          allAssignments
-           .filter((a) => a.project?.brand?.id === brandId)
+           .filter((a) => {
+             // Use nested data when available, fall back to project map for optimistic entries
+             if (a.project?.brand?.id === brandId) return true;
+             const project = projects.find((p) => p.id === a.projectId);
+             return project?.brandId === brandId;
+           })
            .map((a) => a.employeeId)
        );
        filtered = filtered.filter(
@@ -175,7 +181,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
 
     return filtered;
-  }, [brandId, department, searchQuery, employees, brands, allAssignments]);
+  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
@@ -242,6 +248,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           onScroll={handleHeaderScroll}
           className="flex-1 overflow-x-auto scrollbar-hide"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          tabIndex={0}
+          aria-label="Timeline day headers"
         >
           <div className="flex" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day) => {

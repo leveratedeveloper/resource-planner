@@ -83,7 +83,9 @@ Output format:
     "recommendation": "Should proceed" | "Proceed with caution" | "Not recommended",
     "reasoning": "Detailed explanation"
   }
-}`,
+}
+
+Return valid json only. Do not include markdown or additional text.`,
 };
 
 export const formatCapacityContext = (data: {

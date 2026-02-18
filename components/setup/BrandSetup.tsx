@@ -202,7 +202,7 @@ export const BrandSetup = () => {
                          <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
                          <CardTitle className="text-lg font-bold flex items-center gap-2">
                            {brand.name}
-                           <button onClick={() => handleOpenView(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1">
+                           <button onClick={() => handleOpenView(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1" aria-label={`View ${brand.name} details`}>
                               <Icon icon="lucide:eye" className="h-4 w-4" />
                            </button>
                          </CardTitle>

@@ -62,7 +62,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           value={selectedBrandId || "all"}
           onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
         >
-          <SelectTrigger className="w-[200px]" data-testid="filter-brand-trigger">
+          <SelectTrigger
+            className="w-[200px]"
+            data-testid="filter-brand-trigger"
+            aria-label="Filter by brand"
+          >
             <SelectValue placeholder="All Brands" />
           </SelectTrigger>
           <SelectContent>
@@ -85,7 +89,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           value={selectedDepartment || "all"}
           onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
         >
-          <SelectTrigger className="w-[200px]" data-testid="filter-department-trigger">
+          <SelectTrigger
+            className="w-[200px]"
+            data-testid="filter-department-trigger"
+            aria-label="Filter by department"
+          >
             <SelectValue placeholder="All Departments" />
           </SelectTrigger>
           <SelectContent>

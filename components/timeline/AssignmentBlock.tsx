@@ -690,6 +690,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               data-edit-menu="true"
               data-testid="assignment-edit-button"
               className="absolute right-3 top-1 w-5 h-5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-20 flex items-center justify-center"
+              aria-label="Edit assignment"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -731,7 +732,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               </div>
             )}
             {assignment.note && (
-              <div className="mt-2 text-xs text-slate-400 italic border-t border-slate-700 pt-2">
+              <div className="mt-2 text-xs text-slate-400 italic border-t border-slate-700 pt-2 line-clamp-3 overflow-hidden">
                 "{assignment.note}"
               </div>
             )}
@@ -740,6 +741,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       </Tooltip>
 
       <EditAssignmentDialog
+        key={`${assignment.id}-${isEditDialogOpen ? "open" : "closed"}`}
         assignment={assignment}
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}

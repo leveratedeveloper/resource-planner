@@ -81,10 +81,24 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
           Today
         </Button>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={handlePrev} className="h-8 w-8" data-testid="timeline-prev-button">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePrev}
+            className="h-8 w-8"
+            data-testid="timeline-prev-button"
+            aria-label="Previous timeline period"
+          >
             <Icon icon="lucide:chevron-left" className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleNext} className="h-8 w-8" data-testid="timeline-next-button">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleNext}
+            className="h-8 w-8"
+            data-testid="timeline-next-button"
+            aria-label="Next timeline period"
+          >
             <Icon icon="lucide:chevron-right" className="h-4 w-4" />
           </Button>
         </div>

@@ -147,7 +147,10 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
           value={filterSeverity}
           onValueChange={(val) => setFilterSeverity(val as FilterSeverity)}
         >
-          <SelectTrigger className="w-[120px] h-8 text-xs">
+          <SelectTrigger
+            className="w-[120px] h-8 text-xs"
+            aria-label="Filter conflicts by severity"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -159,7 +162,10 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
         </Select>
 
         <Select value={filterType} onValueChange={(val) => setFilterType(val as FilterType)}>
-          <SelectTrigger className="w-[150px] h-8 text-xs">
+          <SelectTrigger
+            className="w-[150px] h-8 text-xs"
+            aria-label="Filter conflicts by type"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

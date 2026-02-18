@@ -10,6 +10,18 @@ import { useProjects } from "@/lib/query/hooks/useProjects";
 import { AssignmentCategory } from "@/types";
 import { format } from "date-fns";
 
+// Count weekdays (Mon–Fri) between two dates, inclusive. Returns at least 1.
+function countWeekdays(start: Date, end: Date): number {
+  let count = 0;
+  const current = new Date(start);
+  while (current <= end) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) count++;
+    current.setDate(current.getDate() + 1);
+  }
+  return Math.max(1, count);
+}
+
 interface AssignmentPopoverProps {
   resourceId: string;
   projectId: string;
@@ -39,8 +51,9 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
 }) => {
   const { data: employees = [] } = useEmployees();
   const { data: projects = [] } = useProjects();
-  const [hoursPerDay, setHoursPerDay] = useState(8);
-  const [workDays, setWorkDays] = useState(5);
+  const [hoursInput, setHoursInput] = useState("8");
+  const [hoursError, setHoursError] = useState<string | null>(null);
+  const [workDays, setWorkDays] = useState(() => countWeekdays(startDate, endDate));
   const [category, setCategory] = useState<AssignmentCategory>("Development");
   const [isBillable, setIsBillable] = useState(true);
   const [repeat, setRepeat] = useState(false);
@@ -49,17 +62,24 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
 
   const resource = employees.find((r) => r.id === resourceId);
   const project = projects.find((p) => p.id === projectId);
-  
+
   // Check if scheduling on a weekend
   const isWeekendSchedule = startDate.getDay() === 0 || startDate.getDay() === 6;
   const dayName = format(startDate, "EEEE"); // e.g., "Saturday"
 
-  // Calculate total effort
-  const totalHours = hoursPerDay * workDays;
+  // Parse hours — normalize comma decimal separator (e.g. "0,5" → 0.5)
+  const parsedHours = parseFloat(hoursInput.replace(",", "."));
+
+  // Calculate total effort (guard against NaN)
+  const totalHours = isNaN(parsedHours) ? 0 : parsedHours * workDays;
 
   const handleSave = () => {
+    if (isNaN(parsedHours) || parsedHours <= 0 || parsedHours > 24) {
+      setHoursError("Hours per day must be between 0.5 and 24");
+      return;
+    }
     onSave({
-      hoursPerDay,
+      hoursPerDay: parsedHours,
       workDays,
       category,
       isBillable,
@@ -102,13 +122,13 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
             </>
           )}
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close popover">
           <Icon icon="lucide:x" className="h-4 w-4" />
         </button>
       </div>
 
       {/* Effort Row */}
-      <div className="flex items-center gap-4 mb-4">
+      <div className="flex items-start gap-4 mb-4">
         <div className="flex-1">
           <label className="text-xs text-muted-foreground mb-1 block">
             Effort
@@ -116,15 +136,20 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           <div className="flex items-center gap-1">
             <Input
               data-testid="assignment-hours-input"
-              type="number"
-              value={hoursPerDay}
-              onChange={(e) => setHoursPerDay(Number(e.target.value))}
-              className="w-16 text-center"
-              min={1}
-              max={24}
+              type="text"
+              inputMode="decimal"
+              value={hoursInput}
+              onChange={(e) => {
+                setHoursInput(e.target.value);
+                setHoursError(null);
+              }}
+              className={`w-16 text-center${hoursError ? " border-red-500 focus-visible:ring-red-500" : ""}`}
             />
             <span className="text-xs text-muted-foreground">h/d</span>
           </div>
+          {hoursError && (
+            <p className="text-xs text-red-500 mt-1">{hoursError}</p>
+          )}
         </div>
 
         <div className="flex-1">
@@ -144,12 +169,14 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
               <button
                 className="text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setWorkDays((w) => w + 1)}
+                aria-label="Increase work days"
               >
                 <Icon icon="lucide:chevron-up" className="h-3 w-3" />
               </button>
               <button
                 className="text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setWorkDays((w) => Math.max(1, w - 1))}
+                aria-label="Decrease work days"
               >
                 <Icon icon="lucide:chevron-down" className="h-3 w-3" />
               </button>
@@ -242,7 +269,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           Cancel
         </Button>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" disabled={isCreating}>
+          <Button variant="ghost" size="icon" disabled={isCreating} aria-label="Open calendar">
             <Icon icon="lucide:calendar" className="h-4 w-4" />
           </Button>
           <Button onClick={handleSave} disabled={isCreating} data-testid="assignment-save-button">

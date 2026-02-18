@@ -134,6 +134,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
               disabled={isAnalyzing}
               className="h-8 w-8"
               data-testid="insights-refresh-button"
+              aria-label="Refresh insights"
             >
               <Icon
                 icon="lucide:refresh-cw"
@@ -146,6 +147,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
               onClick={onClose}
               className="h-8 w-8"
               data-testid="insights-close-button"
+              aria-label="Close insights panel"
             >
               <Icon icon="lucide:x" className="w-4 h-4" />
             </Button>

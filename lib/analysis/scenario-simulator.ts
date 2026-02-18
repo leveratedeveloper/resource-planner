@@ -81,8 +81,26 @@ function applyScenarioChanges(
         break;
 
       case "add_assignment":
-        // For add, the changes should contain a full assignment
-        // This is a simplified version
+        if (
+          change.changes.resourceId &&
+          change.changes.startDate &&
+          change.changes.endDate &&
+          change.changes.projectId
+        ) {
+          const newAssignment: AnalysisAssignment = {
+            id: `scenario-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            resourceId: change.changes.resourceId,
+            projectId: change.changes.projectId,
+            startDate: new Date(change.changes.startDate),
+            endDate: new Date(change.changes.endDate),
+            hoursPerDay: change.changes.hoursPerDay ?? 8,
+            isTimeOff: false,
+            category: "Scenario",
+            isBillable: true,
+            note: "Scenario-simulated assignment",
+          };
+          modifiedAssignments.push(newAssignment);
+        }
         break;
     }
   }

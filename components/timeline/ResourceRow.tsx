@@ -223,7 +223,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Handle drag complete - open popover
   const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date, position: { x: number; y: number }) => {
-    setPopoverData({ projectId, startDate: startDay, endDate: endDay, position });
+    // Clamp end date to nearest preceding weekday so weekend drags land on Friday
+    let clampedEnd = endDay;
+    while (clampedEnd.getDay() === 0 || clampedEnd.getDay() === 6) {
+      clampedEnd = addDays(clampedEnd, -1);
+    }
+    setPopoverData({ projectId, startDate: startDay, endDate: clampedEnd, position });
   }, []);
 
   // Handle save assignment
@@ -293,9 +298,19 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Handle assignment update (resize/drag or field updates)
   const handleUpdateAssignment = useCallback((id: string, updates: any) => {
+    // Look up the current assignment to provide required fields for strict PUT schema
+    const currentAssignment = resourceAssignments.find((a) => a.id === id);
+
     const payload: any = { id };
 
-    // Handle date conversions if updates contain Date objects
+    // Always include required fields from current assignment as defaults
+    if (currentAssignment) {
+      payload.employeeId = currentAssignment.employeeId;
+      payload.startDate = currentAssignment.startDate;
+      payload.endDate = currentAssignment.endDate;
+    }
+
+    // Handle date conversions if updates contain Date objects (overrides defaults)
     if (updates.startDate) {
       payload.startDate = updates.startDate instanceof Date
         ? toLocalDateString(updates.startDate)
@@ -306,6 +321,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         ? toLocalDateString(updates.endDate)
         : updates.endDate;
     }
+
+    // Forward employeeId/projectId if explicitly passed (e.g., from EditAssignmentDialog)
+    if (updates.employeeId) payload.employeeId = updates.employeeId;
+    if (updates.projectId !== undefined) payload.projectId = updates.projectId;
 
     // Add other fields
     if (updates.hoursPerDay !== undefined) payload.hoursPerDay = updates.hoursPerDay;
@@ -321,7 +340,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         setUpdatingAssignmentId(null);
       },
     });
-  }, [updateAssignmentMutation]);
+  }, [updateAssignmentMutation, resourceAssignments]);
 
   // Handle assignment delete
   const handleDeleteAssignment = useCallback((id: string) => {
@@ -339,6 +358,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             onClick={() => setIsExpanded(true)}
             className="text-muted-foreground hover:text-foreground transition-colors"
             data-testid="resource-row-expand"
+            aria-label="Expand resource row"
           >
             <Icon icon="lucide:chevron-right" className="h-4 w-4" />
           </button>
@@ -378,6 +398,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             onClick={() => setIsExpanded(false)}
             className="text-muted-foreground hover:text-foreground transition-colors"
             data-testid="resource-row-collapse"
+            aria-label="Collapse resource row"
           >
             <Icon icon="lucide:chevron-down" className="h-4 w-4" />
           </button>
