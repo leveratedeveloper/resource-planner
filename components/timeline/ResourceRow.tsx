@@ -223,12 +223,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Handle drag complete - open popover
   const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date, position: { x: number; y: number }) => {
-    // Clamp end date to nearest preceding weekday so weekend drags land on Friday
-    let clampedEnd = endDay;
-    while (clampedEnd.getDay() === 0 || clampedEnd.getDay() === 6) {
-      clampedEnd = addDays(clampedEnd, -1);
-    }
-    setPopoverData({ projectId, startDate: startDay, endDate: clampedEnd, position });
+    setPopoverData({ projectId, startDate: startDay, endDate: endDay, position });
   }, []);
 
   // Handle save assignment

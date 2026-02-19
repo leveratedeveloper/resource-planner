@@ -48,6 +48,8 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   const [showWeekendConfirm, setShowWeekendConfirm] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const dragStartIndex = useRef<number | null>(null);
+  // Ref keeps dragEndIndex fresh inside the handleMouseUp closure (avoids stale capture)
+  const dragEndIndexRef = useRef<number | null>(null);
   const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
 
   const dayIndex = days.findIndex((d) => d.toISOString() === day.toISOString());
@@ -92,6 +94,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       e.preventDefault();
       setIsDragging(true);
       dragStartIndex.current = dayIndex;
+      dragEndIndexRef.current = dayIndex;
       setDragEndIndex(dayIndex);
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -100,8 +103,17 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
 
         const rect = container.getBoundingClientRect();
         const x = moveEvent.clientX - rect.left;
-        const newIndex = Math.max(0, Math.min(days.length - 1, Math.floor(x / cellWidth)));
-        setDragEndIndex(newIndex);
+        const rawIndex = Math.max(0, Math.min(days.length - 1, Math.floor(x / cellWidth)));
+
+        // Freeze at the last valid weekday — don't advance the selection into
+        // weekend columns. This preserves the user's intended range rather than
+        // snapping forward to the Friday before the weekend.
+        if (days[rawIndex].getDay() === 0 || days[rawIndex].getDay() === 6) {
+          return;
+        }
+
+        dragEndIndexRef.current = rawIndex;
+        setDragEndIndex(rawIndex);
       };
 
       const handleMouseUp = (upEvent: MouseEvent) => {
@@ -109,8 +121,11 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         document.removeEventListener("mouseup", handleMouseUp);
 
         if (dragStartIndex.current !== null) {
-          const start = Math.min(dragStartIndex.current, dragEndIndex ?? dragStartIndex.current);
-          const end = Math.max(dragStartIndex.current, dragEndIndex ?? dragStartIndex.current);
+          // Use the ref — the state value in this closure is stale (captured at
+          // click time before any mousemove updates ran).
+          const endIdx = dragEndIndexRef.current ?? dragStartIndex.current;
+          const start = Math.min(dragStartIndex.current, endIdx);
+          const end = Math.max(dragStartIndex.current, endIdx);
 
           onDragComplete(days[start], days[end], {
             x: upEvent.clientX,
@@ -120,6 +135,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
 
         setIsDragging(false);
         setDragEndIndex(null);
+        dragEndIndexRef.current = null;
         dragStartIndex.current = null;
         setShowWeekendConfirm(false);
       };

@@ -89,7 +89,7 @@ export function EditAssignmentDialog({
   const duration = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
 
   const handleSave = () => {
-    if (hoursPerDay <= 0 || hoursPerDay > 24) {
+    if (isNaN(hoursPerDay) || hoursPerDay <= 0 || hoursPerDay > 24) {
       setHoursError('Hours per day must be between 0.5 and 24');
       return;
     }
@@ -180,7 +180,7 @@ export function EditAssignmentDialog({
                 min="0.5"
                 max="24"
                 step="0.5"
-                value={hoursPerDay}
+                value={isNaN(hoursPerDay) ? "" : hoursPerDay}
                 onChange={(e) => {
                   setHoursPerDay(parseFloat(e.target.value));
                   setHoursError(null);
