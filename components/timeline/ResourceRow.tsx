@@ -34,6 +34,17 @@ interface AllocationCellProps {
   isWeekView?: boolean;
 }
 
+// Helper function to safely parse hours - returns 0 for invalid values
+// Handles string | number | null | undefined inputs
+// Supports both dot (.) and comma (,) as decimal separator
+const parseHoursSafe = (hours?: string | number | null): number => {
+  if (hours === null || hours === undefined) return 0;
+  // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
+  const normalized = String(hours).replace(',', '.');
+  const parsed = parseFloat(normalized);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 // Memoized Allocation Cell Component for performance
 const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   day,
@@ -81,7 +92,7 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
       const assignEnd = startOfDay(new Date(assignment.endDate));
 
       if (currentDay >= assignStart && currentDay <= assignEnd) {
-        return total + parseFloat(assignment.hoursPerDay);
+        return total + parseHoursSafe(assignment.hoursPerDay);
       }
 
       return total;
@@ -118,7 +129,9 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     );
   }
 
-  const percentage = dailyHours / dailyCapacity;
+  // Ensure dailyHours is a valid number before calculating percentage
+  const safeDailyHours = isNaN(dailyHours) ? 0 : dailyHours;
+  const percentage = dailyCapacity > 0 ? safeDailyHours / dailyCapacity : 0;
   
   // Styling based on percentage
   let bgClass = "";
@@ -488,8 +501,13 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       {resourceProjects.map((project) => {
         const brand = brands.find(b => b.id === project.brandId);
         // Filter out 0-hour placeholder assignments from timeline (they exist just to keep project in list)
+        // Keep assignment visible even if hoursPerDay is NaN (defensive) - parseHoursSafe keeps allocation stable
         const projectAssignments = resourceAssignments.filter(
-          a => a.projectId === project.id && !a.isTimeOff && parseFloat(a.hoursPerDay) > 0
+          a => a.projectId === project.id && !a.isTimeOff && (() => {
+            const hours = parseFloat(a.hoursPerDay);
+            // If NaN, show the block (defensive) - Step 2 guards keep allocation stable
+            return isNaN(hours) ? true : hours > 0;
+          })()
         );
         
         return (

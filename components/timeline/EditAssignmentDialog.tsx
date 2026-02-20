@@ -72,7 +72,7 @@ export function EditAssignmentDialog({
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
 
-  const [hoursPerDay, setHoursPerDay] = useState(parseFloat(assignment.hoursPerDay) || 8);
+  const [hoursInput, setHoursInput] = useState(assignment.hoursPerDay ?? "8");
   const [category, setCategory] = useState(assignment.category || 'Development');
   const [isBillable, setIsBillable] = useState(assignment.isBillable ?? true);
   const [status, setStatus] = useState(assignment.status || 'draft');
@@ -89,7 +89,12 @@ export function EditAssignmentDialog({
   const duration = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
 
   const handleSave = () => {
-    if (isNaN(hoursPerDay) || hoursPerDay <= 0 || hoursPerDay > 24) {
+    // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
+    const normalizedInput = hoursInput.replace(',', '.');
+    const parsed = parseFloat(normalizedInput);
+
+    // FIXED: Use < 0.5 to match min="0.5" attribute and error message
+    if (hoursInput.trim() === '' || isNaN(parsed) || parsed < 0.5 || parsed > 24) {
       setHoursError('Hours per day must be between 0.5 and 24');
       return;
     }
@@ -100,7 +105,7 @@ export function EditAssignmentDialog({
       projectId: assignment.projectId,
       startDate: assignment.startDate,
       endDate: assignment.endDate,
-      hoursPerDay: hoursPerDay.toString(),
+      hoursPerDay: parsed.toString(),
       category,
       isBillable,
       status,
@@ -180,9 +185,9 @@ export function EditAssignmentDialog({
                 min="0.5"
                 max="24"
                 step="0.5"
-                value={isNaN(hoursPerDay) ? "" : hoursPerDay}
+                value={hoursInput}
                 onChange={(e) => {
-                  setHoursPerDay(parseFloat(e.target.value));
+                  setHoursInput(e.target.value);
                   setHoursError(null);
                 }}
                 className={cn("mt-1.5", hoursError && "border-destructive")}
