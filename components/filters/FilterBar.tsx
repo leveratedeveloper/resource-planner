@@ -39,8 +39,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const { data: departments = [], isLoading: departmentsLoading } = useDepartments();
 
   return (
-    <div className="flex items-center justify-between p-4 border-b bg-card" data-testid="filter-bar">
-      <div className="flex items-center gap-4">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-0">
         <div className="flex items-center gap-2">
            <Icon icon="lucide:filter" className="text-muted-foreground" />
            <span className="font-medium">Filters:</span>
@@ -54,7 +54,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             placeholder="Search name, position, project, brand..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 w-80"
+            className="pl-9 w-full sm:w-auto min-w-[200px]"
           />
         </div>
         
@@ -63,7 +63,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
         >
           <SelectTrigger
-            className="w-[200px]"
+            className="w-full sm:w-auto min-w-[140px] max-w-[200px]"
             data-testid="filter-brand-trigger"
             aria-label="Filter by brand"
           >
@@ -90,7 +90,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
         >
           <SelectTrigger
-            className="w-[200px]"
+            className="w-full sm:w-auto min-w-[140px] max-w-[200px]"
             data-testid="filter-department-trigger"
             aria-label="Filter by department"
           >
@@ -113,7 +113,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </Select>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
         <Button onClick={onOpenInsights} variant="default" data-testid="open-insights-button">
           <Icon icon="lucide:brain" className="mr-2 h-4 w-4" />
           AI Insights
