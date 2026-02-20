@@ -7,7 +7,7 @@ import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays } from "date-fns";
+import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -25,24 +25,48 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const { data: projects = [] } = useProjects();
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
-  
+
   // Modal state for assigning projects
   const [assignModalResourceId, setAssignModalResourceId] = useState<string | null>(null);
-  
+
   // Timeline state
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
+  const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
   
   // Initialize dates client-side to avoid hydration mismatch
   useEffect(() => {
     setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
-    
+
     // Load weekend preference from localStorage
     const savedShowWeekends = localStorage.getItem('showWeekends');
     if (savedShowWeekends !== null) {
       setShowWeekends(savedShowWeekends === 'true');
     }
+  }, []);
+
+  // Track container width with ResizeObserver on parent container
+  useEffect(() => {
+    const headerContainer = headerScrollRef.current?.parentElement;
+    if (!headerContainer) return;
+
+    const updateWidth = () => {
+      setContainerWidth(headerContainer.offsetWidth);
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateWidth();
+    });
+
+    resizeObserver.observe(headerContainer);
+
+    // Initial measurement
+    updateWidth();
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // Calculate days/weeks based on view mode and current date
@@ -51,14 +75,16 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     switch (viewMode) {
       case "week": {
-        // Show 4 weeks (28 days)
-        const endDate = addDays(currentDate, 27);
-        return eachDayOfInterval({ start: currentDate, end: endDate });
+        // Show 7 days (Mon-Sun) - start from Monday of current week
+        const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+        const weekEnd = addDays(weekStart, 6);
+        return eachDayOfInterval({ start: weekStart, end: weekEnd });
       }
       case "month": {
-        // Show 6 weeks (42 days)
-        const endDate = addDays(currentDate, 41);
-        return eachDayOfInterval({ start: currentDate, end: endDate });
+        // Show full month grid (from 1st to last day of month)
+        const monthStart = startOfMonth(currentDate);
+        const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
+        return eachDayOfInterval({ start: monthStart, end: monthEnd });
       }
       case "quarter": {
         // Show 13 weeks (Mondays only)
@@ -104,17 +130,14 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
   }, [allDays, showWeekends, viewMode]);
 
-  // Cell width based on view mode
+  // Cell width based on view mode - calculated to fill available space exactly
   const cellWidth = useMemo(() => {
-    switch (viewMode) {
-      case "week": return 100;
-      case "month": return 40;
-      case "quarter": return 80;
-      case "halfYear": return 60;
-      case "year": return 40;
-      default: return 100;
-    }
-  }, [viewMode]);
+    const dayCount = days.length;
+    if (dayCount === 0) return 100;
+
+    // Simply divide container width by number of days - no minimum
+    return Math.floor(containerWidth / dayCount);
+  }, [days.length, containerWidth]);
 
   // Determine if we're in week view mode (where each cell = 1 week)
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
@@ -201,8 +224,32 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   }, []);
 
   const handleToday = useCallback(() => {
-    setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  }, []);
+    const today = new Date();
+    setCurrentDate(startOfWeek(today, { weekStartsOn: 1 }));
+
+    // Scroll to center today's date
+    setTimeout(() => {
+      if (bodyScrollRef.current) {
+        const todayIndex = days.findIndex(d =>
+          startOfDay(d).getTime() === startOfDay(today).getTime()
+        );
+
+        if (todayIndex >= 0) {
+          const container = bodyScrollRef.current;
+          const containerWidth = container.offsetWidth;
+          const cellWidth = containerWidth / days.length;
+
+          // Calculate position to center today: today's position - half container width + half cell width
+          const scrollLeft = (todayIndex * cellWidth) - (containerWidth / 2) + (cellWidth / 2);
+
+          container.scrollTo({
+            left: Math.max(0, scrollLeft),
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 100); // Small delay to ensure DOM is updated
+  }, [days]);
 
   const handleDateChange = useCallback((date: Date) => {
     setCurrentDate(startOfWeek(date, { weekStartsOn: 1 }));
@@ -251,7 +298,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           tabIndex={0}
           aria-label="Timeline day headers"
         >
-          <div className="flex" style={{ width: `${days.length * cellWidth}px` }}>
+          <div className="flex w-full">
             {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
               const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
@@ -260,10 +307,9 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                 <div
                   key={day.toISOString()}
                   className={cn(
-                    "shrink-0 border-r p-2 text-center text-sm",
+                    "flex-1 border-r p-2 text-center text-sm min-w-0",
                     isWeekend && !isWeekView ? "bg-muted/50" : "bg-background"
                   )}
-                  style={{ width: cellWidth }}
                   data-testid="timeline-day-cell"
                   data-date={format(day, "yyyy-MM-dd")}
                   data-weekend={String(isWeekend)}
@@ -292,7 +338,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         onScroll={handleBodyScroll}
         className="flex-1 overflow-auto"
       >
-        <div className="flex flex-col" style={{ width: `${250 + days.length * cellWidth}px` }}>
+        <div className="flex flex-col w-full">
           {isLoadingEmployees ? (
              <div className="space-y-0">
                {[1, 2, 3, 4, 5].map((i) => (

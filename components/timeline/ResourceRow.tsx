@@ -116,15 +116,11 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   );
 
   if (hasTimeOff) {
-    // Only show label if cells are wide enough
-    const showLabel = cellWidth >= 40;
-
     return (
       <div
-        className="shrink-0 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
-        style={{ width: cellWidth }}
+        className="flex-1 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
       >
-        {showLabel && (cellWidth >= 60 ? "Time Off" : "TO")}
+        Time Off
       </div>
     );
   }
@@ -132,7 +128,7 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   // Ensure dailyHours is a valid number before calculating percentage
   const safeDailyHours = isNaN(dailyHours) ? 0 : dailyHours;
   const percentage = dailyCapacity > 0 ? safeDailyHours / dailyCapacity : 0;
-  
+
   // Styling based on percentage
   let bgClass = "";
   let textClass = "text-white"; // Default white text for darker backgrounds
@@ -141,9 +137,8 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
 
   if (percentage <= 0) {
     return (
-      <div 
-        className="shrink-0 h-[60px] border-r border-dashed"
-        style={{ width: cellWidth }}
+      <div
+        className="flex-1 h-[60px] border-r border-dashed"
       />
     );
   } else if (percentage <= 1) {
@@ -174,20 +169,16 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     borderClass = "border-t-4 border-red-500";
   }
 
-  // Only show label if cells are wide enough (e.g. not Month view)
-  const showLabel = cellWidth >= 60;
-
   return (
-    <div 
+    <div
       className={cn(
-        "shrink-0 h-[60px] border-r border-white/20 flex items-center justify-center text-xs font-bold transition-all",
+        "flex-1 h-[60px] border-r border-white/20 flex items-center justify-center text-xs font-bold transition-all",
         bgClass,
         textClass,
         borderClass
       )}
-      style={{ width: cellWidth }}
     >
-      {showLabel && label}
+      {label}
     </div>
   );
 });
@@ -585,8 +576,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           {days.map((day) => (
             <div
               key={day.toISOString()}
-              className="shrink-0 h-[40px] border-r border-dashed"
-              style={{ width: cellWidth }}
+              className="flex-1 h-[40px] border-r border-dashed min-w-0"
             />
           ))}
         </div>

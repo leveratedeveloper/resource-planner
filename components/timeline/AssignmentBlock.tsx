@@ -76,15 +76,72 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const timelineStart = startOfDay(days[0]);
   const today = startOfDay(new Date());
 
+  // Get the timeline end date for clipping
+  const timelineEnd = startOfDay(days[days.length - 1]);
+
+  // Define all callbacks BEFORE any conditional logic (to avoid hooks order issues)
+  const hasTimeOffOnDate = useCallback((date: Date) => {
+    return timeOffAssignments.some(a =>
+      isWithinInterval(startOfDay(date), {
+        start: startOfDay(new Date(a.startDate)),
+        end: startOfDay(new Date(a.endDate))
+      })
+    );
+  }, [timeOffAssignments]);
+
+  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
+    return timeOffAssignments.some(a => {
+      if (a.id === assignment.id) return false;
+      const timeOffStart = startOfDay(new Date(a.startDate));
+      const timeOffEnd = startOfDay(new Date(a.endDate));
+      const checkStart = startOfDay(rangeStart);
+      const checkEnd = startOfDay(rangeEnd);
+      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
+    });
+  }, [timeOffAssignments, assignment.id]);
+
+  const findVisibleIndex = useCallback((date: Date) => {
+    const dateMs = startOfDay(date).getTime();
+    return days.findIndex(d => startOfDay(d).getTime() === dateMs);
+  }, [days]);
+
+  const findCorrectVisibleIndex = useCallback((date: Date) => {
+    if (isWeekView) {
+      const dateWeek = startOfWeek(date, { weekStartsOn: 1 });
+      const exactIdx = days.findIndex(d => startOfDay(d).getTime() === dateWeek.getTime());
+      if (exactIdx >= 0) return exactIdx;
+      const dateWeekTime = dateWeek.getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= dateWeekTime) {
+          return i;
+        }
+      }
+      return -1;
+    } else {
+      const exactIdx = findVisibleIndex(date);
+      if (exactIdx >= 0) return exactIdx;
+      const dateTime = startOfDay(date).getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= dateTime) {
+          return i;
+        }
+      }
+      return -1;
+    }
+  }, [days, findVisibleIndex, isWeekView]);
+
+  // Use refs for callbacks to avoid stale closures
+  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
+  hasTimeOffInRangeRef.current = hasTimeOffInRange;
+  const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
+  hasTimeOffOnDateRef.current = hasTimeOffOnDate;
+
   let offsetDays: number;
   let durationDays: number;
   let startVisibleIdx: number;
   let endVisibleIdx: number;
   let visibleDuration: number;
   let useVisibleIndices: boolean;
-
-  // Get the timeline end date for clipping
-  const timelineEnd = startOfDay(days[days.length - 1]);
 
   if (isWeekView) {
     // In week view, each cell represents a week (Monday)
@@ -231,81 +288,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const totalHours = workingDays * hoursPerDay;
   const formattedStartDate = format(startDate, "dd MMM");
   const formattedEndDate = format(endDate, "dd MMM");
-
-  // Check if a specific date has time-off
-  const hasTimeOffOnDate = useCallback((date: Date) => {
-    return timeOffAssignments.some(a => 
-      isWithinInterval(startOfDay(date), {
-        start: startOfDay(new Date(a.startDate)),
-        end: startOfDay(new Date(a.endDate))
-      })
-    );
-  }, [timeOffAssignments]);
-
-  // Check if any date in a range has time-off (for detecting overlap)
-  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
-    // Check if any time-off assignment overlaps with the given range
-    // Exclude the current assignment if it's a time-off assignment being resized
-    return timeOffAssignments.some(a => {
-      // Skip checking against the current assignment itself
-      if (a.id === assignment.id) return false;
-
-      const timeOffStart = startOfDay(new Date(a.startDate));
-      const timeOffEnd = startOfDay(new Date(a.endDate));
-      const checkStart = startOfDay(rangeStart);
-      const checkEnd = startOfDay(rangeEnd);
-
-      // Two ranges overlap if one starts before the other ends AND ends after the other starts
-      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
-    });
-  }, [timeOffAssignments, assignment.id]);
-
-  // Use ref to avoid stale closure for hasTimeOffInRange in nested handlers
-  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
-  hasTimeOffInRangeRef.current = hasTimeOffInRange;
-
-  // Use ref to avoid stale closure for hasTimeOffOnDate in nested handlers
-  const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
-  hasTimeOffOnDateRef.current = hasTimeOffOnDate;
-
-  // Find the visible column index for a date (returns -1 if not visible)
-  const findVisibleIndex = useCallback((date: Date) => {
-    const dateMs = startOfDay(date).getTime();
-    return days.findIndex(d => startOfDay(d).getTime() === dateMs);
-  }, [days]);
-
-  // Find the correct visible index for a date, even if it falls on a hidden weekend or in week view
-  const findCorrectVisibleIndex = useCallback((date: Date) => {
-    if (isWeekView) {
-      // In week view, find which week this date belongs to
-      const dateWeek = startOfWeek(date, { weekStartsOn: 1 });
-      const exactIdx = days.findIndex(d => startOfDay(d).getTime() === dateWeek.getTime());
-      if (exactIdx >= 0) return exactIdx;
-
-      // If not found, find the closest week before this date
-      const dateWeekTime = dateWeek.getTime();
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= dateWeekTime) {
-          return i;
-        }
-      }
-      return -1;
-    } else {
-      // Day view - original logic
-      const exactIdx = findVisibleIndex(date);
-      if (exactIdx >= 0) return exactIdx;
-
-      // If not found (e.g., weekend when weekends are hidden),
-      // find the last visible day that's before or equal to this date
-      const dateTime = startOfDay(date).getTime();
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= dateTime) {
-          return i;
-        }
-      }
-      return -1;
-    }
-  }, [days, findVisibleIndex, isWeekView]);
 
   // Resize handlers
   const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.MouseEvent) => {

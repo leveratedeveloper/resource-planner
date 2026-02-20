@@ -180,11 +180,11 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       <div
         ref={cellRef}
         className={cn(
-          "shrink-0 border-r border-dashed relative group",
+          "flex-1 border-r border-dashed relative group min-w-0",
           isBlocked && "cursor-not-allowed",
           isInDragRange() && "bg-primary/20"
         )}
-        style={{ width: cellWidth, height: cellHeight }}
+        style={{ height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
@@ -276,10 +276,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       <div
         ref={cellRef}
         className={cn(
-          "shrink-0 border-r border-dashed relative group cursor-not-allowed",
+          "flex-1 border-r border-dashed relative group cursor-not-allowed min-w-0",
           isInDragRange() && "bg-primary/20"
         )}
-        style={{ width: cellWidth, height: cellHeight }}
+        style={{ height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
@@ -316,10 +316,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     <div
       ref={cellRef}
       className={cn(
-        "shrink-0 border-r border-dashed relative group cursor-cell",
+        "flex-1 border-r border-dashed relative group cursor-cell min-w-0",
         isInDragRange() && "bg-primary/20"
       )}
-      style={{ width: cellWidth, height: cellHeight }}
+      style={{ height: cellHeight }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onMouseDown={handleMouseDown}
