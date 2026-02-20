@@ -241,7 +241,23 @@ export function useUpdateAssignment() {
 
     // Optimistic update before API call
     onMutate: async (variables) => {
-      const { id, ...updates } = variables;
+      const { id, hoursPerDay, ...updates } = variables;
+
+      // Defensive check: skip optimistic update for invalid hours
+      if (hoursPerDay !== undefined) {
+        // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
+        const normalized = String(hoursPerDay).replace(',', '.');
+        const parsed = parseFloat(normalized);
+        if (isNaN(parsed) || parsed < 0.5 || parsed > 24) {
+          // Return safe context for rollback handlers (don't return null!)
+          // Skip optimistic update - let API handle validation error
+          return {
+            previousAssignments: queryClient.getQueryData(queryKeys.assignments),
+            previousEmployees: queryClient.getQueryData(queryKeys.employees),
+            skipOptimistic: true,
+          };
+        }
+      }
 
       // Cancel outgoing refetches to prevent overwriting
       await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
@@ -275,10 +291,11 @@ export function useUpdateAssignment() {
 
     // Rollback on error
     onError: (err, variables, context) => {
-      if (context?.previousAssignments) {
+      // Only rollback if we actually did an optimistic update
+      if (context?.previousAssignments && !context?.skipOptimistic) {
         queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
       }
-      if (context?.previousEmployees) {
+      if (context?.previousEmployees && !context?.skipOptimistic) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
       }
     },
