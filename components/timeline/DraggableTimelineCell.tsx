@@ -29,6 +29,11 @@ interface DraggableTimelineCellProps {
   timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
   isTimeOffMode?: boolean; // True when used for adding time-off (skip time-off blocking)
   disabled?: boolean; // Disable dragging (e.g., while creating/deleting)
+  // Drag props from parent
+  isDragging?: boolean;
+  isInDragRange?: boolean;
+  containerRef?: HTMLDivElement | null; // Container ref passed directly from parent
+  onMouseDown?: (dayIndex: number, containerRef: HTMLDivElement) => void;
 }
 
 export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
@@ -42,15 +47,14 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   timeOffAssignments = [],
   isTimeOffMode = false,
   disabled = false,
+  isDragging = false,
+  isInDragRange = false,
+  containerRef,
+  onMouseDown,
 }) => {
-  const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [showWeekendConfirm, setShowWeekendConfirm] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
-  const dragStartIndex = useRef<number | null>(null);
-  // Ref keeps dragEndIndex fresh inside the handleMouseUp closure (avoids stale capture)
-  const dragEndIndexRef = useRef<number | null>(null);
-  const [dragEndIndex, setDragEndIndex] = useState<number | null>(null);
 
   const dayIndex = days.findIndex((d) => d.toISOString() === day.toISOString());
   const dateKey = format(day, "yyyy-MM-dd");
@@ -74,78 +78,6 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   // Day is blocked if past, or has time-off (when not in time-off mode)
   const isBlocked = isPastDate || hasTimeOff;
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      // Prevent dragging when disabled (e.g., during create/delete operations)
-      if (disabled) {
-        return;
-      }
-
-      // Prevent scheduling on blocked dates (past or time-off)
-      if (isBlocked) {
-        return;
-      }
-      
-      // If weekend and we haven't confirmed yet, don't start drag
-      if (isWeekend && !showWeekendConfirm) {
-        return;
-      }
-      
-      e.preventDefault();
-      setIsDragging(true);
-      dragStartIndex.current = dayIndex;
-      dragEndIndexRef.current = dayIndex;
-      setDragEndIndex(dayIndex);
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const container = cellRef.current?.parentElement;
-        if (!container) return;
-
-        const rect = container.getBoundingClientRect();
-        const x = moveEvent.clientX - rect.left;
-        const rawIndex = Math.max(0, Math.min(days.length - 1, Math.floor(x / cellWidth)));
-
-        // Freeze at the last valid weekday — don't advance the selection into
-        // weekend columns. This preserves the user's intended range rather than
-        // snapping forward to the Friday before the weekend.
-        if (days[rawIndex].getDay() === 0 || days[rawIndex].getDay() === 6) {
-          return;
-        }
-
-        dragEndIndexRef.current = rawIndex;
-        setDragEndIndex(rawIndex);
-      };
-
-      const handleMouseUp = (upEvent: MouseEvent) => {
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
-
-        if (dragStartIndex.current !== null) {
-          // Use the ref — the state value in this closure is stale (captured at
-          // click time before any mousemove updates ran).
-          const endIdx = dragEndIndexRef.current ?? dragStartIndex.current;
-          const start = Math.min(dragStartIndex.current, endIdx);
-          const end = Math.max(dragStartIndex.current, endIdx);
-
-          onDragComplete(days[start], days[end], {
-            x: upEvent.clientX,
-            y: upEvent.clientY,
-          });
-        }
-
-        setIsDragging(false);
-        setDragEndIndex(null);
-        dragEndIndexRef.current = null;
-        dragStartIndex.current = null;
-        setShowWeekendConfirm(false);
-      };
-
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    },
-    [dayIndex, days, onDragComplete, dragEndIndex, cellWidth, isWeekend, showWeekendConfirm, isBlocked, disabled]
-  );
-
   // Handle weekend confirmation
   const handleWeekendConfirm = useCallback(() => {
     setShowWeekendConfirm(false);
@@ -158,14 +90,6 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       });
     }
   }, [day, onDragComplete]);
-
-  // Calculate if this cell is in the drag range
-  const isInDragRange = useCallback(() => {
-    if (!isDragging || dragStartIndex.current === null || dragEndIndex === null) return false;
-    const start = Math.min(dragStartIndex.current, dragEndIndex);
-    const end = Math.max(dragStartIndex.current, dragEndIndex);
-    return dayIndex >= start && dayIndex <= end;
-  }, [isDragging, dayIndex, dragEndIndex]);
 
   // Get the appropriate tooltip message for blocked days
   const getBlockedMessage = () => {
@@ -182,7 +106,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         className={cn(
           "flex-1 border-r border-dashed relative group min-w-0",
           isBlocked && "cursor-not-allowed",
-          isInDragRange() && "bg-primary/20"
+          isInDragRange && "bg-primary/20"
         )}
         style={{ height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
@@ -277,7 +201,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         ref={cellRef}
         className={cn(
           "flex-1 border-r border-dashed relative group cursor-not-allowed min-w-0",
-          isInDragRange() && "bg-primary/20"
+          isInDragRange && "bg-primary/20"
         )}
         style={{ height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
@@ -317,12 +241,16 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       ref={cellRef}
       className={cn(
         "flex-1 border-r border-dashed relative group cursor-cell min-w-0",
-        isInDragRange() && "bg-primary/20"
+        isInDragRange && "bg-primary/20"
       )}
       style={{ height: cellHeight }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onMouseDown={handleMouseDown}
+      onMouseDown={(e) => {
+        if (!disabled && !isBlocked && onMouseDown && containerRef) {
+          onMouseDown(dayIndex, containerRef);
+        }
+      }}
       data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
       data-date={dateKey}
       data-project-id={projectId}
@@ -340,19 +268,6 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         </div>
       )}
 
-      {/* Drag preview */}
-      {isInDragRange() && isDragging && dragStartIndex.current === dayIndex && (
-        <div
-          className="absolute top-2 left-0 h-[calc(100%-16px)] rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none"
-          style={{
-            backgroundColor: projectColor,
-            width: `${((Math.abs((dragEndIndex ?? dayIndex) - dayIndex) + 1) * cellWidth)}px`,
-            zIndex: 10,
-          }}
-        >
-          {Math.abs((dragEndIndex ?? dayIndex) - dayIndex) + 1} days
-        </div>
-      )}
     </div>
   );
 };

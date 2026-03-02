@@ -5,6 +5,7 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Project } from "@/lib/query/hooks/useProjects";
 import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
 import { cn } from "@/lib/utils";
+import { countWeekdays } from "@/lib/utils/dateUtils";
 import { MoreVertical } from "lucide-react";
 import {
   Tooltip,
@@ -203,7 +204,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   } else {
     // Day view - original logic
     offsetDays = differenceInDays(startDate, timelineStart);
-    durationDays = differenceInDays(endDate, startDate) + 1;
+    durationDays = countWeekdays(startDate, endDate);
 
     // Find positions in visible days array - inline calculation
     startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
@@ -426,9 +427,9 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
             let newEndDate = days[newIdx];
 
-            // Skip weekend if needed
+            // Skip weekend if needed - move forward to next workday
             if (newEndDate) {
-              newEndDate = skipWeekend(newEndDate, 'backward');
+              newEndDate = skipWeekend(newEndDate, 'forward');
             }
 
             // Prevent resizing end date into the past
@@ -590,8 +591,8 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           }
 
           // Add null checks before using dates
-          const newStartDate = days[newStartIdx];
-          const newEndDate = days[newEndIdx];
+          let newStartDate = days[newStartIdx];
+          let newEndDate = days[newEndIdx];
 
           // Validate before updating
           if (!newStartDate || !newEndDate) {
@@ -599,6 +600,10 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             setDragOffset(0);
             return; // Cancel if dates are invalid
           }
+
+          // Skip weekends - move dates forward to next workday if they land on weekend
+          newStartDate = skipWeekend(newStartDate, 'forward');
+          newEndDate = skipWeekend(newEndDate, 'forward');
 
           // Prevent moving start date into the past
           if (isBefore(newStartDate, today)) {

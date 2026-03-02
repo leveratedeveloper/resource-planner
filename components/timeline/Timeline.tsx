@@ -135,8 +135,9 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     const dayCount = days.length;
     if (dayCount === 0) return 100;
 
-    // Simply divide container width by number of days - no minimum
-    return Math.floor(containerWidth / dayCount);
+    // Keep decimal precision to match flexbox behavior
+    // This ensures AssignmentBlock positioning aligns with flex cells
+    return containerWidth / dayCount;
   }, [days.length, containerWidth]);
 
   // Determine if we're in week view mode (where each cell = 1 week)

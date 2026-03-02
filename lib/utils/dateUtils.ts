@@ -8,15 +8,51 @@ import { addDays, startOfDay } from 'date-fns';
 export function skipWeekend(date: Date, direction: 'forward' | 'backward'): Date {
   const result = new Date(date);
   const day = result.getDay();
-  
+
   if (day === 0) { // Sunday
     return addDays(result, direction === 'forward' ? 1 : -2);
   }
   if (day === 6) { // Saturday
     return addDays(result, direction === 'forward' ? 2 : -1);
   }
-  
+
   return result;
+}
+
+/**
+ * Calculates the target workday by adding workdays while skipping weekends.
+ * The start day counts as day 1 (1-indexed counting).
+ *
+ * @param startDate - The starting date (counts as day 1)
+ * @param workDays - Number of workdays to count (start day counts)
+ * @returns The target date after counting the specified workdays
+ *
+ * @example
+ * // Wednesday + 4 workdays = Monday (start day counts as day 1)
+ * // Day 1: Wed, Day 2: Thu, Day 3: Fri, Skip: Sat/Sun, Day 4: Mon
+ * calculateTargetWorkday(wednesday, 4) // → Monday
+ */
+export function calculateTargetWorkday(startDate: Date, workDays: number): Date {
+  let targetDate = new Date(startDate);
+  let countedDays = 1; // Start day counts as day 1
+
+  // Count the start day if it's a weekday
+  const startDayOfWeek = targetDate.getDay();
+  if (startDayOfWeek === 0 || startDayOfWeek === 6) {
+    // If starting on weekend, don't count it - start from Monday
+    countedDays = 0;
+  }
+
+  while (countedDays < workDays) {
+    targetDate.setDate(targetDate.getDate() + 1);
+    // Only count weekdays (Monday=1 through Friday=5)
+    const dayOfWeek = targetDate.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      countedDays++;
+    }
+  }
+
+  return targetDate;
 }
 
 /**
@@ -54,4 +90,30 @@ export function createDateSet(dateRanges: Array<{ startDate: string | Date; endD
 export function isDateInSet(date: Date, dateSet: Set<string>): boolean {
   const dateStr = startOfDay(date).toISOString().split('T')[0];
   return dateSet.has(dateStr);
+}
+
+/**
+ * Counts the number of weekdays (Monday-Friday) between two dates, inclusive.
+ *
+ * @param startDate - The start date
+ * @param endDate - The end date
+ * @returns The count of weekdays between the two dates (inclusive)
+ *
+ * @example
+ * // Friday to Monday = 2 days (Fri, Mon)
+ * countWeekdays(friday, monday) // → 2
+ */
+export function countWeekdays(startDate: Date, endDate: Date): number {
+  let count = 0;
+  let current = startOfDay(new Date(startDate));
+  const end = startOfDay(new Date(endDate));
+
+  while (current <= end) {
+    if (!isWeekend(current)) {
+      count++;
+    }
+    current = addDays(current, 1);
+  }
+
+  return count;
 }
