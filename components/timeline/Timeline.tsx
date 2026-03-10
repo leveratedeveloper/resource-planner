@@ -23,6 +23,23 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const { data: brands = [] } = useBrands();
   const { data: allAssignments = [] } = useAssignments();
   const { data: projects = [] } = useProjects();
+
+  // Debug logging to understand data flow
+  useEffect(() => {
+    console.log('[Timeline Debug] Data state:', {
+      employeesCount: employees.length,
+      brandsCount: brands.length,
+      assignmentsCount: allAssignments.length,
+      projectsCount: projects.length,
+      isLoadingEmployees,
+      brandId,
+      department,
+      searchQuery,
+    });
+    if (employees.length > 0) {
+      console.log('[Timeline Debug] First employee:', employees[0]);
+    }
+  }, [employees, brands, allAssignments, projects, isLoadingEmployees, brandId, department, searchQuery]);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
 
@@ -163,9 +180,44 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
            })
            .map((a) => a.employeeId)
        );
-       filtered = filtered.filter(
-         (emp) => memberIds.has(emp.id) || assignmentIds.has(emp.id)
-       );
+
+       // If employeeBrandAssignments data is available (PostgreSQL), use hybrid logic
+       // Otherwise (MySQL API), only filter by project assignments
+       // If NEITHER is available, show all employees (allow users to create assignments)
+       const hasEmployeeBrandData = brand?.employeeBrandAssignments && brand.employeeBrandAssignments.length > 0;
+       const hasAssignmentData = assignmentIds.size > 0;
+
+       console.log('[Timeline Filter] Brand filtering:', {
+         brandId,
+         brandFound: !!brand,
+         brandName: brand?.name,
+         memberIdsCount: memberIds.size,
+         assignmentIdsCount: assignmentIds.size,
+         hasEmployeeBrandData,
+         hasAssignmentData,
+         willSkipFilter: !hasEmployeeBrandData && !hasAssignmentData,
+         employeesBeforeFilter: filtered.length,
+       });
+
+       // Skip filtering entirely if we have no brand relationship data at all
+       // This allows users to see all employees and create assignments
+       if (!hasEmployeeBrandData && !hasAssignmentData) {
+         // No filtering - show all employees
+         console.log('[Timeline Filter] Skipping brand filter - no relationship data available');
+       } else {
+         filtered = filtered.filter((emp) => {
+           // When employeeBrandAssignments is available, require either membership OR assignment
+           if (hasEmployeeBrandData) {
+             return memberIds.has(emp.id) || assignmentIds.has(emp.id);
+           }
+           // When employeeBrandAssignments is NOT available (MySQL API), only filter by assignment
+           // This ensures employees with project assignments in the brand are still shown
+           return assignmentIds.has(emp.id);
+         });
+         console.log('[Timeline Filter] After brand filter:', {
+           employeesAfterFilter: filtered.length,
+         });
+       }
     }
 
     if (department) {
@@ -203,6 +255,14 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         return false;
       });
     }
+
+    console.log('[Timeline Filter] Final result:', {
+      originalEmployeesCount: employees.length,
+      filteredEmployeesCount: filtered.length,
+      brandId,
+      department,
+      searchQuery,
+    });
 
     return filtered;
   }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);

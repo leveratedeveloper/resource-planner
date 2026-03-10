@@ -90,10 +90,18 @@ export const BrandSetup = () => {
   const { data: businessUnits = [] } = useBusinessUnits();
   const { sentinelRef, isStuck } = useIsStuck(40);
 
-  // Flatten all pages into a single array of brands
+  // Flatten all pages into a single array of brands and deduplicate by id
   const brands = useMemo(() => {
     if (!brandsData?.pages) return [];
-    return brandsData.pages.flatMap((page) => page.data);
+    const allBrands = brandsData.pages.flatMap((page) => page.data);
+    // Deduplicate by id to handle cases where the API returns duplicate brands
+    const uniqueBrandsMap = new Map<string, Brand>();
+    for (const brand of allBrands) {
+      if (brand.id && !uniqueBrandsMap.has(brand.id)) {
+        uniqueBrandsMap.set(brand.id, brand);
+      }
+    }
+    return Array.from(uniqueBrandsMap.values());
   }, [brandsData]);
 
   const handleLoadMore = useCallback(() => {
