@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllEmployees, createEmployee, getEmployeesPaginated } from "@/lib/db/queries";
+import { getMySqlApiClient } from "@/lib/mysql/api-client";
 
 export async function GET(request: Request) {
   try {
@@ -7,80 +7,109 @@ export async function GET(request: Request) {
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
-    
-    // If pagination params are provided, use paginated query
-    if (limit !== null && offset !== null) {
-      const parsedLimit = parseInt(limit, 10);
-      const parsedOffset = parseInt(offset, 10);
 
-      if (isNaN(parsedLimit) || isNaN(parsedOffset)) {
-        return NextResponse.json(
-          { success: false, error: "Limit and offset must be valid numbers" },
-          { status: 400 }
-        );
-      }
+    const client = getMySqlApiClient();
 
-      const result = await getEmployeesPaginated(
-        parsedLimit,
-        parsedOffset,
-        search || undefined
+    // MySQL API uses page-based pagination, convert offset to page
+    const perPage = limit ? parseInt(limit, 10) : 50;
+    const page = offset ? Math.floor(parseInt(offset, 10) / perPage) + 1 : 1;
+
+    const response = await client.getEmployees({
+      page,
+      per_page: perPage,
+      search: search || undefined,
+    });
+
+    console.log('[Employees API] Raw MySQL response:', JSON.stringify(response, null, 2));
+
+    // Check for API errors from the client
+    if (response.error) {
+      console.error('[Employees API] MySQL API returned an error:', response.error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: response.error.message,
+          errorType: response.error.type,
+          data: [],
+        },
+        { status: response.status === 200 ? 500 : response.status }
       );
-      return NextResponse.json({ 
-        success: true, 
-        data: result.data,
-        total: result.total,
-        hasMore: result.hasMore,
-      });
     }
-    
-    // Otherwise use the regular query (for backward compatibility)
-    const employees = await getAllEmployees();
-    return NextResponse.json({ success: true, data: employees });
+
+    // Handle double-wrapped response: response.data.data instead of response.data
+    const actualData = response?.data?.data || response?.data || [];
+
+    // Transform MySQL response to match expected format
+    return NextResponse.json({
+      success: response.success,
+      data: actualData.map((emp: any) => ({
+        id: emp.uuid,
+        employeeNumber: emp.nik,
+        fullName: emp.full_name,
+        nickname: emp.nickname,
+        email: null,
+        photo: emp.photo,
+        position: emp.position,
+        departmentId: String(emp.dept_id),
+        businessUnitId: null,
+        directSupervisorId: emp.direct_supervisor ? String(emp.direct_supervisor) : null,
+        weeklyCapacity: 40,
+        workStartDate: emp.work_start_date,
+        dateOfBirth: emp.dob,
+        employmentStatus: emp.flag === 'active' ? 'active' : 'inactive',
+        visibility: emp.status === 'visible' ? 'active' : 'archived',
+        createdAt: emp.created_at,
+        updatedAt: emp.updated_at,
+        department: emp.department ? {
+          id: String(emp.department.id),
+          name: emp.department.department_name,
+          businessUnitId: null,
+          code: null,
+          color: '#' + Math.floor(Math.random()*16777215).toString(16),
+          description: null,
+          isActive: true,
+          createdAt: emp.created_at,
+          updatedAt: emp.updated_at,
+        } : undefined,
+        businessUnit: null,
+        supervisor: emp.supervisor ? {
+          id: emp.supervisor.uuid,
+          fullName: emp.supervisor.full_name,
+          nickname: null,
+          email: null,
+          photo: null,
+          position: emp.supervisor.position,
+          departmentId: null,
+          businessUnitId: null,
+          directSupervisorId: null,
+          weeklyCapacity: 40,
+          workStartDate: null,
+          dateOfBirth: null,
+          employmentStatus: 'active' as const,
+          visibility: 'active' as const,
+          createdAt: emp.created_at,
+          updatedAt: emp.updated_at,
+        } : undefined,
+      })),
+      total: (response?.data?.meta || response?.meta)?.total || actualData.length,
+      hasMore: (response?.data?.meta || response?.meta) ? (response?.data?.meta || response?.meta).current_page < (response?.data?.meta || response?.meta).last_page : false,
+    });
   } catch (error) {
     console.error("Failed to fetch employees:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch employees" },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch employees",
+        data: [],
+      },
       { status: 500 }
     );
   }
 }
 
-
 export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    
-    // Basic validation
-    if (!body.fullName || !body.position) {
-      return NextResponse.json(
-        { success: false, error: "Full name and position are required" },
-        { status: 400 }
-      );
-    }
-    
-    const employee = await createEmployee({
-      employeeNumber: body.employeeNumber || null,
-      fullName: body.fullName,
-      nickname: body.nickname || null,
-      email: body.email || null,
-      photo: body.photo || null,
-      position: body.position,
-      departmentId: body.departmentId || null,
-      businessUnitId: body.businessUnitId || null,
-      directSupervisorId: body.directSupervisorId || null,
-      weeklyCapacity: body.weeklyCapacity ?? 40,
-      workStartDate: body.workStartDate || null,
-      dateOfBirth: body.dateOfBirth || null,
-      employmentStatus: body.employmentStatus || "active",
-      visibility: body.visibility || "active",
-    });
-    
-    return NextResponse.json({ success: true, data: employee }, { status: 201 });
-  } catch (error) {
-    console.error("Failed to create employee:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to create employee" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json(
+    { success: false, error: "Creating employees via MySQL API not yet implemented" },
+    { status: 501 }
+  );
 }
