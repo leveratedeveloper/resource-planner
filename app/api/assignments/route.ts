@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAssignments, createAssignment } from "@/lib/mysql-assignments/queries";
 
 /**
  * Transform MySQL API assignment format (snake_case) to frontend format (camelCase)
@@ -22,37 +23,12 @@ function transformMySqlAssignmentToFrontend(mysqlAssignment: any) {
     createdById: mysqlAssignment.created_by_uuid,
     createdAt: mysqlAssignment.created_at,
     updatedAt: mysqlAssignment.updated_at,
-    // Transform relations
-    employee: mysqlAssignment.employee ? {
-      id: mysqlAssignment.employee.uuid,
-      fullName: mysqlAssignment.employee.full_name,
-      position: mysqlAssignment.employee.position,
-      department: mysqlAssignment.employee.department ? {
-        id: String(mysqlAssignment.employee.department.id),
-        name: mysqlAssignment.employee.department.department_name,
-        color: '#6366f1',
-      } : undefined,
-    } : undefined,
-    project: mysqlAssignment.project ? {
-      id: mysqlAssignment.project.uuid,
-      name: mysqlAssignment.project.name,
-      color: mysqlAssignment.project.color,
-      brand: mysqlAssignment.project.brand ? {
-        id: mysqlAssignment.project.brand.uuid,
-        name: mysqlAssignment.project.brand.brand_name,
-        color: '#6366f1',
-      } : undefined,
-    } : undefined,
-    createdBy: mysqlAssignment.created_by ? {
-      id: mysqlAssignment.created_by.uuid,
-      fullName: mysqlAssignment.created_by.full_name,
-    } : undefined,
   };
 }
 
 /**
  * GET /api/assignments
- * Fetch assignments from MySQL API
+ * Fetch assignments from direct MySQL connection
  */
 export async function GET(request: Request) {
   try {
@@ -61,31 +37,19 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const status = searchParams.get('status');
 
-    // Build query params for mysql-bridge
-    const bridgeParams = new URLSearchParams();
-    if (employeeId) bridgeParams.set('employee_uuid', employeeId);
-    if (projectId) bridgeParams.set('project_uuid', projectId);
-    if (startDate) bridgeParams.set('start_date', startDate);
-    if (endDate) bridgeParams.set('end_date', endDate);
+    // Fetch from MySQL assignments database
+    const assignments = await getAssignments({
+      employee_uuid: employeeId || undefined,
+      project_uuid: projectId || undefined,
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
+      status: status || undefined,
+    });
 
-    // Call mysql-bridge endpoint
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/mysql-bridge/assignments${bridgeParams.toString() ? '?' + bridgeParams.toString() : ''}`
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return NextResponse.json(
-        { success: false, error: errorData.error || 'Failed to fetch assignments' },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-
-    // Transform MySQL API response to frontend format
-    const transformedAssignments = (data.data || []).map(transformMySqlAssignmentToFrontend);
+    // Transform to frontend format
+    const transformedAssignments = assignments.map(transformMySqlAssignmentToFrontend);
 
     return NextResponse.json({
       success: true,
@@ -94,9 +58,9 @@ export async function GET(request: Request) {
       hasMore: false,
     });
   } catch (error) {
-    console.error("Failed to fetch assignments:", error);
+    console.error("[API /assignments] Failed to fetch assignments:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch assignments" },
+      { success: false, error: error instanceof Error ? error.message : "Failed to fetch assignments" },
       { status: 500 }
     );
   }
@@ -104,13 +68,15 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/assignments
- * Create assignment via MySQL API
+ * Create assignment via direct MySQL connection
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // Transform frontend format (camelCase) to MySQL API format (snake_case)
+    console.log('[API /assignments] Creating assignment with data:', body);
+
+    // Transform frontend format (camelCase) to MySQL format (snake_case)
     const mysqlData = {
       employee_uuid: body.employeeId,
       project_uuid: body.projectId || null,
@@ -128,31 +94,11 @@ export async function POST(request: Request) {
       created_by_uuid: body.createdById || null,
     };
 
-    console.log('[API /assignments] Creating assignment with data:', mysqlData);
+    // Create assignment in MySQL
+    const result = await createAssignment(mysqlData);
 
-    // Call mysql-bridge endpoint
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/mysql-bridge/assignments`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mysqlData),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('[API /assignments] Error response:', errorData);
-      return NextResponse.json(
-        { success: false, error: errorData.error || 'Failed to create assignment' },
-        { status: response.status }
-      );
-    }
-
-    const result = await response.json();
-
-    // Transform MySQL API response back to frontend format
-    const transformedAssignment = transformMySqlAssignmentToFrontend(result.data);
+    // Transform back to frontend format
+    const transformedAssignment = transformMySqlAssignmentToFrontend(result);
 
     return NextResponse.json({
       success: true,
