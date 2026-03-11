@@ -48,12 +48,6 @@ export interface Brand {
     color: string;
   };
   employeeBrandAssignments?: EmployeeBrandAssignment[];
-  projects?: {
-    id: string;
-    name: string;
-    color: string;
-    status: string;
-  }[];
 }
 
 export type NewBrand = {
@@ -113,15 +107,29 @@ interface PaginatedResponse<T> {
 
 async function fetchBrandsPaginated({ pageParam = 0, search }: { pageParam?: number; search?: string }): Promise<PaginatedResponse<Brand>> {
   const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
-  const response = await fetch(`/api/brands?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`);
+  const url = `/api/brands?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`;
+
+  console.log('[fetchBrandsPaginated] Fetching:', { pageParam, search, url });
+
+  const response = await fetch(url);
   if (!response.ok) {
+    console.error('[fetchBrandsPaginated] Response not OK:', { status: response.status, statusText: response.statusText });
     throw new Error("Failed to fetch brands");
   }
+
   const result = await response.json();
-  return {
-    data: result.data,
+  console.log('[fetchBrandsPaginated] Result:', {
+    success: result.success,
+    dataLength: result.data?.length,
     total: result.total,
     hasMore: result.hasMore,
+    error: result.error,
+  });
+
+  return {
+    data: result.data || [],
+    total: result.total || 0,
+    hasMore: result.hasMore || false,
   };
 }
 

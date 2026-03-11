@@ -57,8 +57,12 @@ export type NewAssignment = Omit<
 >;
 
 // API Functions
-async function fetchAssignments(): Promise<Assignment[]> {
-  const response = await fetch("/api/assignments");
+async function fetchAssignments(params?: { startDate?: string; endDate?: string }): Promise<Assignment[]> {
+  const url = new URL("/api/assignments", window.location.origin);
+  if (params?.startDate) url.searchParams.set("startDate", params.startDate);
+  if (params?.endDate) url.searchParams.set("endDate", params.endDate);
+
+  const response = await fetch(url.toString());
   if (!response.ok) {
     throw new Error("Failed to fetch assignments");
   }
@@ -100,7 +104,14 @@ async function createAssignment(assignment: NewAssignment): Promise<Assignment> 
     body: JSON.stringify(assignment),
   });
   if (!response.ok) {
-    throw new Error("Failed to create assignment");
+    let errorMessage = "Failed to create assignment";
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch {
+      // If parsing fails, use the default message
+    }
+    throw new Error(errorMessage);
   }
   const data = await response.json();
   return data.data;
@@ -129,10 +140,10 @@ async function deleteAssignment(id: string): Promise<void> {
 }
 
 // Hooks
-export function useAssignments() {
+export function useAssignments(params?: { startDate?: string; endDate?: string }) {
   return useQuery({
-    queryKey: queryKeys.assignments,
-    queryFn: fetchAssignments,
+    queryKey: [...queryKeys.assignments, params],
+    queryFn: () => fetchAssignments(params),
   });
 }
 
