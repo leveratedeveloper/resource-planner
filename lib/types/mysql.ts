@@ -32,9 +32,10 @@ export interface MySqlPaginationMeta {
 // ============ BRAND ENTITY ============
 
 export interface MySqlBrand {
+  id: number; // Note: API returns 'id' not 'brand_id'
   uuid: string;
   company_name: string;
-  client_code: string;
+  client_code: string | number;
   brand_name: string;
   brand_address: string;
   pic_brand_name: string;
@@ -43,13 +44,13 @@ export interface MySqlBrand {
   pic_title: string;
   pic_brand_phone: string;
   pic_finance_name: string;
-  pic_finance_phone: string;
+  pic_finance_phone: string | null;
   industry_category: string;
   description: string;
   logo: string;
   flag: 'active' | 'inactive';
   tax_account: string;
-  top: string;
+  top: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -163,6 +164,85 @@ export interface MySqlEmployee {
   };
 }
 
+// ============ ASSIGNMENT ENTITY ============
+
+export interface MySqlAssignment {
+  uuid: string;
+  employee_uuid: string;
+  project_uuid: string | null;
+  task_uuid: string | null;
+  start_date: string;
+  end_date: string;
+  hours_per_day: string;
+  allocation_percentage: string | null;
+  is_time_off: boolean;
+  time_off_type_uuid: string | null;
+  category: string | null;
+  is_billable: boolean;
+  status: 'draft' | 'confirmed' | 'completed';
+  note: string | null;
+  created_by_uuid: string | null;
+  created_at: string;
+  updated_at: string;
+  // Relations
+  employee?: {
+    uuid: string;
+    full_name: string;
+    position: string;
+    department?: {
+      id: number;
+      department_name: string;
+    };
+  };
+  project?: {
+    uuid: string;
+    name: string;
+    color: string;
+    brand?: {
+      uuid: string;
+      brand_name: string;
+      company_name: string;
+    };
+  };
+  created_by?: {
+    uuid: string;
+    full_name: string;
+  };
+}
+
+export interface MySqlCreateAssignmentRequest {
+  employee_uuid: string;
+  project_uuid: string | null;
+  task_uuid?: string | null;
+  start_date: string;
+  end_date: string;
+  hours_per_day: string;
+  allocation_percentage?: string | null;
+  is_time_off?: boolean;
+  time_off_type_uuid?: string | null;
+  category?: string | null;
+  is_billable?: boolean;
+  status?: 'draft' | 'confirmed' | 'completed';
+  note?: string | null;
+  created_by_uuid?: string | null;
+}
+
+export interface MySqlUpdateAssignmentRequest {
+  employee_uuid?: string;
+  project_uuid?: string | null;
+  task_uuid?: string | null;
+  start_date?: string;
+  end_date?: string;
+  hours_per_day?: string;
+  allocation_percentage?: string | null;
+  is_time_off?: boolean;
+  time_off_type_uuid?: string | null;
+  category?: string | null;
+  is_billable?: boolean;
+  status?: 'draft' | 'confirmed' | 'completed';
+  note?: string | null;
+}
+
 // ============ QUERY PARAMETERS ============
 
 export interface MySqlQueryParams {
@@ -171,6 +251,10 @@ export interface MySqlQueryParams {
   search?: string;
   include?: string;
   brand_id?: string;
+  employee_uuid?: string;
+  project_uuid?: string;
+  start_date?: string;
+  end_date?: string;
 }
 
 // ============ ERROR TYPES ============

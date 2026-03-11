@@ -13,8 +13,10 @@ export class MySqlAuthManager {
   private username: string;
   private password: string;
   private tokenExpiryMs: number;
+  private readonly TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // 5 minutes buffer
   private cachedToken: string | null = null;
   private tokenExpiry: number | null = null;
+  private loginPromise: Promise<string> | null = null; // Prevent concurrent logins
 
   constructor() {
     this.baseUrl = process.env.MYSQL_API_BASE_URL || 'http://localhost/api/v1';
@@ -24,20 +26,53 @@ export class MySqlAuthManager {
   }
 
   /**
+   * Check if logging should be enabled (development only)
+   */
+  private shouldLog(): boolean {
+    return process.env.NODE_ENV === 'development';
+  }
+
+  /**
    * Login and get access token
    */
   async login(): Promise<string> {
+    // If login is already in progress, wait for it (concurrent login protection)
+    if (this.loginPromise) {
+      if (this.shouldLog()) {
+        console.log('[MySQL Auth] Login already in progress, waiting...');
+      }
+      return this.loginPromise;
+    }
+
+    this.loginPromise = this.performLogin();
+
+    try {
+      const token = await this.loginPromise;
+      return token;
+    } finally {
+      this.loginPromise = null;
+    }
+  }
+
+  /**
+   * Perform the actual login request
+   */
+  private async performLogin(): Promise<string> {
     try {
       const loginUrl = `${this.baseUrl}/login`;
-      console.log('[MySQL Auth] Attempting login to:', loginUrl);
-      console.log('[MySQL Auth] Using email:', this.username);
-      console.log('[MySQL Auth] Password length:', this.password?.length);
+      if (this.shouldLog()) {
+        console.log('[MySQL Auth] Attempting login to:', loginUrl);
+        console.log('[MySQL Auth] Using email:', this.username);
+        console.log('[MySQL Auth] Password length:', this.password?.length);
+      }
 
       const requestBody = JSON.stringify({
         email: this.username,
         password: this.password,
       });
-      console.log('[MySQL Auth] Request body:', requestBody);
+      if (this.shouldLog()) {
+        console.log('[MySQL Auth] Request body:', requestBody);
+      }
 
       const response = await fetch(loginUrl, {
         method: 'POST',
@@ -45,17 +80,23 @@ export class MySqlAuthManager {
         body: requestBody,
       });
 
-      console.log('[MySQL Auth] Response status:', response.status);
+      if (this.shouldLog()) {
+        console.log('[MySQL Auth] Response status:', response.status);
+      }
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('[MySQL Auth] Login failed with status:', response.status, 'Response:', errorText);
+        if (this.shouldLog()) {
+          console.error('[MySQL Auth] Login failed with status:', response.status, 'Response:', errorText);
+        }
         throw new MySqlAuthError(`Login failed: ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json();
-      console.log('[MySQL Auth] Login successful, response keys:', Object.keys(result));
-      console.log('[MySQL Auth] Response structure:', JSON.stringify(result, null, 2));
+      if (this.shouldLog()) {
+        console.log('[MySQL Auth] Login successful, response keys:', Object.keys(result));
+        console.log('[MySQL Auth] Response structure:', JSON.stringify(result, null, 2));
+      }
 
       const token = result.data.access_token;
 
@@ -65,11 +106,13 @@ export class MySqlAuthManager {
 
       return token;
     } catch (error) {
-      console.error('[MySQL Auth] Login error:', {
-        error: error instanceof Error ? error.message : error,
-        cause: error instanceof Error ? error.cause : undefined,
-        stack: error instanceof Error ? error.stack : undefined,
-      });
+      if (this.shouldLog()) {
+        console.error('[MySQL Auth] Login error:', {
+          error: error instanceof Error ? error.message : error,
+          cause: error instanceof Error ? error.cause : undefined,
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      }
       if (error instanceof MySqlAuthError) throw error;
       throw new MySqlAuthError(
         error instanceof Error ? error.message : 'Unknown login error'
@@ -79,15 +122,20 @@ export class MySqlAuthManager {
 
   /**
    * Get current valid token, login if needed
+   * Optimized to use cached token if still valid (with 5min buffer)
    */
   async getToken(): Promise<string> {
-    // Check if cached token is still valid
-    if (this.cachedToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
-      return this.cachedToken;
+    // Check if cached token is still valid (with 5min buffer before expiry)
+    if (this.cachedToken && this.tokenExpiry) {
+      const timeUntilExpiry = this.tokenExpiry - Date.now();
+      if (timeUntilExpiry > this.TOKEN_REFRESH_BUFFER) {
+        // Token is still valid, return cached token
+        return this.cachedToken;
+      }
     }
 
-    // Login to get new token
-    return await this.login();
+    // Token expired or missing, get new token
+    return this.login();
   }
 
   /**
