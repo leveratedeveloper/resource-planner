@@ -61,7 +61,7 @@ export async function GET() {
   return NextResponse.json({
     baseUrl,
     results: results.map((r, i) => ({
-      endpoint: endpoints[i],
+      endpointUrl: endpoints[i],
       ...(r.status === 'fulfilled' ? r.value : { error: r.reason.message }),
     })),
   });

@@ -28,7 +28,7 @@ import type {
 // ============ PROJECT CATEGORIES ============
 export async function getAllProjectCategories() {
   return db.query.projectCategories.findMany({
-    orderBy: (pc, { asc }) => [asc(pc.displayOrder), asc(pc.name)],
+    orderBy: (pc: any, { asc }: any) => [asc(pc.displayOrder), asc(pc.name)],
   });
 }
 
@@ -66,7 +66,7 @@ export async function getAllBusinessUnits() {
       departments: true,
       brands: true,
     },
-    orderBy: (bu, { asc }) => [asc(bu.name)],
+    orderBy: (bu: any, { asc }: any) => [asc(bu.name)],
   });
 }
 
@@ -105,7 +105,7 @@ export async function getAllDepartments() {
     with: {
       businessUnit: true,
     },
-    orderBy: (dept, { asc }) => [asc(dept.name)],
+    orderBy: (dept: any, { asc }: any) => [asc(dept.name)],
   });
 }
 
@@ -149,7 +149,7 @@ export async function getAllBrands() {
       },
       projects: true,
     },
-    orderBy: (brand, { asc }) => [asc(brand.name)],
+    orderBy: (brand: any, { asc }: any) => [asc(brand.name)],
   });
 }
 
@@ -178,7 +178,7 @@ export async function getBrandsPaginated(limit: number = 10, offset: number = 0,
       },
       projects: true,
     },
-    orderBy: (brand, { asc }) => [asc(brand.name)],
+    orderBy: (brand: any, { asc }: any) => [asc(brand.name)],
     limit,
     offset,
   });
@@ -241,7 +241,7 @@ export async function getAllEmployees() {
         },
       },
     },
-    orderBy: (emp, { asc }) => [asc(emp.fullName)],
+    orderBy: (emp: any, { asc }: any) => [asc(emp.fullName)],
   });
 }
 
@@ -277,7 +277,7 @@ export async function getEmployeesPaginated(limit: number = 10, offset: number =
         },
       },
     },
-    orderBy: (emp, { asc }) => [asc(emp.fullName)],
+    orderBy: (emp: any, { asc }: any) => [asc(emp.fullName)],
     limit,
     offset,
   });
@@ -397,7 +397,7 @@ export async function getAllProjects() {
         },
       },
     },
-    orderBy: (proj, { asc }) => [asc(proj.name)],
+    orderBy: (proj: any, { asc }: any) => [asc(proj.name)],
   });
 }
 
@@ -443,7 +443,7 @@ export async function getProjectsPaginated(limit: number = 10, offset: number = 
     }
 
     // Fetch full project data with relations for the filtered IDs
-    const ids = projectIds.map(p => p.id);
+    const ids = projectIds.map((p: any) => p.id);
     const data = await db.query.projects.findMany({
       where: inArray(projects.id, ids),
       with: {
@@ -463,7 +463,7 @@ export async function getProjectsPaginated(limit: number = 10, offset: number = 
           },
         },
       },
-      orderBy: (proj, { asc }) => [asc(proj.name)],
+      orderBy: (proj: any, { asc }: any) => [asc(proj.name)],
     });
 
     return {
@@ -501,7 +501,7 @@ export async function getProjectsPaginated(limit: number = 10, offset: number = 
         },
       },
     },
-    orderBy: (proj, { asc }) => [asc(proj.name)],
+    orderBy: (proj: any, { asc }: any) => [asc(proj.name)],
     limit,
     offset,
   });
@@ -553,7 +553,7 @@ export async function getProjectsByBrand(brandId: string) {
         },
       },
     },
-    orderBy: (proj, { asc }) => [asc(proj.name)],
+    orderBy: (proj: any, { asc }: any) => [asc(proj.name)],
   });
 }
 
@@ -625,7 +625,7 @@ export async function getAllAssignments() {
       },
       createdBy: true,
     },
-    orderBy: (assign, { asc }) => [asc(assign.startDate)],
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
   });
 }
 
@@ -654,7 +654,7 @@ export async function getAssignmentsByEmployee(employeeId: string) {
         },
       },
     },
-    orderBy: (assign, { asc }) => [asc(assign.startDate)],
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
   });
 }
 
@@ -664,7 +664,7 @@ export async function getAssignmentsByProject(projectId: string) {
     with: {
       employee: true,
     },
-    orderBy: (assign, { asc }) => [asc(assign.startDate)],
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
   });
 }
 

@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       status: status || undefined,
-    });
+    }) as any[];
 
     // Transform to frontend format
     const transformedAssignments = assignments.map(transformMySqlAssignmentToFrontend);

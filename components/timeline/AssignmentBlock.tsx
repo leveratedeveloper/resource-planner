@@ -602,8 +602,19 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           }
 
           // Skip weekends - move dates forward to next workday if they land on weekend
-          newStartDate = skipWeekend(newStartDate, 'forward');
-          newEndDate = skipWeekend(newEndDate, 'forward');
+          const dayOfWeek = newStartDate.getDay();
+          if (dayOfWeek === 0) { // Sunday
+            newStartDate = addDays(newStartDate, 1);
+          } else if (dayOfWeek === 6) { // Saturday
+            newStartDate = addDays(newStartDate, 2);
+          }
+
+          const endDayOfWeek = newEndDate.getDay();
+          if (endDayOfWeek === 0) { // Sunday
+            newEndDate = addDays(newEndDate, 1);
+          } else if (endDayOfWeek === 6) { // Saturday
+            newEndDate = addDays(newEndDate, 2);
+          }
 
           // Prevent moving start date into the past
           if (isBefore(newStartDate, today)) {

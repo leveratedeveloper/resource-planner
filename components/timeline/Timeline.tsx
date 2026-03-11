@@ -15,9 +15,12 @@ interface TimelineProps {
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
+  projectId: string | null;
+  category: string | null;
+  status: string | null;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery }) => {
+export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [] } = useBrands();
@@ -34,7 +37,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
   const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
-  
+
   // Initialize dates client-side to avoid hydration mismatch
   useEffect(() => {
     setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -158,40 +161,67 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     };
   }, [days]);
 
-  // Fetch assignments with date filtering (placed after date range calculation)
-  const { data: allAssignments = [] } = useAssignments(assignmentDateRange);
+  // Fetch assignments with date filtering for display
+  const { data: dateFilteredAssignments = [] } = useAssignments(assignmentDateRange);
+
+  // Fetch ALL assignments (no date filter) for employee filtering by brand
+  // This ensures employees with assignments outside the visible date range are still shown
+  const { data: allAssignments = [] } = useAssignments();
+
+  // Apply additional filters (project, category, status) to date-filtered assignments for display
+  const filteredAssignments = useMemo(() => {
+    let filtered = dateFilteredAssignments;
+
+    // Filter by project
+    if (projectId) {
+      filtered = filtered.filter(a => a.projectId === projectId);
+    }
+
+    // Filter by category
+    if (category) {
+      filtered = filtered.filter(a => a.category === category);
+    }
+
+    // Filter by status
+    if (status) {
+      filtered = filtered.filter(a => a.status === status);
+    }
+
+    return filtered;
+  }, [dateFilteredAssignments, projectId, category, status]);
 
   // Debug logging to understand data flow
   useEffect(() => {
     console.log('[Timeline Debug] Data state:', {
       employeesCount: employees.length,
       brandsCount: brands.length,
-      assignmentsCount: allAssignments.length,
+      assignmentsCount: filteredAssignments.length,
       projectsCount: projects.length,
       isLoadingEmployees,
       brandId,
       department,
       searchQuery,
       dateRange: assignmentDateRange,
+      filters: { projectId, category, status },
     });
     if (employees.length > 0) {
       console.log('[Timeline Debug] First employee:', employees[0]);
     }
-  }, [employees, brands, allAssignments, projects, isLoadingEmployees, brandId, department, searchQuery, assignmentDateRange]);
+  }, [employees, brands, filteredAssignments, projects, isLoadingEmployees, brandId, department, searchQuery, assignmentDateRange, projectId, category, status]);
 
   // PERFORMANCE: Pre-group assignments by employee ID to avoid N+1 query problem
   // Each ResourceRow was previously fetching ALL assignments and filtering them
   // This eliminates 100,000+ comparisons per render (100 employees × 1000 assignments)
   const assignmentsByEmployee = useMemo(() => {
-    const grouped = new Map<string, typeof allAssignments>();
-    allAssignments.forEach(a => {
+    const grouped = new Map<string, typeof filteredAssignments>();
+    filteredAssignments.forEach(a => {
       if (!grouped.has(a.employeeId)) {
         grouped.set(a.employeeId, []);
       }
       grouped.get(a.employeeId)!.push(a);
     });
     return grouped;
-  }, [allAssignments]);
+  }, [filteredAssignments]);
 
   // Filter employees based on selected Brand, Department, and Search Query
   const visibleEmployees = useMemo(() => {

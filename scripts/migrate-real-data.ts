@@ -365,7 +365,7 @@ async function getProjectCategoryMapping() {
   const categories = await db.query.projectCategories.findMany();
 
   const mapping = new Map<string, string>();
-  categories.forEach(cat => {
+  categories.forEach((cat: any) => {
     idMappings.project_categories.set(cat.name, cat.id);
     mapping.set(cat.name.toLowerCase(), cat.id);
   });

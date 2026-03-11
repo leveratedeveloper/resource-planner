@@ -160,8 +160,8 @@ export class MySqlAuthManager {
    * Check if authenticated
    */
   isAuthenticated(): boolean {
-    const token = this.getStoredToken();
-    const expiry = this.getTokenExpiry();
+    const token = globalThis.mysqlApiToken;
+    const expiry = globalThis.mysqlApiTokenExpiry;
     return !!(token && expiry && Date.now() < expiry);
   }
 }
