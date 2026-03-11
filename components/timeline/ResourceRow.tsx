@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback, useRef } from "react";
 import { Resource, AssignmentCategory } from "@/types";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import { differenceInDays, startOfWeek, endOfWeek, isWithinInterval, startOfDay, addWeeks, addDays } from "date-fns";
-import { useAssignments, useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
+import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { AssignmentBlock } from "./AssignmentBlock";
@@ -20,9 +20,9 @@ interface ResourceRowProps {
   resource: Resource;
   days: Date[];
   brandId: string | null;
-  onAssignProject?: (resourceId: string) => void;
   cellWidth?: number;
   isWeekView?: boolean;
+  assignments: Assignment[]; // Pre-filtered assignments for this employee
 }
 
 // Props for AllocationCell
@@ -183,14 +183,15 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   );
 });
 
-export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, onAssignProject, cellWidth = 100, isWeekView = false }) => {
-  const { data: assignments = [] } = useAssignments();
+export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments }) => {
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const { data: brands = [] } = useBrands();
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
   const deleteAssignmentMutation = useDeleteAssignment();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showAllProjects, setShowAllProjects] = useState(false);
+  const PROJECT_DISPLAY_LIMIT = 5;
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
   // Drag state for timeline cells
@@ -215,14 +216,96 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     position: { x: number; y: number };
   } | null>(null);
 
-  // All assignments for this resource
-  const resourceAssignments = assignments.filter((a) => a.employeeId === resource.id);
-  
   // Get projects this resource is assigned to
   const resourceProjects = useMemo(() => {
     const projectIds = new Set(resourceAssignments.filter(a => !a.isTimeOff).map(a => a.projectId));
     return projects.filter(p => projectIds.has(p.id));
   }, [resourceAssignments, projects]);
+
+  // Sort projects by priority: brand match → active in timeline → recent → alphabetical
+  const sortedProjects = useMemo(() => {
+    const timelineStart = days[0] ? startOfDay(days[0]) : null;
+    const timelineEnd = days[days.length - 1] ? startOfDay(days[days.length - 1]) : null;
+
+    return [...resourceProjects].sort((a, b) => {
+      // Priority 1: Brand match (if brand filter is active)
+      if (brandId) {
+        const aBrandMatch = a.brandId === brandId;
+        const bBrandMatch = b.brandId === brandId;
+        if (aBrandMatch !== bBrandMatch) {
+          return aBrandMatch ? -1 : 1;
+        }
+      }
+
+      // Priority 2: Active assignments in current timeline view
+      const aHasActive = resourceAssignments.some(assign =>
+        assign.projectId === a.id &&
+        !assign.isTimeOff &&
+        timelineStart && timelineEnd &&
+        isWithinInterval(startOfDay(new Date(assign.startDate)), {
+          start: timelineStart,
+          end: timelineEnd
+        })
+      );
+      const bHasActive = resourceAssignments.some(assign =>
+        assign.projectId === b.id &&
+        !assign.isTimeOff &&
+        timelineStart && timelineEnd &&
+        isWithinInterval(startOfDay(new Date(assign.startDate)), {
+          start: timelineStart,
+          end: timelineEnd
+        })
+      );
+      if (aHasActive !== bHasActive) {
+        return aHasActive ? -1 : 1;
+      }
+
+      // Priority 3: Most recent assignment startDate
+      const aLatest = resourceAssignments
+        .filter(assign => assign.projectId === a.id && !assign.isTimeOff)
+        .reduce((latest, curr) => {
+          const currDate = new Date(curr.startDate);
+          const latestDate = new Date(latest?.startDate || 0);
+          return currDate > latestDate ? curr : latest;
+        }, null as Assignment | null);
+
+      const bLatest = resourceAssignments
+        .filter(assign => assign.projectId === b.id && !assign.isTimeOff)
+        .reduce((latest, curr) => {
+          const currDate = new Date(curr.startDate);
+          const latestDate = new Date(latest?.startDate || 0);
+          return currDate > latestDate ? curr : latest;
+        }, null as Assignment | null);
+
+      if (aLatest && bLatest) {
+        const aDate = new Date(aLatest.startDate);
+        const bDate = new Date(bLatest.startDate);
+        if (aDate.getTime() !== bDate.getTime()) {
+          return bDate.getTime() - aDate.getTime(); // Descending (newest first)
+        }
+      } else if (aLatest && !bLatest) {
+        return -1;
+      } else if (!aLatest && bLatest) {
+        return 1;
+      }
+
+      // Priority 4: Alphabetical by name
+      return a.name.localeCompare(b.name);
+    });
+  }, [resourceProjects, brandId, resourceAssignments, days]);
+
+  const { visibleProjects, hiddenProjectCount } = useMemo(() => {
+    if (showAllProjects || sortedProjects.length <= PROJECT_DISPLAY_LIMIT) {
+      return {
+        visibleProjects: sortedProjects,
+        hiddenProjectCount: 0
+      };
+    }
+    return {
+      visibleProjects: sortedProjects.slice(0, PROJECT_DISPLAY_LIMIT),
+      hiddenProjectCount: sortedProjects.length - PROJECT_DISPLAY_LIMIT
+    };
+  }, [sortedProjects, showAllProjects]);
 
   // O(1) project lookup by ID
   const projectMap = useMemo(() => 
@@ -692,7 +775,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       )}
 
       {/* Project Rows */}
-      {resourceProjects.map((project) => {
+      {visibleProjects.map((project) => {
         const brand = brands.find(b => b.id === project.brandId);
         // Filter out 0-hour placeholder assignments from timeline (they exist just to keep project in list)
         // Keep assignment visible even if hoursPerDay is NaN (defensive) - parseHoursSafe keeps allocation stable
@@ -795,34 +878,37 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         );
       })}
 
-      {/* Assign Project Button Row */}
-      <div className="flex bg-gray-50/30">
-        <div className="w-[250px] shrink-0 px-4 py-3 border-r sticky left-0 bg-gray-50/30 z-20 flex items-center gap-4 pl-12">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="text-xs"
-            onClick={() => onAssignProject?.(resource.id)}
-            data-testid="assign-project-button"
-          >
-            <Icon icon="lucide:plus" className="h-3 w-3 mr-1" />
-            Assign Project
-          </Button>
-          {resourceProjects.length > 2 && (
-            <span className="text-xs text-muted-foreground">
-              Show all ({resourceProjects.length})
-            </span>
-          )}
+      {/* Project Filter Toggle Row */}
+      {hiddenProjectCount > 0 && (
+        <div className="flex bg-gray-50/30">
+          <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-gray-50/30 z-20 flex items-center gap-2 pl-12">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7 text-primary hover:text-primary"
+              onClick={() => setShowAllProjects(!showAllProjects)}
+              data-testid="toggle-projects-button"
+            >
+              <Icon
+                icon={showAllProjects ? "lucide:chevron-up" : "lucide:chevron-down"}
+                className="h-3 w-3 mr-1"
+              />
+              {showAllProjects
+                ? `Show less (${hiddenProjectCount})`
+                : `Show all ${hiddenProjectCount} more project${hiddenProjectCount > 1 ? 's' : ''}`
+              }
+            </Button>
+          </div>
+          <div className="flex relative flex-1">
+            {days.map((day) => (
+              <div
+                key={day.toISOString()}
+                className="flex-1 h-[32px] border-r border-dashed min-w-0"
+              />
+            ))}
+          </div>
         </div>
-        <div className="flex relative flex-1">
-          {days.map((day) => (
-            <div
-              key={day.toISOString()}
-              className="flex-1 h-[40px] border-r border-dashed min-w-0"
-            />
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Assignment Popover */}
       {popoverData && (

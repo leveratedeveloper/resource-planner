@@ -93,7 +93,16 @@ export const BrandSetup = () => {
   // Flatten all pages into a single array of brands and deduplicate by id
   const brands = useMemo(() => {
     if (!brandsData?.pages) return [];
-    const allBrands = brandsData.pages.flatMap((page) => page.data);
+
+    console.log('[BrandSetup] Processing brands data:', {
+      pageCount: brandsData.pages.length,
+      pages: brandsData.pages.map(p => ({ dataLength: p.data?.length, total: p.total, hasMore: p.hasMore })),
+    });
+
+    const allBrands = brandsData.pages.flatMap((page) => page.data || []);
+
+    console.log('[BrandSetup] Flattened brands:', { count: allBrands.length, brands: allBrands.slice(0, 3) });
+
     // Deduplicate by id to handle cases where the API returns duplicate brands
     const uniqueBrandsMap = new Map<string, Brand>();
     for (const brand of allBrands) {
@@ -101,7 +110,11 @@ export const BrandSetup = () => {
         uniqueBrandsMap.set(brand.id, brand);
       }
     }
-    return Array.from(uniqueBrandsMap.values());
+
+    const result = Array.from(uniqueBrandsMap.values());
+    console.log('[BrandSetup] Final brands after deduplication:', { count: result.length });
+
+    return result;
   }, [brandsData]);
 
   const handleLoadMore = useCallback(() => {
@@ -200,8 +213,26 @@ export const BrandSetup = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {brands.map((brand) => {
+          {brands.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <Icon icon="lucide:package" className="h-16 w-16 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Brands Found</h3>
+              <p className="text-muted-foreground max-w-md">
+                {searchQuery ? "No brands match your search criteria. Try a different search term." : "No brands are available in the system yet."}
+              </p>
+              {searchQuery && (
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setSearchQuery("")}
+                >
+                  Clear Search
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {brands.map((brand) => {
               return (
                 <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
                   <CardHeader className="pb-2 pt-6 px-6">
@@ -245,7 +276,8 @@ export const BrandSetup = () => {
                 </Card>
               );
             })}
-          </div>
+            </div>
+          )}
           <InfiniteScrollTrigger
             onLoadMore={handleLoadMore}
             hasMore={!!hasNextPage}

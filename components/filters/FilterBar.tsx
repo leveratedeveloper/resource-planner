@@ -70,16 +70,13 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <SelectValue placeholder="All Brands" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Brands</SelectItem>
+            <SelectItem key="all" value="all">All Brands</SelectItem>
             {brands.map((brand) => (
               <SelectItem key={brand.id} value={brand.id}>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: brand.color }}
-                  />
+                <span className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color }} />
                   {brand.name}
-                </div>
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -97,16 +94,13 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <SelectValue placeholder="All Departments" />
           </SelectTrigger>
           <SelectContent>
-             <SelectItem value="all">All Departments</SelectItem>
+             <SelectItem key="all" value="all">All Departments</SelectItem>
              {departments.map((dept) => (
                <SelectItem key={dept.id} value={dept.id}>
-                 <div className="flex items-center gap-2">
-                   <div
-                     className="w-3 h-3 rounded-full"
-                     style={{ backgroundColor: dept.color }}
-                   />
+                 <span className="flex items-center gap-2">
+                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
                    {dept.name}
-                 </div>
+                 </span>
                </SelectItem>
              ))}
           </SelectContent>
