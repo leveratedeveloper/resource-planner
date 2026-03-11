@@ -31,20 +31,39 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    // Debug logging
-    console.log('[Projects API] Campaigns response:', campaignsResponse?.success ? 'Success' : 'Failed');
-    console.log('[Projects API] Pitches response:', pitchesResponse?.success ? 'Success' : 'Failed');
+    // Debug logging - show full response to diagnose issues
+    console.log('[Projects API] Campaigns FULL response:', JSON.stringify(campaignsResponse, null, 2));
+    console.log('[Projects API] Pitches FULL response:', JSON.stringify(pitchesResponse, null, 2));
 
-    // Get actual data from responses
+    // Check for error responses - return early if both failed
+    if (campaignsResponse?.error && pitchesResponse?.error) {
+      console.error('[Projects API] Both campaigns and pitches failed');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to fetch campaigns and pitches',
+          campaignsError: campaignsResponse.error.message,
+          pitchesError: pitchesResponse.error.message,
+          data: [],
+        },
+        { status: 500 }
+      );
+    }
+
+    // Get actual data from responses - handle various possible response structures
+    // MySQL API might return: { success: true, data: [...] } or { success: true, data: { data: [...], meta: {...} } }
     const campaignsData = campaignsResponse?.data?.data || campaignsResponse?.data || [];
     const pitchesData = pitchesResponse?.data?.data || pitchesResponse?.data || [];
+
+    console.log('[Projects API] Campaigns count:', campaignsData.length);
+    console.log('[Projects API] Pitches count:', pitchesData.length);
 
     // Transform campaigns to projects
     const campaignProjects = campaignsData.map((campaign: any) => ({
       id: campaign.uuid,
       projectNumber: campaign.io_number,
       name: campaign.campaign_name,
-      brandId: String(campaign.brand_id),
+      brandId: campaign.brand_id !== null && campaign.brand_id !== undefined ? String(campaign.brand_id) : null,
       companyId: String(campaign.company_id),
       currency: campaign.currency,
       budget: campaign.budget,
@@ -74,7 +93,7 @@ export async function GET(request: Request) {
       valueTotalEstimate: null,
       hsDealId: null,
       brand: campaign.brand ? {
-        id: String(campaign.brand.uuid),
+        id: String(campaign.brand_id),
         name: campaign.brand.brand_name,
         color: '#' + Math.floor(Math.random()*16777215).toString(16),
       } : undefined,
@@ -87,7 +106,7 @@ export async function GET(request: Request) {
       id: pitch.uuid,
       projectNumber: pitch.pitch_number,
       name: pitch.pitch_name,
-      brandId: String(pitch.brand_id),
+      brandId: pitch.brand_id !== null && pitch.brand_id !== undefined ? String(pitch.brand_id) : null,
       companyId: null,
       currency: pitch.currency,
       budget: pitch.budget,
@@ -117,7 +136,7 @@ export async function GET(request: Request) {
       valueTotalEstimate: pitch.value_total ? String(pitch.value_total) : null,
       hsDealId: null,
       brand: pitch.brand ? {
-        id: String(pitch.brand.uuid),
+        id: String(pitch.brand_id),
         name: pitch.brand.brand_name,
         color: '#' + Math.floor(Math.random()*16777215).toString(16),
       } : undefined,
