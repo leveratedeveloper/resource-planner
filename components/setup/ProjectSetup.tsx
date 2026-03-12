@@ -289,7 +289,8 @@ export const ProjectSetup = () => {
                   {brandProjects.map((project) => (
                     <div
                       key={project.id}
-                      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-accent/50 transition-colors"
+                      onClick={() => handleOpenView(project)}
+                      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-accent/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
                         <div
@@ -305,13 +306,6 @@ export const ProjectSetup = () => {
                           </div>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenView(project)}
-                      >
-                        <Icon icon="lucide:eye" className="h-4 w-4" />
-                      </Button>
                     </div>
                   ))}
                 </div>

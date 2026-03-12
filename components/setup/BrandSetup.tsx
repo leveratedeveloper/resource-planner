@@ -234,16 +234,13 @@ export const BrandSetup = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {brands.map((brand) => {
               return (
-                <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
+                <Card key={brand.id} onClick={() => handleOpenView(brand)} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden cursor-pointer hover:bg-accent/50">
                   <CardHeader className="pb-2 pt-6 px-6">
                     <div className="flex justify-between items-start mb-1">
                       <div className="flex items-center gap-3">
                          <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
                          <CardTitle className="text-lg font-bold flex items-center gap-2">
                            {brand.name}
-                           <button onClick={() => handleOpenView(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1" aria-label={`View ${brand.name} details`}>
-                              <Icon icon="lucide:eye" className="h-4 w-4" />
-                           </button>
                          </CardTitle>
                       </div>
                     </div>
