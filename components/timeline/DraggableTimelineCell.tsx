@@ -61,22 +61,18 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   
   // Check if this is a weekend day
   const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-  
-  // Check if this is a past date
-  const today = startOfDay(new Date());
-  const isPastDate = isBefore(startOfDay(day), today);
-  
+
   // Check if this day has time-off (100% allocation)
   // Only check when NOT in time-off mode (time-off mode allows adding on any day)
-  const hasTimeOff = !isTimeOffMode && timeOffAssignments.some(a => 
+  const hasTimeOff = !isTimeOffMode && timeOffAssignments.some(a =>
     isWithinInterval(startOfDay(day), {
       start: startOfDay(new Date(a.startDate)),
       end: startOfDay(new Date(a.endDate))
     })
   );
-  
-  // Day is blocked if past, or has time-off (when not in time-off mode)
-  const isBlocked = isPastDate || hasTimeOff;
+
+  // Day is blocked only if it has time-off (past dates are now allowed)
+  const isBlocked = hasTimeOff;
 
   // Handle weekend confirmation
   const handleWeekendConfirm = useCallback(() => {
@@ -93,7 +89,6 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
 
   // Get the appropriate tooltip message for blocked days
   const getBlockedMessage = () => {
-    if (isPastDate) return "Cannot schedule on past dates";
     if (hasTimeOff) return "Cannot schedule - Time Off";
     return "";
   };

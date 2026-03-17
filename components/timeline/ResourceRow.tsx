@@ -339,22 +339,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     if (!popoverData) return;
 
     console.log('SAVE ASSIGNMENT - popoverData.startDate:', popoverData.startDate.toISOString());
+    console.log('SAVE ASSIGNMENT - popoverData.endDate:', popoverData.endDate.toISOString());
     console.log('SAVE ASSIGNMENT - workDays:', data.workDays);
 
-    // Calculate end date based on workDays (skip weekends)
-    let endDate = new Date(popoverData.startDate);
-    let daysAdded = 1; // Start date counts as day 1
+    // Use the ORIGINAL dragged endDate to match the visual selection exactly
+    // This ensures the assignment block aligns perfectly with the drag preview
+    const finalEndDate = new Date(popoverData.endDate);
 
-    while (daysAdded < data.workDays) {
-      endDate = addDays(endDate, 1);
-      const dayOfWeek = endDate.getDay();
-      // Skip weekends (Saturday = 6, Sunday = 0)
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        daysAdded++;
-      }
-    }
-
-    console.log('SAVE ASSIGNMENT - calculated endDate:', endDate.toISOString());
+    console.log('SAVE ASSIGNMENT - final endDate:', finalEndDate.toISOString());
 
     // Close popover immediately - optimistic update will show the block
     setPopoverData(null);
@@ -364,7 +356,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       projectId: popoverData.projectId,
       taskId: null,
       startDate: toLocalDateString(popoverData.startDate),
-      endDate: toLocalDateString(endDate),
+      endDate: toLocalDateString(finalEndDate),
       hoursPerDay: data.hoursPerDay.toString(),
       allocationPercentage: null,
       isTimeOff: false,

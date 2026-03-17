@@ -265,8 +265,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   // Clamp to valid values
   displayDuration = Math.max(1, displayDuration);
 
-  const LEFT_OFFSET = displayOffset * cellWidth;
-  const WIDTH = displayDuration * cellWidth;
+  // Use percentage-based positioning for perfect alignment with flexbox cells
+  // Each cell is exactly 100% / days.length in width
+  const cellPercentage = 100 / days.length;
+  const LEFT_OFFSET = `${displayOffset * cellPercentage}%`;
+  const WIDTH = `${displayDuration * cellPercentage}%`;
 
   // If outside of view, hide
   if (offsetDays < 0 && offsetDays + durationDays < 0) return null;
@@ -346,10 +349,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
           if (edge === 'left') {
             let newStartDate = addDays(startDate, daysToMove);
-            // Prevent resizing start date into the past
-            if (isBefore(newStartDate, today)) {
-              newStartDate = today;
-            }
             // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (hasTimeOffInRangeRef.current(newStartDate, endDate)) {
               setIsResizing(null);
@@ -367,10 +366,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             }
           } else {
             let newEndDate = addDays(endDate, daysToMove);
-            // Prevent resizing end date into the past
-            if (isBefore(newEndDate, today)) {
-              newEndDate = today;
-            }
             // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (hasTimeOffInRangeRef.current(startDate, newEndDate)) {
               setIsResizing(null);
@@ -400,11 +395,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               newStartDate = skipWeekend(newStartDate, 'forward');
             }
 
-            // Prevent resizing start date into the past
-            if (newStartDate && isBefore(newStartDate, today)) {
-              newStartDate = today;
-            }
-
             // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (newStartDate && hasTimeOffInRangeRef.current(newStartDate, endDate)) {
               setIsResizing(null);
@@ -430,11 +420,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             // Skip weekend if needed - move forward to next workday
             if (newEndDate) {
               newEndDate = skipWeekend(newEndDate, 'forward');
-            }
-
-            // Prevent resizing end date into the past
-            if (newEndDate && isBefore(newEndDate, today)) {
-              newEndDate = today;
             }
 
             // Prevent resizing into time-off (check if new range overlaps with any time-off)
@@ -531,14 +516,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           const daysToMove = deltaColumns * 7;
           const newStartDate = addDays(startDate, daysToMove);
           const newEndDate = addDays(endDate, daysToMove);
-          
-          // Prevent moving start date into the past
-          if (isBefore(newStartDate, today)) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return; // Cancel the move
-          }
-          
+
           // Prevent moving into time-off (check if new range overlaps with any time-off)
           if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
             setIsDragging(false);
@@ -614,13 +592,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             newEndDate = addDays(newEndDate, 1);
           } else if (endDayOfWeek === 6) { // Saturday
             newEndDate = addDays(newEndDate, 2);
-          }
-
-          // Prevent moving start date into the past
-          if (isBefore(newStartDate, today)) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return; // Cancel the move
           }
 
           // Prevent moving into time-off
