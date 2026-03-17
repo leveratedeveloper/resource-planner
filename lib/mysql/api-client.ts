@@ -1,9 +1,9 @@
 /**
  * MySQL REST API Client
- * Handles all HTTP communication with the MySQL API
+ * Handles all HTTP communication with the MySQL (Timetrack) API
+ * Uses user's access token from session instead of hardcoded credentials
  */
 
-import { getMySqlAuthManager } from './auth';
 import type {
   MySqlApiResponse,
   MySqlBrand,
@@ -25,9 +25,11 @@ class MySqlApiClient {
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAYS = [500, 1500, 4000]; // Exponential backoff in ms
   private pendingRequests = new Map<string, Promise<any>>();
+  private getToken: () => Promise<string>; // Function to get token from session
 
-  constructor() {
+  constructor(getTokenFn: () => Promise<string>) {
     this.baseUrl = process.env.MYSQL_API_BASE_URL || 'http://localhost/api/v1';
+    this.getToken = getTokenFn;
   }
 
   /**
@@ -133,12 +135,11 @@ class MySqlApiClient {
     endpoint: string,
     params?: MySqlQueryParams,
   ): Promise<MySqlApiResponse<T>> {
-    const authManager = getMySqlAuthManager();
     let lastError: unknown;
     let lastErrorType: ErrorType = 'unknown';
 
-    // Get token ONCE before retry loop (optimization: avoid fetching on each retry)
-    const token = await authManager.getToken();
+    // Get token from session
+    const token = await this.getToken();
 
     // Build URL with query parameters
     const buildUrl = (): URL => {
@@ -200,10 +201,7 @@ class MySqlApiClient {
           }
 
           if (!response.ok) {
-            // Handle 401 - token expired, clear cache
-            if (response.status === 401) {
-              authManager.clearToken();
-            }
+            // Handle 401 - token expired, let caller handle redirect to login
             throw new MySqlApiError(`API Error: ${response.statusText}`, response.status);
           }
 
@@ -396,12 +394,11 @@ class MySqlApiClient {
     data?: unknown,
     params?: MySqlQueryParams,
   ): Promise<MySqlApiResponse<T>> {
-    const authManager = getMySqlAuthManager();
     let lastError: unknown;
     let lastErrorType: ErrorType = 'unknown';
 
-    // Get token ONCE before retry loop (optimization: avoid fetching on each retry)
-    const token = await authManager.getToken();
+    // Get token from session
+    const token = await this.getToken();
 
     // Build URL with query parameters
     const buildUrl = (): URL => {
@@ -473,10 +470,7 @@ class MySqlApiClient {
           }
 
           if (!response.ok) {
-            // Handle 401 - token expired, clear cache
-            if (response.status === 401) {
-              authManager.clearToken();
-            }
+            // Handle 401 - token expired, let caller handle redirect to login
             throw new MySqlApiError(`API Error: ${response.statusText}`, response.status);
           }
 
@@ -651,14 +645,35 @@ class MySqlApiClient {
   }
 }
 
-// Singleton instance
+// Singleton instance with token function
 let apiClientInstance: MySqlApiClient | null = null;
+let currentTokenFn: (() => Promise<string>) | null = null;
 
-export function getMySqlApiClient(): MySqlApiClient {
-  if (!apiClientInstance) {
-    apiClientInstance = new MySqlApiClient();
+/**
+ * Initialize or get the MySQL API client with token function
+ * Call this from API routes with the session token function
+ */
+export function getMySqlApiClient(tokenFn?: () => Promise<string>): MySqlApiClient {
+  // If tokenFn is provided, (re)initialize the client
+  if (tokenFn) {
+    apiClientInstance = new MySqlApiClient(tokenFn);
+    currentTokenFn = tokenFn;
   }
+
+  // Return existing instance or create a dummy one (will fail without token)
+  if (!apiClientInstance) {
+    throw new Error('MySqlApiClient not initialized. Call getMySqlApiClient(tokenFn) first.');
+  }
+
   return apiClientInstance;
+}
+
+/**
+ * Create a new MySqlApiClient instance with a token function
+ * Use this for creating scoped clients
+ */
+export function createMySqlApiClient(tokenFn: () => Promise<string>): MySqlApiClient {
+  return new MySqlApiClient(tokenFn);
 }
 
 // Re-export error type for convenience
