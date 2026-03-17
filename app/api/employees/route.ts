@@ -109,6 +109,12 @@ export async function GET(request: Request) {
       console.log('[Employees API] Full access granted, showing all employees');
     }
 
+    // Get pagination metadata from MySQL response
+    const meta = response?.data?.meta || response?.meta || {};
+    const mysqlTotal = meta.total || actualData.length;
+    const currentPage = meta.current_page || page;
+    const lastPage = meta.last_page || 1;
+
     // Transform MySQL response to match expected format
     return NextResponse.json({
       success: response.success,
@@ -161,10 +167,10 @@ export async function GET(request: Request) {
           updatedAt: emp.updated_at,
         } : undefined,
       })),
-      // Update total count after filtering
-      total: actualData.length,
-      // No more pages when filtered to own data
-      hasMore: false,
+      // Use MySQL total count for full access, filtered count for restricted access
+      total: !session.access.can_view_all ? actualData.length : mysqlTotal,
+      // Check if there are more pages (only relevant for full access)
+      hasMore: !session.access.can_view_all ? false : currentPage < lastPage,
     });
   } catch (error) {
     console.error("Failed to fetch employees:", error);

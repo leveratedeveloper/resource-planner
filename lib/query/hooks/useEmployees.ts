@@ -85,12 +85,23 @@ export type NewEmployee = {
 
 // API Functions
 async function fetchEmployees(): Promise<Employee[]> {
-  const response = await fetch("/api/employees");
-  if (!response.ok) {
-    throw new Error("Failed to fetch employees");
+  const allEmployees: Employee[] = [];
+  let offset = 0;
+  const limit = 100; // Fetch 100 at a time for efficiency
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(`/api/employees?limit=${limit}&offset=${offset}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch employees");
+    }
+    const data = await response.json();
+    allEmployees.push(...data.data);
+    hasMore = data.hasMore;
+    offset += limit;
   }
-  const data = await response.json();
-  return data.data;
+
+  return allEmployees;
 }
 
 async function fetchEmployee(id: string): Promise<Employee> {

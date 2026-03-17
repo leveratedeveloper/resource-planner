@@ -263,7 +263,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">{session.employee.full_name}</p>
                 <p className="text-xs text-muted-foreground">{session.employee.position}</p>
-                {/* <p className="text-xs text-muted-foreground">{session.employee.department_name}</p> */}
+                <p className="text-xs text-muted-foreground">Dept: {session.employee.department_name}</p>
               </div>
               <DropdownMenuSeparator />
               <div className="px-2 py-1.5">

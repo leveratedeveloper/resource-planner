@@ -12,19 +12,21 @@
  * @returns 'full' or 'restricted'
  */
 export function determineAccessLevel(employee: any): 'full' | 'restricted' {
-  const dept = employee.department_name;
-  const position = employee.position;
+  const dept = employee.department_name?.trim().toLowerCase();
+  const position = employee.position?.trim();
 
-  // Full access departments
-  if (dept === 'Brand Management' || dept === 'Business Consulting') {
+  // Full access departments (case-insensitive, trimmed)
+  if (dept === 'brand management' || dept === 'business consulting') {
+    console.log('[Access Level] Full access granted for department:', employee.department_name);
     return 'full';
   }
 
   // Creative - only Project Manager gets full access
-  if (dept === 'Creative' && position === 'Project Manager') {
+  if (dept === 'creative' && position === 'Project Manager') {
     return 'full';
   }
 
+  console.log('[Access Level] Restricted access for department:', employee.department_name, 'position:', employee.position);
   return 'restricted';
 }
 
