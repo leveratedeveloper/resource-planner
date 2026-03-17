@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
+import { getSession } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
   try {
+    // Get session and check authentication
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
 
-    const client = getMySqlApiClient();
+    // Get API client with session token
+    const client = getMySqlApiClient(async () => session.access_token);
 
     // MySQL API uses page-based pagination, convert offset to page
     // Use a large default per_page to ensure we get all brands in one request
@@ -44,13 +55,13 @@ export async function GET(request: Request) {
     let actualData = response?.data?.data || response?.data || [];
 
     // PERFORMANCE: Only fetch campaigns/pitches on first page without search
-    // This eliminates 2 unnecessary external API calls for paginated/searched requests
-    // Result: 60-70% faster brands API for search/pagination scenarios
+    // This ensures we get all brands that are referenced by campaigns/pitches
     let mergedBrands = actualData;
+
     if (!search && page === 1) {
-      // FALLBACK: Fetch brands from campaigns/pitches to ensure we get all referenced brands
-      // Some brands (like BRI) may not appear in the brands endpoint but are referenced by campaigns/pitches
-      console.log('[Brands API] Fetching campaigns and pitches to extract brand references...');
+      // Fetch campaigns and pitches to get all referenced brand_ids
+      // Then match them with brands from the brands endpoint (which now includes brand_id)
+      console.log('[Brands API] Fetching campaigns and pitches to get referenced brand_ids...');
 
       try {
         const [campaignsResponse, pitchesResponse] = await Promise.all([
@@ -69,77 +80,120 @@ export async function GET(request: Request) {
 
         console.log('[Brands API] Campaigns:', campaignsData.length, 'Pitches:', pitchesData.length);
 
-        // Extract unique brands from campaigns
-        const brandsFromCampaigns = campaignsData
-          .filter((c: any) => c.brand && c.brand_id)
-          .map((c: any) => ({
-            id: String(c.brand_id),
-            brand_name: c.brand.brand_name,
-            company_name: c.brand.company_name || null,
-            brand_address: c.brand.brand_address || null,
-            client_code: c.brand.client_code || null,
-            logo: c.brand.logo || null,
-            brand_website: c.brand.brand_website || null,
-            pic_brand_name: c.brand.pic_brand_name || null,
-            pic_title: c.brand.pic_title || null,
-            pic_email: c.brand.pic_email || null,
-            pic_brand_phone: c.brand.pic_brand_phone || null,
-            pic_finance_name: c.brand.pic_finance_name || null,
-            pic_finance_phone: c.brand.pic_finance_phone || null,
-            industry_category: c.brand.industry_category || null,
-            description: c.brand.description || null,
-            flag: c.brand.flag || 'prospect',
-            created_at: c.brand.created_at || null,
-            updated_at: c.brand.updated_at || null,
-            source: 'campaign',
-          }));
+        // Get unique brand_ids from campaigns and pitches
+        const referencedBrandIds = new Set<number>();
+        campaignsData.forEach((c: any) => c.brand_id && referencedBrandIds.add(c.brand_id));
+        pitchesData.forEach((p: any) => p.brand_id && referencedBrandIds.add(p.brand_id));
 
-        // Extract unique brands from pitches
-        const brandsFromPitches = pitchesData
-          .filter((p: any) => p.brand && p.brand_id)
-          .map((p: any) => ({
-            id: String(p.brand_id),
-            brand_name: p.brand.brand_name,
-            company_name: p.brand.company_name || null,
-            brand_address: p.brand.brand_address || null,
-            client_code: p.brand.client_code || null,
-            logo: p.brand.logo || null,
-            brand_website: p.brand.brand_website || null,
-            pic_brand_name: p.brand.pic_brand_name || null,
-            pic_title: p.brand.pic_title || null,
-            pic_email: p.brand.pic_email || null,
-            pic_brand_phone: p.brand.pic_brand_phone || null,
-            pic_finance_name: p.brand.pic_finance_name || null,
-            pic_finance_phone: p.brand.pic_finance_phone || null,
-            industry_category: p.brand.industry_category || null,
-            description: p.brand.description || null,
-            flag: p.brand.flag || 'prospect',
-            created_at: p.brand.created_at || null,
-            updated_at: p.brand.updated_at || null,
-            source: 'pitch',
-          }));
+        console.log('[Brands API] Referenced brand_ids:', Array.from(referencedBrandIds).slice(0, 10), '...');
 
-        // Merge all brands and deduplicate by ID (prioritize brands from brands endpoint)
-        const brandsMap = new Map<string, any>();
+        // Fetch ALL brands from the brands endpoint (all pages) to get complete data
+        // The brands endpoint is paginated, so we need to fetch all pages
+        console.log('[Brands API] Fetching all brands from brands endpoint...');
+        const allBrandsFromEndpoint: any[] = [];
+        let brandsPage = 1;
+        let brandsHasMore = true;
 
-        // First add brands from campaigns/pitches
-        [...brandsFromCampaigns, ...brandsFromPitches].forEach(brand => {
-          brandsMap.set(brand.id, brand);
+        while (brandsHasMore) {
+          const brandsResponse = await client.getBrands({ page: brandsPage, per_page: 100 });
+
+          if (brandsResponse.error) {
+            console.error('[Brands API] Error fetching brands page:', brandsPage, brandsResponse.error);
+            break;
+          }
+
+          const brandsPageData = brandsResponse?.data?.data || brandsResponse?.data || [];
+          allBrandsFromEndpoint.push(...brandsPageData);
+
+          const brandsMeta = brandsResponse?.data?.meta || brandsResponse?.meta;
+          brandsHasMore = brandsMeta?.current_page < brandsMeta?.last_page;
+          brandsPage++;
+
+          console.log('[Brands API] Fetched brands page:', brandsPage - 1, 'total so far:', allBrandsFromEndpoint.length);
+        }
+
+        console.log('[Brands API] Total brands from endpoint:', allBrandsFromEndpoint.length);
+
+        // Create a map of brands from the brands endpoint, keyed by brand_id
+        const brandsByNumericId = new Map<number, any>();
+        allBrandsFromEndpoint.forEach((brand: any) => {
+          if (brand.brand_id) {
+            brandsByNumericId.set(brand.brand_id, brand);
+          }
         });
 
-        // Then add/overwrite with brands from brands endpoint (these have more complete data)
-        actualData.forEach((brand: any) => {
-          brandsMap.set(String(brand.id || brand.brand_id), { ...brand, source: 'brands-endpoint' });
+        console.log('[Brands API] Brands from brands endpoint with brand_id:', brandsByNumericId.size);
+
+        // Create the final brands list
+        // Use brands from brands endpoint for referenced brand_ids
+        // For unreferenced brand_ids, create minimal entries
+        const brandsMap = new Map<string, any>();
+
+        Array.from(referencedBrandIds).forEach((brandId) => {
+          const stringId = String(brandId);
+          const brandFromEndpoint = brandsByNumericId.get(brandId);
+
+          if (brandFromEndpoint) {
+            // Use complete data from brands endpoint
+            console.log('[Brands API] Found brand for brand_id:', brandId, brandFromEndpoint.brand_name);
+            brandsMap.set(stringId, {
+              id: stringId,
+              brand_id: brandId,
+              uuid: brandFromEndpoint.uuid,
+              brand_name: brandFromEndpoint.brand_name,
+              company_name: brandFromEndpoint.company_name,
+              brand_address: brandFromEndpoint.brand_address,
+              client_code: brandFromEndpoint.client_code,
+              logo: brandFromEndpoint.logo,
+              brand_website: brandFromEndpoint.brand_website,
+              pic_brand_name: brandFromEndpoint.pic_brand_name,
+              pic_title: brandFromEndpoint.pic_title,
+              pic_email: brandFromEndpoint.pic_email,
+              pic_brand_phone: brandFromEndpoint.pic_brand_phone,
+              pic_finance_name: brandFromEndpoint.pic_finance_name,
+              pic_finance_phone: brandFromEndpoint.pic_finance_phone,
+              industry_category: brandFromEndpoint.industry_category,
+              description: brandFromEndpoint.description,
+              flag: brandFromEndpoint.flag,
+              created_at: brandFromEndpoint.created_at,
+              updated_at: brandFromEndpoint.updated_at,
+              source: 'brands-endpoint',
+            });
+          } else {
+            // Brand not found in brands endpoint, create minimal entry
+            brandsMap.set(stringId, {
+              id: stringId,
+              brand_id: brandId,
+              uuid: null,
+              brand_name: `Brand ${brandId}`,
+              company_name: null,
+              brand_address: null,
+              client_code: null,
+              logo: null,
+              brand_website: null,
+              pic_brand_name: null,
+              pic_title: null,
+              pic_email: null,
+              pic_brand_phone: null,
+              pic_finance_name: null,
+              pic_finance_phone: null,
+              industry_category: null,
+              description: null,
+              flag: 'prospect',
+              created_at: null,
+              updated_at: null,
+              source: 'fallback',
+            });
+          }
         });
 
         mergedBrands = Array.from(brandsMap.values());
 
-        console.log('[Brands API] Merged brands:', {
-          fromBrandsEndpoint: actualData.length,
-          fromCampaigns: brandsFromCampaigns.length,
-          fromPitches: brandsFromPitches.length,
-          mergedTotal: mergedBrands.length,
-          mergedBrandIds: mergedBrands.map((b: any) => ({ id: b.id, name: b.brand_name, source: b.source })),
+        console.log('[Brands API] Final brands count:', {
+          total: mergedBrands.length,
+          fromBrandsEndpoint: mergedBrands.filter((b: any) => b.source === 'brands-endpoint').length,
+          fallback: mergedBrands.filter((b: any) => b.source === 'fallback').length,
+          withActualNames: mergedBrands.filter((b: any) => !b.brand_name?.startsWith('Brand ')).length,
         });
       } catch (error) {
         // If campaigns/pitches fetch fails, just use the brands from the brands endpoint
@@ -172,35 +226,46 @@ export async function GET(request: Request) {
     });
 
     // Transform MySQL response to match expected format
-    // Note: The MySQL API returns 'id' not 'brand_id'
+    // Note: Use brand_id (numeric) to match with campaigns/pitches
+    const transformedBrands = mergedBrands.map((brand: any) => {
+      // Use brand_id first (for campaigns/pitches compatibility), then fall back to uuid/id
+      const brandId = String(brand.id || brand.brand_id || brand.uuid);
+
+      // Check if this is partial data (from campaigns/pitches without nested brand object)
+      const isPartialData = brand.brand_name?.startsWith('Brand ') || !brand.company_name;
+
+      return {
+        id: brandId, // Convert to string for consistency
+        name: brand.brand_name,
+        businessUnitId: null,
+        companyName: brand.company_name,
+        brandAddress: brand.brand_address,
+        clientCode: String(brand.client_code || ''),
+        color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
+        logo: brand.logo || null,
+        website: brand.brand_website,
+        contactName: brand.pic_brand_name,
+        contactTitle: brand.pic_title,
+        contactEmail: brand.pic_email,
+        contactPhone: brand.pic_brand_phone,
+        picFinanceName: brand.pic_finance_name,
+        picFinancePhone: brand.pic_finance_phone,
+        industryCategory: brand.industry_category,
+        description: brand.description,
+        status: brand.flag === 'active' ? 'active' : brand.flag === 'inactive' ? 'inactive' : 'prospect',
+        createdAt: brand.created_at,
+        updatedAt: brand.updated_at,
+        // Metadata for fetching complete data
+        _partialData: isPartialData,
+        _originalBrandId: brand.brand_id || brandId,
+      };
+    });
+
+    console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map(b => ({ id: b.id, name: b.name, original: mergedBrands.find((mb: any) => mb.brand_name === b.name)?.id || mergedBrands.find((mb: any) => mb.brand_name === b.name)?.brand_id })));
+
     return NextResponse.json({
       success: response.success ?? true,
-      data: mergedBrands.map((brand: any) => {
-        const brandId = String(brand.id || brand.brand_id);
-
-        return {
-          id: brandId, // Convert to string for consistency
-          name: brand.brand_name,
-          businessUnitId: null,
-          companyName: brand.company_name,
-          brandAddress: brand.brand_address,
-          clientCode: String(brand.client_code || ''),
-          color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
-          logo: brand.logo || null,
-          website: brand.brand_website,
-          contactName: brand.pic_brand_name,
-          contactTitle: brand.pic_title,
-          contactEmail: brand.pic_email,
-          contactPhone: brand.pic_brand_phone,
-          picFinanceName: brand.pic_finance_name,
-          picFinancePhone: brand.pic_finance_phone,
-          industryCategory: brand.industry_category,
-          description: brand.description,
-          status: brand.flag === 'active' ? 'active' : brand.flag === 'inactive' ? 'inactive' : 'prospect',
-          createdAt: brand.created_at,
-          updatedAt: brand.updated_at,
-        };
-      }),
+      data: transformedBrands,
       total,
       hasMore,
     });

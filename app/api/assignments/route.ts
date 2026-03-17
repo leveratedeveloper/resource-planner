@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAssignments, createAssignment } from "@/lib/mysql-assignments/queries";
+import { getSession } from "@/lib/auth/session";
 
 /**
  * Transform MySQL API assignment format (snake_case) to frontend format (camelCase)
@@ -32,6 +33,15 @@ function transformMySqlAssignmentToFrontend(mysqlAssignment: any) {
  */
 export async function GET(request: Request) {
   try {
+    // Get session and check authentication
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get('employeeId');
     const projectId = searchParams.get('projectId');
@@ -39,9 +49,16 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate');
     const status = searchParams.get('status');
 
+    // For restricted access, force filter to current user's employee UUID
+    let effectiveEmployeeId = employeeId;
+    if (!session.access.can_view_all && session.employee?.uuid) {
+      effectiveEmployeeId = session.employee.uuid;
+      console.log('[Assignments API] Restricted access, filtering to employee:', session.employee.uuid);
+    }
+
     // Fetch from MySQL assignments database
     const assignments = await getAssignments({
-      employee_uuid: employeeId || undefined,
+      employee_uuid: effectiveEmployeeId || undefined,
       project_uuid: projectId || undefined,
       start_date: startDate || undefined,
       end_date: endDate || undefined,
@@ -72,7 +89,24 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    // Get session and check authentication
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
+
+    // For restricted access users, only allow creating assignments for themselves
+    if (!session.access.can_view_all && body.employeeId !== session.employee?.uuid) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions - can only create assignments for yourself' },
+        { status: 403 }
+      );
+    }
 
     console.log('[API /assignments] Creating assignment with data:', body);
 

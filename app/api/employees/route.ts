@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
+import { getSession } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
   try {
+    // Get session and check authentication
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
 
-    const client = getMySqlApiClient();
+    // Get API client with session token
+    const client = getMySqlApiClient(async () => session.access_token);
 
     // MySQL API uses page-based pagination, convert offset to page
     const perPage = limit ? parseInt(limit, 10) : 50;
@@ -37,7 +48,66 @@ export async function GET(request: Request) {
     }
 
     // Handle double-wrapped response: response.data.data instead of response.data
-    const actualData = response?.data?.data || response?.data || [];
+    let actualData = response?.data?.data || response?.data || [];
+
+    // Debug: Log all fields to find a match
+    console.log('[Employees API] Session employee full data:', session.employee);
+    console.log('[Employees API] MySQL employees (first 3):', actualData.slice(0, 3).map((e: any) => ({
+      uuid: e.uuid,
+      nik: e.nik,
+      full_name: e.full_name,
+      email: e.email,
+    })));
+
+    // Apply access level filtering
+    // If user has restricted access, only show their own employee record
+    if (!session.access.can_view_all) {
+      // Try multiple matching strategies in current page
+      let match = actualData.find((emp: any) => {
+        // Try matching by UUID (from MySQL API)
+        if (emp.uuid === session.employee?.uuid) return true;
+        // Try matching by NIK
+        if (emp.nik === session.employee?.nik) return true;
+        // Try matching by full_name
+        if (emp.full_name === session.employee?.full_name) return true;
+        return false;
+      });
+
+      // If not found in current page, search specifically for this employee
+      if (!match && (session.employee?.nik || session.employee?.full_name)) {
+        console.log('[Employees API] Not in current page, searching by NIK/name...');
+        try {
+          const searchQuery = session.employee.nik || session.employee.full_name;
+          const searchResponse = await client.getEmployees({
+            page: 1,
+            per_page: 100,
+            search: searchQuery
+          });
+
+          const searchData = searchResponse?.data?.data || searchResponse?.data || [];
+          match = searchData.find((emp: any) => {
+            if (emp.uuid === session.employee?.uuid) return true;
+            if (emp.nik === session.employee?.nik) return true;
+            if (emp.full_name === session.employee?.full_name) return true;
+            return false;
+          });
+
+          if (match) {
+            console.log('[Employees API] Found via search:', match.full_name, '(' + match.nik + ')');
+          } else {
+            console.log('[Employees API] Still not found after search for:', searchQuery);
+          }
+        } catch (searchError) {
+          console.error('[Employees API] Search failed:', searchError);
+        }
+      } else if (match) {
+        console.log('[Employees API] Found in current page:', match.full_name);
+      }
+
+      actualData = match ? [match] : [];
+    } else {
+      console.log('[Employees API] Full access granted, showing all employees');
+    }
 
     // Transform MySQL response to match expected format
     return NextResponse.json({
@@ -91,8 +161,10 @@ export async function GET(request: Request) {
           updatedAt: emp.updated_at,
         } : undefined,
       })),
-      total: (response?.data?.meta || response?.meta)?.total || actualData.length,
-      hasMore: (response?.data?.meta || response?.meta) ? (response?.data?.meta || response?.meta).current_page < (response?.data?.meta || response?.meta).last_page : false,
+      // Update total count after filtering
+      total: actualData.length,
+      // No more pages when filtered to own data
+      hasMore: false,
     });
   } catch (error) {
     console.error("Failed to fetch employees:", error);
@@ -108,6 +180,23 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // Check authentication
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: 'Not authenticated' },
+      { status: 401 }
+    );
+  }
+
+  // Check authorization - only full access users can create employees
+  if (!session.access.can_view_all) {
+    return NextResponse.json(
+      { error: 'Insufficient permissions' },
+      { status: 403 }
+    );
+  }
+
   return NextResponse.json(
     { success: false, error: "Creating employees via MySQL API not yet implemented" },
     { status: 501 }

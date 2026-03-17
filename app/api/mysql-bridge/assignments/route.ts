@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getMySqlApiClient } from '@/lib/mysql/api-client';
+import { getSession } from '@/lib/auth/session';
 import type { MySqlCreateAssignmentRequest } from '@/lib/types/mysql';
 
 /**
@@ -53,13 +54,18 @@ function validateAssignment(data: MySqlCreateAssignmentRequest): { valid: boolea
  */
 export async function GET(request: Request) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const employeeUuid = searchParams.get('employee_uuid') || undefined;
     const projectUuid = searchParams.get('project_uuid') || undefined;
     const startDate = searchParams.get('start_date') || undefined;
     const endDate = searchParams.get('end_date') || undefined;
 
-    const client = getMySqlApiClient();
+    const client = getMySqlApiClient(async () => session.access_token);
     const response = await client.getAssignments({
       employee_uuid: employeeUuid,
       project_uuid: projectUuid,
@@ -106,6 +112,11 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body: MySqlCreateAssignmentRequest = await request.json();
 
     // Validate required fields
@@ -127,7 +138,7 @@ export async function POST(request: Request) {
       end_date: body.end_date,
     });
 
-    const client = getMySqlApiClient();
+    const client = getMySqlApiClient(async () => session.access_token);
     const response = await client.createAssignment(body);
 
     // Check for API errors from the client

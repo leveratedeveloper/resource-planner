@@ -1,15 +1,26 @@
 import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
+import { getSession } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
   try {
+    // Get session for authentication
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const brandId = searchParams.get("brandId");
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
 
-    const client = getMySqlApiClient();
+    // Get API client with session token
+    const client = getMySqlApiClient(async () => session.access_token);
 
     // MySQL API uses page-based pagination, convert offset to page
     const perPage = limit ? parseInt(limit, 10) : 50;
