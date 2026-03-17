@@ -2,6 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useBrands, useInfiniteBrands, type Brand } from "@/lib/query/hooks/useBrands";
+
+// Extended brand type with metadata for partial data
+interface BrandWithMetadata extends Brand {
+  _partialData?: boolean;
+  _originalBrandId?: string;
+}
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,6 +131,7 @@ export const BrandSetup = () => {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
+  const [isLoadingBrandDetails, setIsLoadingBrandDetails] = useState(false);
 
   // Form State - Basic Information
   const [companyName, setCompanyName] = useState("");
@@ -151,26 +158,109 @@ export const BrandSetup = () => {
   const [businessUnitId, setBusinessUnitId] = useState<string>("");
   const [description, setDescription] = useState("");
 
-  const handleOpenView = (brand: Brand) => {
-    setEditingBrand(brand);
-    setCompanyName(brand.companyName || "");
-    setName(brand.name);
-    setBrandAddress(brand.brandAddress || "");
-    setClientCode(brand.clientCode || "");
-    setIndustryCategory(brand.industryCategory || "");
-    setLogo(brand.logo || "");
-    setWebsite(brand.website || "");
-    setColor(brand.color);
-    setStatus(brand.status);
-    setContactName(brand.contactName || "");
-    setContactTitle(brand.contactTitle || "");
-    setContactEmail(brand.contactEmail || "");
-    setContactPhone(brand.contactPhone || "");
-    setPicFinanceName(brand.picFinanceName || "");
-    setPicFinancePhone(brand.picFinancePhone || "");
-    setBusinessUnitId(brand.businessUnitId || "");
-    setDescription(brand.description || "");
-    setIsDialogOpen(true);
+  const handleOpenView = async (brand: BrandWithMetadata) => {
+    // Check if brand has partial data (from campaigns/pitches without nested brand object)
+    if (brand._partialData) {
+      setIsLoadingBrandDetails(true);
+      setEditingBrand(brand);
+      setIsDialogOpen(true);
+
+      try {
+        console.log('[BrandSetup] Fetching complete brand data for:', brand.name);
+        // Fetch complete brand data by name
+        const response = await fetch(`/api/brands/lookup?brandName=${encodeURIComponent(brand.name)}`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+          const completeBrand = result.data;
+          console.log('[BrandSetup] Got complete brand data:', completeBrand);
+          brand = { ...brand, ...completeBrand } as BrandWithMetadata;
+
+          // Update form with complete data
+          setCompanyName(completeBrand.companyName || "");
+          setName(completeBrand.name);
+          setBrandAddress(completeBrand.brandAddress || "");
+          setClientCode(completeBrand.clientCode || "");
+          setIndustryCategory(completeBrand.industryCategory || "");
+          setLogo(completeBrand.logo || "");
+          setWebsite(completeBrand.website || "");
+          setColor(completeBrand.color);
+          setStatus(completeBrand.status);
+          setContactName(completeBrand.contactName || "");
+          setContactTitle(completeBrand.contactTitle || "");
+          setContactEmail(completeBrand.contactEmail || "");
+          setContactPhone(completeBrand.contactPhone || "");
+          setPicFinanceName(completeBrand.picFinanceName || "");
+          setPicFinancePhone(completeBrand.picFinancePhone || "");
+          setBusinessUnitId(completeBrand.businessUnitId || "");
+          setDescription(completeBrand.description || "");
+          setEditingBrand(brand);
+        } else {
+          console.log('[BrandSetup] No complete brand data found, using partial data');
+          // Set partial data
+          setCompanyName(brand.companyName || "");
+          setName(brand.name);
+          setBrandAddress(brand.brandAddress || "");
+          setClientCode(brand.clientCode || "");
+          setIndustryCategory(brand.industryCategory || "");
+          setLogo(brand.logo || "");
+          setWebsite(brand.website || "");
+          setColor(brand.color);
+          setStatus(brand.status);
+          setContactName(brand.contactName || "");
+          setContactTitle(brand.contactTitle || "");
+          setContactEmail(brand.contactEmail || "");
+          setContactPhone(brand.contactPhone || "");
+          setPicFinanceName(brand.picFinanceName || "");
+          setPicFinancePhone(brand.picFinancePhone || "");
+          setBusinessUnitId(brand.businessUnitId || "");
+          setDescription(brand.description || "");
+        }
+      } catch (error) {
+        console.error('[BrandSetup] Failed to fetch complete brand data:', error);
+        // Set partial data
+        setCompanyName(brand.companyName || "");
+        setName(brand.name);
+        setBrandAddress(brand.brandAddress || "");
+        setClientCode(brand.clientCode || "");
+        setIndustryCategory(brand.industryCategory || "");
+        setLogo(brand.logo || "");
+        setWebsite(brand.website || "");
+        setColor(brand.color);
+        setStatus(brand.status);
+        setContactName(brand.contactName || "");
+        setContactTitle(brand.contactTitle || "");
+        setContactEmail(brand.contactEmail || "");
+        setContactPhone(brand.contactPhone || "");
+        setPicFinanceName(brand.picFinanceName || "");
+        setPicFinancePhone(brand.picFinancePhone || "");
+        setBusinessUnitId(brand.businessUnitId || "");
+        setDescription(brand.description || "");
+      } finally {
+        setIsLoadingBrandDetails(false);
+      }
+    } else {
+      // Brand has complete data, just show it
+      setCompanyName(brand.companyName || "");
+      setName(brand.name);
+      setBrandAddress(brand.brandAddress || "");
+      setClientCode(brand.clientCode || "");
+      setIndustryCategory(brand.industryCategory || "");
+      setLogo(brand.logo || "");
+      setWebsite(brand.website || "");
+      setColor(brand.color);
+      setStatus(brand.status);
+      setContactName(brand.contactName || "");
+      setContactTitle(brand.contactTitle || "");
+      setContactEmail(brand.contactEmail || "");
+      setContactPhone(brand.contactPhone || "");
+      setPicFinanceName(brand.picFinanceName || "");
+      setPicFinancePhone(brand.picFinancePhone || "");
+      setBusinessUnitId(brand.businessUnitId || "");
+      setDescription(brand.description || "");
+      setEditingBrand(brand);
+      setIsDialogOpen(true);
+    }
   };
 
   return (
@@ -307,7 +397,14 @@ export const BrandSetup = () => {
           <DialogHeader>
             <DialogTitle>Brand Details</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-6 py-4">
+
+          {isLoadingBrandDetails ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Icon icon="lucide:loader-2" className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+              <p className="text-sm text-muted-foreground">Loading brand details...</p>
+            </div>
+          ) : (
+            <div className="grid gap-6 py-4">
             {/* Basic Information Section */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-foreground border-b pb-2">Basic Information</h3>
@@ -599,6 +696,7 @@ export const BrandSetup = () => {
               </div>
             </div>
           </div>
+          )}
           <DialogFooter>
             <Button
               onClick={() => setIsDialogOpen(false)}

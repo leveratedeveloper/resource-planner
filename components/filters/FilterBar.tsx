@@ -4,6 +4,7 @@ import React from "react";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
+import { useAuth } from "@/context/AuthContext";
 import {
   Select,
   SelectContent,
@@ -80,6 +81,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const { data: brands = [], isLoading: brandsLoading } = useBrands();
   const { data: departments = [], isLoading: departmentsLoading } = useDepartments();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { session, logout } = useAuth();
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
@@ -246,6 +248,39 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
           Setup / Manage Brands
         </Button>
+
+        {/* User Menu */}
+        {session && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Icon icon="lucide:user" className="h-4 w-4" />
+                <span className="hidden sm:inline">{session.employee.nickname || session.employee.full_name}</span>
+                <Icon icon="lucide:chevron-down" className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[200px]">
+              <div className="px-2 py-1.5">
+                <p className="text-sm font-medium">{session.employee.full_name}</p>
+                <p className="text-xs text-muted-foreground">{session.employee.position}</p>
+                <p className="text-xs text-muted-foreground">{session.employee.department_name}</p>
+              </div>
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5">
+                <p className="text-xs text-muted-foreground">
+                  Access: <span className={`font-medium ${session.access.level === 'full' ? 'text-green-600' : 'text-orange-600'}`}>
+                    {session.access.level === 'full' ? 'Full' : 'Restricted'}
+                  </span>
+                </p>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={logout}>
+                <Icon icon="lucide:log-out" className="mr-2 h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </div>
   );
