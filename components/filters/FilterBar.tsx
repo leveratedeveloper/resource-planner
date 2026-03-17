@@ -87,10 +87,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-0">
         <div className="flex items-center gap-2">
-           <Icon icon="lucide:filter" className="text-muted-foreground" />
-           <span className="font-medium">Filters:</span>
+          <Icon icon="lucide:filter" className="text-muted-foreground" />
+          <span className="font-medium">Filters:</span>
         </div>
-        
+
         {/* Search Input */}
         <div className="relative">
           <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -139,15 +139,15 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <SelectValue placeholder="All Departments" />
           </SelectTrigger>
           <SelectContent>
-             <SelectItem key="all" value="all">All Departments</SelectItem>
-             {departments.map((dept) => (
-               <SelectItem key={dept.id} value={dept.id}>
-                 <span className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
-                   {dept.name}
-                 </span>
-               </SelectItem>
-             ))}
+            <SelectItem key="all" value="all">All Departments</SelectItem>
+            {departments.map((dept) => (
+              <SelectItem key={dept.id} value={dept.id}>
+                <span className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
+                  {dept.name}
+                </span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -263,7 +263,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">{session.employee.full_name}</p>
                 <p className="text-xs text-muted-foreground">{session.employee.position}</p>
-                <p className="text-xs text-muted-foreground">{session.employee.department_name}</p>
+                {/* <p className="text-xs text-muted-foreground">{session.employee.department_name}</p> */}
               </div>
               <DropdownMenuSeparator />
               <div className="px-2 py-1.5">
