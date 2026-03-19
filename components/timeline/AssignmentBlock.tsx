@@ -276,8 +276,18 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
   // Time Off styling
   const isTimeOff = assignment.isTimeOff;
-  const bgColor = isTimeOff ? "#6b7280" : (project?.color || "#ccc");
-  const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown");
+  const bgColor = isTimeOff ? "#6b7280" : (project?.color || "#3b82f6");
+  const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown Project");
+
+  // Debug logging for missing project
+  if (!isTimeOff && !project) {
+    console.warn('[AssignmentBlock] Project not found for assignment:', {
+      assignmentId: assignment.id,
+      projectId: assignment.projectId,
+      employeeId: assignment.employeeId,
+      assignmentName: assignment.note || 'No note'
+    });
+  }
 
   // Calculate working days for effort
   let workingDays = 0;

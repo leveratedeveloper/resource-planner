@@ -23,9 +23,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { AssignEmployeesDialog } from "@/components/projects/AssignEmployeesDialog";
+import { useAuth } from "@/context/AuthContext";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -60,9 +67,10 @@ const generateProjectNumber = (projectName: string, existingNumbers: string[] = 
 };
 
 export const ProjectSetup = () => {
+  const { session } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
-  
+
   const {
     data: projectsData,
     isLoading: projectsLoading,
@@ -212,7 +220,8 @@ export const ProjectSetup = () => {
   const { sentinelRef, isStuck } = useIsStuck(40);
 
   return (
-    <div className="space-y-6">
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-6">
       {/* Header */}
       <div ref={sentinelRef} className="h-px -mt-px invisible" />
       <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex items-center justify-between transition-shadow duration-200", isStuck && "shadow-sm")}>
@@ -833,13 +842,33 @@ export const ProjectSetup = () => {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="default"
-              onClick={() => setIsAssignEmployeesOpen(true)}
-            >
-              <Icon icon="lucide:users" className="h-4 w-4 mr-2" />
-              Manage Team
-            </Button>
+            {!session?.access.can_view_all ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="inline-block">
+                    <Button
+                      variant="default"
+                      onClick={() => setIsAssignEmployeesOpen(true)}
+                      disabled
+                    >
+                      <Icon icon="lucide:users" className="h-4 w-4 mr-2" />
+                      Manage Team
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>You can&apos;t assign projects. Restricted access.</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="default"
+                onClick={() => setIsAssignEmployeesOpen(true)}
+              >
+                <Icon icon="lucide:users" className="h-4 w-4 mr-2" />
+                Manage Team
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Close
             </Button>
@@ -857,6 +886,7 @@ export const ProjectSetup = () => {
           projectColor={viewingProject.color}
         />
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
