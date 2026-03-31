@@ -4,6 +4,7 @@ import {
   updateActualAssignment,
   deleteActualAssignment,
 } from "@/lib/mysql-assignments/queries";
+import { getSession } from "@/lib/auth/session";
 
 /**
  * Transform MySQL actual assignment format (snake_case) to frontend format (camelCase)
@@ -73,7 +74,44 @@ export async function PUT(
 ) {
   try {
     const { uuid } = await params;
+
+    console.log('[API /actual/[uuid] PUT] Starting update for UUID:', uuid);
+
+    // Get the session
+    const session = await getSession();
+    if (!session) {
+      console.error('[API /actual/[uuid] PUT] No session found');
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    console.log('[API /actual/[uuid] PUT] Session found:', {
+      employeeUuid: session.employee?.uuid,
+      employeeName: session.employee?.name,
+    });
+
+    // Get the actual assignment first to check ownership
+    const existingActual = await getActual(uuid);
+
+    console.log('[API /actual/[uuid] PUT] Existing actual:', {
+      uuid: existingActual.uuid,
+      employee_uuid: existingActual.employee_uuid,
+    });
+
+    // Actual assignments can only be updated by the assigned employee themselves
+    if (existingActual.employee_uuid !== session.employee?.uuid) {
+      console.error('[API /actual/[uuid] PUT] Permission denied - user trying to update another employee\'s actual assignment', {
+        actual_employee_uuid: existingActual.employee_uuid,
+        session_employee_uuid: session.employee?.uuid,
+      });
+      return NextResponse.json(
+        { error: "You can only update your own actual assignments" },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
+
+    console.log('[API /actual/[uuid] PUT] Request body:', body);
 
     // Transform frontend format (camelCase) to MySQL format (snake_case)
     // Struktur sama dengan assignments
@@ -115,7 +153,11 @@ export async function PUT(
       data: transformedActual,
     });
   } catch (error) {
-    console.error("[API /actual/[uuid]] Failed to update actual assignment:", error);
+    console.error("[API /actual/[uuid]] Failed to update actual assignment:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      error,
+    });
 
     const status = error instanceof Error && error.message.includes("not found") ? 404 : 500;
 
@@ -139,6 +181,24 @@ export async function DELETE(
 ) {
   try {
     const { uuid } = await params;
+
+    // Get the session
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get the actual assignment first to check ownership
+    const existingActual = await getActual(uuid);
+
+    // Actual assignments can only be deleted by the assigned employee themselves
+    if (existingActual.employee_uuid !== session.employee?.uuid) {
+      console.error('[API /actual/[uuid] DELETE] Permission denied - user trying to delete another employee\'s actual assignment');
+      return NextResponse.json(
+        { error: "You can only delete your own actual assignments" },
+        { status: 403 }
+      );
+    }
 
     console.log("[API /actual/[uuid]] Deleting actual assignment:", uuid);
 

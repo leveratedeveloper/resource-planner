@@ -98,11 +98,11 @@ export async function POST(request: NextRequest) {
     });
     console.log('====================================');
 
-    // For restricted access users, only allow creating actuals for themselves
-    if (!session.access.can_view_all && body.employeeUuid !== session.employee?.uuid) {
-      console.error('[API /actual POST] Permission denied - restricted user trying to create for another employee');
+    // Actual assignments can only be created by the employee themselves, regardless of access level
+    if (body.employeeUuid !== session.employee?.uuid) {
+      console.error('[API /actual POST] Permission denied - user trying to create actual assignment for another employee');
       return NextResponse.json(
-        { error: "Insufficient permissions - can only create actual assignments for yourself" },
+        { error: "You can only create actual assignments for yourself" },
         { status: 403 }
       );
     }

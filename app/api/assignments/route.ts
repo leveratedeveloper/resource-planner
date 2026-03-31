@@ -100,10 +100,10 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // For restricted access users, only allow creating assignments for themselves
-    if (!session.access.can_view_all && body.employeeId !== session.employee?.uuid) {
+    // Plan assignments can only be created by users with full access
+    if (!session.access.can_view_all) {
       return NextResponse.json(
-        { error: 'Insufficient permissions - can only create assignments for yourself' },
+        { error: 'Insufficient permissions - only users with full access can create plan assignments' },
         { status: 403 }
       );
     }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAssignment, updateAssignment, deleteAssignment } from '@/lib/mysql-assignments/queries';
 import type { MySqlUpdateAssignmentRequest } from '@/lib/types/mysql';
+import { getSession } from '@/lib/auth/session';
 
 /**
  * Transform MySQL API assignment format (snake_case) to frontend format (camelCase)
@@ -70,6 +71,21 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+
+    // Get session and check authentication + permissions
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Plan assignments can only be updated by users with full access
+    if (!session.access.can_view_all) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions - only users with full access can update plan assignments' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
     // Transform frontend format (camelCase) to MySQL format (snake_case)
@@ -133,6 +149,20 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
+    // Get session and check authentication + permissions
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Plan assignments can only be deleted by users with full access
+    if (!session.access.can_view_all) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions - only users with full access can delete plan assignments' },
+        { status: 403 }
+      );
+    }
 
     console.log('[API /assignments/[id]] Deleting assignment:', id);
 
