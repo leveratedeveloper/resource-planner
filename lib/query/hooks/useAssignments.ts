@@ -254,6 +254,8 @@ export function useUpdateAssignment() {
     onMutate: async (variables) => {
       const { id, hoursPerDay, ...updates } = variables;
 
+      console.log('[useUpdateAssignment] onMutate:', { id, updates });
+
       // Defensive check: skip optimistic update for invalid hours
       if (hoursPerDay !== undefined) {
         // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
@@ -297,11 +299,26 @@ export function useUpdateAssignment() {
         }));
       });
 
+      // Also update ALL date-filtered query caches
+      const queriesData = queryClient.getQueriesData({ queryKey: queryKeys.assignments });
+      console.log('[useUpdateAssignment] Updating all query caches:', queriesData.length);
+      queriesData.forEach(([queryKey, data]) => {
+        if (Array.isArray(data)) {
+          queryClient.setQueryData<Assignment[]>(queryKey, (old) => {
+            if (!old) return old;
+            return old.map((assignment) =>
+              assignment.id === id ? { ...assignment, ...updates } : assignment
+            );
+          });
+        }
+      });
+
       return { previousAssignments, previousEmployees };
     },
 
     // Rollback on error
     onError: (err, variables, context) => {
+      console.error('[useUpdateAssignment] onError:', err);
       // Only rollback if we actually did an optimistic update
       if (context?.previousAssignments && !context?.skipOptimistic) {
         queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
@@ -313,6 +330,7 @@ export function useUpdateAssignment() {
 
     // Server sync - update cache with actual server data (no refetch needed)
     onSuccess: (data) => {
+      console.log('[useUpdateAssignment] onSuccess:', data);
       // Update assignments cache with server response
       queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
         if (!old) return [data];

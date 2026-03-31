@@ -713,7 +713,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
     // Track which assignment is being updated
     setUpdatingAssignmentId(id);
+    console.log('[ResourceRow] Calling updateAssignmentMutation.mutate:', payload);
     updateAssignmentMutation.mutate(payload, {
+      onSuccess: () => {
+        console.log('[ResourceRow] Update successful');
+      },
+      onError: (error) => {
+        console.error('[ResourceRow] Update failed:', error);
+      },
       onSettled: () => {
         setUpdatingAssignmentId(null);
       },
