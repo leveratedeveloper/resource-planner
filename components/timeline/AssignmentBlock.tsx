@@ -375,6 +375,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           assignmentId: assignment.id,
           deltaColumns,
           edge,
+          onUpdateFunction: onUpdate.name || 'anonymous',
         });
         if (isWeekView) {
           // In week view, each column represents 1 week (7 days)

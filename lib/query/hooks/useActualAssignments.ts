@@ -194,7 +194,9 @@ export function useUpdateActualAssignment() {
 
     // Optimistic update before API call
     onMutate: async (variables) => {
-      const { uuid } = variables;
+      const { uuid, ...updates } = variables;
+
+      console.log('[useUpdateActualAssignment] onMutate:', { uuid, updates });
 
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["actual"] });
@@ -207,9 +209,25 @@ export function useUpdateActualAssignment() {
         if (!old) return old;
         return old.map((actual) =>
           actual.uuid === uuid
-            ? { ...actual, ...variables }
+            ? { ...actual, ...updates }
             : actual
         );
+      });
+
+      // Also update ALL date-filtered query caches
+      const queriesData = queryClient.getQueriesData({ queryKey: ["actual"] });
+      console.log('[useUpdateActualAssignment] Updating all query caches:', queriesData.length);
+      queriesData.forEach(([queryKey, data]) => {
+        if (Array.isArray(data)) {
+          queryClient.setQueryData<ActualAssignment[]>(queryKey, (old) => {
+            if (!old) return old;
+            return old.map((actual) =>
+              actual.uuid === uuid
+                ? { ...actual, ...updates }
+                : actual
+            );
+          });
+        }
       });
 
       return { previousActuals };
@@ -217,6 +235,7 @@ export function useUpdateActualAssignment() {
 
     // Rollback on error
     onError: (err, variables, context) => {
+      console.error('[useUpdateActualAssignment] onError:', err);
       if (context?.previousActuals) {
         queryClient.setQueryData(["actual"], context.previousActuals);
       }
@@ -224,6 +243,7 @@ export function useUpdateActualAssignment() {
 
     // Server sync - update cache with actual server data
     onSuccess: (data) => {
+      console.log('[useUpdateActualAssignment] onSuccess:', data);
       queryClient.setQueryData<ActualAssignment[]>(["actual"], (old) => {
         if (!old) return [data];
         return old.map((a) => (a.uuid === data.uuid ? data : a));

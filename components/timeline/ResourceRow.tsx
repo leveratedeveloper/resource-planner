@@ -783,6 +783,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     projectUuid: string;
     taskUuid: string;
   }>) => {
+    console.log('[ResourceRow] handleUpdateActualAssignment called:', {
+      uuid,
+      updates,
+      resourceId: resource.id,
+    });
     updateActualAssignment.mutate({ uuid, ...updates });
   }, [updateActualAssignment]);
 
