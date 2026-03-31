@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
@@ -62,7 +62,7 @@ interface FilterBarProps {
   onStatusChange: (status: string | null) => void;
 }
 
-export const FilterBar: React.FC<FilterBarProps> = ({
+export const FilterBar = React.memo<FilterBarProps>(({
   selectedBrandId,
   onBrandChange,
   selectedDepartment,
@@ -83,6 +83,34 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const { session, logout } = useAuth();
 
+  // Local state for instant typing feedback
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+  const isTypingRef = useRef(false);
+
+  // Debounced propagation to parent (300ms matches parent debounce)
+  useEffect(() => {
+    if (isTypingRef.current) {
+      const timer = setTimeout(() => {
+        onSearchChange(localSearchQuery);
+        isTypingRef.current = false;
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [localSearchQuery, onSearchChange]);
+
+  // Sync local state when external changes occur
+  useEffect(() => {
+    if (!isTypingRef.current) {
+      setLocalSearchQuery(searchQuery);
+    }
+  }, [searchQuery]);
+
+  const handleSearchChange = (value: string) => {
+    isTypingRef.current = true;
+    setLocalSearchQuery(value);
+  };
+
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-0">
@@ -97,8 +125,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <Input
             data-testid="filter-search-input"
             placeholder="Search name, position, project, brand..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
+            value={localSearchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 w-full sm:w-auto min-w-[200px]"
           />
         </div>
@@ -284,4 +312,4 @@ export const FilterBar: React.FC<FilterBarProps> = ({
       </div>
     </div>
   );
-};
+});
