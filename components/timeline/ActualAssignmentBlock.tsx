@@ -257,6 +257,13 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
 
   // Resize handlers - sama seperti AssignmentBlock
   const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.PointerEvent) => {
+    console.log('[ActualAssignmentBlock] handleResizeStart called:', {
+      assignmentUuid: assignment.uuid,
+      edge,
+      cellWidth,
+      pointerType: e.pointerType,
+    });
+
     e.preventDefault();
     e.stopPropagation();
 
@@ -292,6 +299,13 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
       document.removeEventListener('pointerup', handlePointerUp);
 
       const deltaColumns = offsetRef.current;
+
+      console.log('[ActualAssignmentBlock Resize] PointerUp:', {
+        assignmentUuid: assignment.uuid,
+        deltaColumns,
+        cellWidth,
+        edge,
+      });
 
       const skipWeekend = (date: Date, direction: 'forward' | 'backward'): Date => {
         let result = new Date(date);
