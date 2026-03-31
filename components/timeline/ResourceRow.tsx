@@ -854,7 +854,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         </div>
 
         {/* Allocation Bar - Collapsed */}
-        <div className="flex relative overflow-hidden" style={{ width: `${days.length * cellWidth}px` }}>
+        <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
           {days.map((day) => (
             <AllocationCell
               key={day.toISOString()}
@@ -903,7 +903,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           </div>
 
           {/* Allocation Bar - Expanded (Header) */}
-          <div className="flex relative overflow-hidden" style={{ width: `${days.length * cellWidth}px` }}>
+          <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day) => (
               <AllocationCell
                 key={day.toISOString()}
@@ -924,7 +924,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             <Icon icon="lucide:calendar-off" className="h-4 w-4 text-gray-500" />
             <span className="text-sm text-gray-600">Time Off</span>
           </div>
-          <div ref={timeOffTimelineRef} className="flex relative h-[40px] overflow-hidden" style={{ width: `${days.length * cellWidth}px` }}>
+          <div ref={timeOffTimelineRef} className="flex relative h-[40px]" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day, dayIndex) => (
               <DraggableTimelineCell
                 key={day.toISOString()}
@@ -1005,7 +1005,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                     <Skeleton className="h-3 w-1/2" />
                   </div>
                 </div>
-                <div className="flex relative overflow-hidden" style={{ width: `${days.length * cellWidth}px`, height: 60 }}>
+                <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: 60 }}>
                   <div className="w-full h-full p-2">
                     <Skeleton className="h-full w-full opacity-20" />
                   </div>
@@ -1063,7 +1063,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                           <TooltipTrigger asChild>
                             <div
                               ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
-                              className="flex relative overflow-hidden cursor-not-allowed"
+                              className="flex relative cursor-not-allowed"
                               style={{ width: `${days.length * cellWidth}px`, height: 40 }}
                             >
                               {days.map((day) => (
@@ -1094,7 +1094,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                       ) : (
                         <div
                           ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
-                          className="flex relative overflow-hidden"
+                          className="flex relative"
                           style={{ width: `${days.length * cellWidth}px`, height: 40 }}
                         >
                           {days.map((day, dayIndex) => (
@@ -1173,7 +1173,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             console.log('[ACTUAL ROW] Container ref set for:', project.name);
                           }
                         }}
-                        className="flex relative overflow-hidden"
+                        className="flex relative"
                         style={{ width: `${days.length * cellWidth}px`, height: 40 }}
                       >
                         {days.map((day, dayIndex) => (

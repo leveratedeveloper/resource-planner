@@ -261,7 +261,7 @@ export async function GET(request: Request) {
       };
     });
 
-    console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map(b => ({ id: b.id, name: b.name, original: mergedBrands.find((mb: any) => mb.brand_name === b.name)?.id || mergedBrands.find((mb: any) => mb.brand_name === b.name)?.brand_id })));
+    console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map((b: any) => ({ id: b.id, name: b.name, original: mergedBrands.find((mb: any) => mb.brand_name === b.name)?.id || mergedBrands.find((mb: any) => mb.brand_name === b.name)?.brand_id })));
 
     return NextResponse.json({
       success: response.success ?? true,

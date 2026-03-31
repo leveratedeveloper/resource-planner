@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format, differenceInDays } from 'date-fns';
-import type { Assignment } from '@/lib/query/hooks/useAssignments';
+import type { ActualAssignment } from '@/lib/query/hooks/useActualAssignments';
 import { useProjects } from '@/lib/query/hooks/useProjects';
 import { useEmployees } from '@/lib/query/hooks/useEmployees';
 import { cn } from '@/lib/utils';
@@ -35,11 +35,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
-interface EditAssignmentDialogProps {
-  assignment: Assignment;
+interface EditActualAssignmentDialogProps {
+  assignment: ActualAssignment;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (updates: Partial<Assignment>) => void;
+  onSave: (updates: Partial<ActualAssignment>) => void;
   onDelete: () => void;
   isDeleting?: boolean;
 }
@@ -55,74 +55,64 @@ const CATEGORIES = [
   'Other',
 ] as const;
 
-const STATUSES = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'completed', label: 'Completed' },
-] as const;
-
-export function EditAssignmentDialog({
+export function EditActualAssignmentDialog({
   assignment,
   open,
   onOpenChange,
   onSave,
   onDelete,
   isDeleting = false,
-}: EditAssignmentDialogProps) {
+}: EditActualAssignmentDialogProps) {
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
 
-  const [hoursInput, setHoursInput] = useState(assignment.hoursPerDay ?? "8");
+  // Use string dates directly to avoid timezone issues
+  const [startDateStr, setStartDateStr] = useState(() => assignment.startDate);
+  const [endDateStr, setEndDateStr] = useState(() => assignment.endDate);
+  const [hoursPerDay, setHoursPerDay] = useState(assignment.hoursPerDay);
   const [category, setCategory] = useState(assignment.category || 'Development');
-  const [isBillable, setIsBillable] = useState(assignment.isBillable ?? true);
-  const [status, setStatus] = useState(assignment.status || 'draft');
+  const [isBillable, setIsBillable] = useState(assignment.isBillable);
   const [note, setNote] = useState(assignment.note || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hoursError, setHoursError] = useState<string | null>(null);
 
-  const project = projects?.find((p) => p.id === assignment.projectId);
-  const employee = employees?.find((e) => e.id === assignment.employeeId);
-  const createdBy = employees?.find((e) => e.id === assignment.createdById);
+  const project = projects?.find((p) => p.id === assignment.projectUuid);
+  const employee = employees?.find((e) => e.id === assignment.employeeUuid);
 
-  // Store dates in state to ensure they stay in sync with assignment prop
-  // Use string dates directly to avoid timezone issues
-  const [startDateStr, setStartDateStr] = useState(() => assignment.startDate);
-  const [endDateStr, setEndDateStr] = useState(() => assignment.endDate);
-
-  // Sync dates when assignment prop changes
+  // Sync dates when assignment prop changes (after resize/drag)
   useEffect(() => {
     setStartDateStr(assignment.startDate);
     setEndDateStr(assignment.endDate);
-  }, [assignment.startDate, assignment.endDate, assignment.id]);
+  }, [assignment.startDate, assignment.endDate, assignment.uuid]);
 
   // For display only - convert to Date for formatting
   const startDate = new Date(assignment.startDate);
   const endDate = new Date(assignment.endDate);
-  const duration = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+  const durationDays = differenceInDays(endDate, startDate) + 1;
+  const totalHours = durationDays * hoursPerDay;
 
   const handleSave = () => {
-    // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
-    const normalizedInput = hoursInput.replace(',', '.');
-    const parsed = parseFloat(normalizedInput);
+    const parsed = typeof hoursPerDay === 'string' ? parseFloat(hoursPerDay.replace(',', '.')) : hoursPerDay;
 
-    // FIXED: Use < 0.5 to match min="0.5" attribute and error message
-    if (hoursInput.trim() === '' || isNaN(parsed) || parsed < 0.5 || parsed > 24) {
-      setHoursError('Hours per day must be between 0.5 and 24');
+    if (isNaN(parsed) || parsed < 0.5 || parsed > 24) {
+      setHoursError('Hours must be between 0.5 and 24');
+      return;
+    }
+
+    if (startDate > endDate) {
+      setHoursError('Start date must be before end date');
       return;
     }
 
     setHoursError(null);
     onSave({
-      employeeId: assignment.employeeId,
-      projectId: assignment.projectId,
       startDate: startDateStr, // Use synced state date
       endDate: endDateStr, // Use synced state date
-      hoursPerDay: parsed.toString(),
+      hoursPerDay: parsed,
       category,
       isBillable,
-      status,
       note: note.trim() || null,
-    } as Partial<Assignment>);
+    } as Partial<ActualAssignment>);
   };
 
   const handleDelete = () => {
@@ -138,18 +128,18 @@ export function EditAssignmentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-[480px] max-h-[90vh] overflow-y-auto"
-        data-testid="edit-assignment-dialog"
+        data-testid="edit-actual-assignment-dialog"
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: project?.color || '#94a3b8' }}
+              style={{ backgroundColor: project?.color || '#10b981' }}
             />
-            {project?.name || 'Time Off'}
+            {project?.name || 'Actual Assignment'}
           </DialogTitle>
           <DialogDescription>
-            View and edit plan assignment details
+            View and edit actual assignment details
           </DialogDescription>
         </DialogHeader>
 
@@ -168,38 +158,54 @@ export function EditAssignmentDialog({
                 </div>
               )}
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">Start Date</Label>
-                <div className="text-sm">{format(startDate, 'MMM d, yyyy')}</div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">End Date</Label>
-                <div className="text-sm">{format(endDate, 'MMM d, yyyy')}</div>
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-xs text-muted-foreground">Duration</Label>
-              <div className="text-sm">{duration} {duration === 1 ? 'day' : 'days'}</div>
-            </div>
           </div>
 
           {/* Editable section */}
           <div className="space-y-4">
+            {/* Date Range */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input
+                  id="startDate"
+                  data-testid="edit-actual-start-date"
+                  type="date"
+                  value={format(startDate, 'yyyy-MM-dd')}
+                  onChange={(e) => {
+                    setHoursError(null);
+                    setStartDate(new Date(e.target.value));
+                  }}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <Label htmlFor="endDate">End Date</Label>
+                <Input
+                  id="endDate"
+                  data-testid="edit-actual-end-date"
+                  type="date"
+                  value={format(endDate, 'yyyy-MM-dd')}
+                  onChange={(e) => {
+                    setHoursError(null);
+                    setEndDate(new Date(e.target.value));
+                  }}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+
             <div>
-              <Label htmlFor="hoursPerDay">Hours per Day</Label>
+              <Label htmlFor="hoursPerDay">Hours Per Day</Label>
               <Input
                 id="hoursPerDay"
-                data-testid="edit-assignment-hours"
+                data-testid="edit-actual-hours-per-day"
                 type="number"
                 min="0.5"
                 max="24"
                 step="0.5"
-                value={hoursInput}
+                value={hoursPerDay}
                 onChange={(e) => {
-                  setHoursInput(e.target.value);
+                  setHoursPerDay(parseFloat(e.target.value) || 0);
                   setHoursError(null);
                 }}
                 className={cn("mt-1.5", hoursError && "border-destructive")}
@@ -209,32 +215,22 @@ export function EditAssignmentDialog({
               )}
             </div>
 
+            {/* Effort Summary */}
+            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+              <span className="text-sm text-muted-foreground">Total Effort</span>
+              <span className="text-sm font-medium">{totalHours.toFixed(1)}h ({durationDays} days)</span>
+            </div>
+
             <div>
               <Label htmlFor="category">Category</Label>
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger id="category" className="mt-1.5" data-testid="edit-assignment-category">
+                <SelectTrigger id="category" className="mt-1.5" data-testid="edit-actual-category">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {CATEGORIES.map((cat) => (
                     <SelectItem key={cat} value={cat}>
                       {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="status">Status</Label>
-              <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
-                <SelectTrigger id="status" className="mt-1.5" data-testid="edit-assignment-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -259,7 +255,7 @@ export function EditAssignmentDialog({
               <Label htmlFor="note">Note</Label>
               <Textarea
                 id="note"
-                data-testid="edit-assignment-note"
+                data-testid="edit-actual-note"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add a note..."
@@ -270,9 +266,6 @@ export function EditAssignmentDialog({
 
           {/* Metadata section */}
           <div className="pt-4 border-t text-xs text-muted-foreground space-y-1">
-            {createdBy && (
-              <div>Created by: {createdBy.fullName}</div>
-            )}
             {assignment.createdAt && (
               <div>Created: {format(new Date(assignment.createdAt), 'MMM d, yyyy h:mm a')}</div>
             )}
@@ -287,7 +280,7 @@ export function EditAssignmentDialog({
             variant="destructive"
             onClick={handleDelete}
             disabled={isDeleting}
-            data-testid="edit-assignment-delete"
+            data-testid="edit-actual-delete"
           >
             {isDeleting ? (
               <>
@@ -302,7 +295,7 @@ export function EditAssignmentDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isDeleting} data-testid="edit-assignment-save">
+            <Button onClick={handleSave} disabled={isDeleting} data-testid="edit-actual-save">
               Save
             </Button>
           </div>
@@ -312,11 +305,11 @@ export function EditAssignmentDialog({
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Assignment</AlertDialogTitle>
+            <AlertDialogTitle>Delete Actual Assignment</AlertDialogTitle>
             <AlertDialogDescription>
               {project
-                ? `Are you sure you want to delete the assignment for ${employee?.fullName} on ${project.name}?`
-                : `Are you sure you want to delete the time-off for ${employee?.fullName}?`}
+                ? `Are you sure you want to delete the actual assignment for ${employee?.fullName} on ${project.name}?`
+                : `Are you sure you want to delete this actual assignment for ${employee?.fullName}?`}
               {' '}This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -326,7 +319,7 @@ export function EditAssignmentDialog({
               onClick={handleConfirmDelete}
               disabled={isDeleting}
               className="bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50"
-              data-testid="edit-assignment-delete-confirm"
+              data-testid="edit-actual-delete-confirm"
             >
               {isDeleting ? (
                 <>
