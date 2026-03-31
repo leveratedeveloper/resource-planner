@@ -88,7 +88,14 @@ async function updateActualAssignment({
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    throw new Error("Failed to update actual assignment");
+    let errorMessage = "Failed to update actual assignment";
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch {
+      // If parsing fails, use the default message
+    }
+    throw new Error(errorMessage);
   }
   const result = await response.json();
   return result.data;
@@ -99,7 +106,14 @@ async function deleteActualAssignment(uuid: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error("Failed to delete actual assignment");
+    let errorMessage = "Failed to delete actual assignment";
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch {
+      // If parsing fails, use the default message
+    }
+    throw new Error(errorMessage);
   }
 }
 

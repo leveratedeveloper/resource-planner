@@ -276,6 +276,7 @@ const ALLOWED_ACTUAL_UPDATE_COLUMNS = [
   'time_off_type_uuid',
   'task_uuid',
   'allocation_percentage',
+  'project_uuid',
 ] as const;
 
 type AllowedActualUpdateColumn = typeof ALLOWED_ACTUAL_UPDATE_COLUMNS[number];
