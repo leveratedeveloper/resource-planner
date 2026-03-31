@@ -679,7 +679,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             <div
               data-resize-handle="left"
               data-testid="assignment-resize-left"
-              className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-40"
+              className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 transition-all duration-150 z-40 hover:w-3"
               onPointerDown={(e) => {
                 e.stopPropagation();
                 handleResizeStart('left', e);
@@ -698,7 +698,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             <div
               data-resize-handle="right"
               data-testid="assignment-resize-right"
-              className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-40"
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 transition-all duration-150 z-40 hover:w-3"
               onPointerDown={(e) => {
                 e.stopPropagation();
                 handleResizeStart('right', e);
