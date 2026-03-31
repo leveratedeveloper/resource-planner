@@ -569,7 +569,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
           <div
             ref={blockRef}
             className={cn(
-              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group relative",
+              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
               !isResizing && !isDragging && "transition-all duration-100 ease-out",
               isTimeOff && "bg-gray-500 opacity-80",
               isResizing && "cursor-col-resize ring-2 ring-green-400", // Ubah emerald ke green agar senada

@@ -696,7 +696,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           <div
             ref={blockRef}
             className={cn(
-              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group relative",
+              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
               // Only apply transitions when NOT actively resizing or dragging to prevent bounce
               !isResizing && !isDragging && "transition-all duration-100 ease-out",
               isTimeOff && "bg-gray-500 opacity-80",
