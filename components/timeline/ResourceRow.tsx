@@ -665,6 +665,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Handle assignment update (resize/drag or field updates)
   const handleUpdateAssignment = useCallback((id: string, updates: any) => {
+    console.log('[ResourceRow] handleUpdateAssignment called:', {
+      id,
+      updates,
+      resourceId: resource.id,
+    });
+
     // Look up the current assignment to provide required fields for strict PUT schema
     const currentAssignment = resourceAssignments.find((a) => a.id === id);
 

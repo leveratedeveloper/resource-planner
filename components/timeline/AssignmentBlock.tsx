@@ -339,6 +339,16 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
       const deltaColumns = offsetRef.current;
 
+      console.log('[AssignmentBlock Resize] PointerUp:', {
+        assignmentId: assignment.id,
+        edge,
+        deltaColumns,
+        cellWidth,
+        startVisibleIdx,
+        endVisibleIdx,
+        hasOnUpdate: !!onUpdate,
+      });
+
       // Helper to skip weekends - move to nearest weekday
       const skipWeekend = (date: Date, direction: 'forward' | 'backward'): Date => {
         let result = new Date(date);
@@ -354,6 +364,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       // Apply the resize
       if (onUpdate && deltaColumns !== 0) {
         hasResizedRef.current = true;
+        console.log('[AssignmentBlock Resize] Calling onUpdate:', {
+          assignmentId: assignment.id,
+          deltaColumns,
+          edge,
+        });
         if (isWeekView) {
           // In week view, each column represents 1 week (7 days)
           const daysToMove = deltaColumns * 7;
