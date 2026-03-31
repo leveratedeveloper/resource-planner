@@ -1,15 +1,26 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Resource, AssignmentCategory } from "@/types";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import { differenceInDays, startOfWeek, endOfWeek, isWithinInterval, startOfDay, addWeeks, addDays } from "date-fns";
+import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
+import { differenceInDays, isWithinInterval, startOfDay, addDays, format } from "date-fns";
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
+import { useActualAssignments, useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
+import { useQueryClient } from "@tanstack/react-query";
 import { AssignmentBlock } from "./AssignmentBlock";
+import { ActualAssignmentBlock } from "./ActualAssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
 import { AssignmentPopover } from "./AssignmentPopover";
+import { ActualAssignmentPopover } from "./ActualAssignmentPopover";
+import { Icon } from "@iconify/react";
+
+// Component for grouped actual assignments is no longer needed
+// Actual assignments now use the same structure as assignments (start_date, end_date)
+// They will be rendered using ActualAssignmentBlock directly
+
 import {
   Tooltip,
   TooltipContent,
@@ -17,7 +28,6 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Icon } from "@iconify/react";
 import { cn, toLocalDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
@@ -37,6 +47,7 @@ interface AllocationCellProps {
   day: Date;
   resource: Resource;
   assignments: Assignment[];
+  actualAssignments: ActualAssignment[];
   cellWidth: number;
   isWeekView?: boolean;
 }
@@ -57,33 +68,28 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   day,
   resource,
   assignments,
+  actualAssignments = [], // Default array kosong
   cellWidth,
   isWeekView = false
 }) {
   const dailyCapacity = resource.capacity / WORK_DAYS_PER_WEEK;
 
-  // For week view, aggregate hours across the week (Mon-Fri)
-  // For day view, just check the single day
   const getDaysToCheck = () => {
-    if (!isWeekView) {
-      return [startOfDay(new Date(day))];
-    }
-    // Return all weekdays in the week starting from this day
+    if (!isWeekView) return [startOfDay(new Date(day))];
     const weekDays: Date[] = [];
     const weekStart = startOfDay(new Date(day));
     for (let i = 0; i < 5; i++) {
       const d = addDays(weekStart, i);
-      if (d.getDay() !== 0 && d.getDay() !== 6) {
-        weekDays.push(d);
-      }
+      if (d.getDay() !== 0 && d.getDay() !== 6) weekDays.push(d);
     }
     return weekDays;
   };
 
   const daysToCheck = getDaysToCheck();
 
-  // Calculate average hours per day across the period
-  let totalHours = 0;
+  // Hitung total jam untuk PLAN dan ACTUAL
+  let totalPlanHours = 0;
+  let totalActualHours = 0;
   let workingDaysCount = 0;
 
   for (const currentDay of daysToCheck) {
@@ -92,25 +98,36 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
 
     workingDaysCount++;
 
-    const dayHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
+    // Hitung Plan
+    const dayPlanHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
       if (assignment.employeeId !== resource.id) return total;
-
       const assignStart = startOfDay(new Date(assignment.startDate));
       const assignEnd = startOfDay(new Date(assignment.endDate));
-
       if (currentDay >= assignStart && currentDay <= assignEnd) {
         return total + parseHoursSafe(assignment.hoursPerDay);
       }
-
       return total;
     }, 0);
+    totalPlanHours += dayPlanHours;
 
-    totalHours += dayHours;
+    // Hitung Actual
+    const dayActualHours = actualAssignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
+      // Perhatikan: di ActualAssignment biasanya menggunakan employeeUuid
+      if (assignment.employeeUuid && assignment.employeeUuid !== resource.id) return total;
+      const assignStart = startOfDay(new Date(assignment.startDate));
+      const assignEnd = startOfDay(new Date(assignment.endDate));
+      if (currentDay >= assignStart && currentDay <= assignEnd) {
+        return total + parseHoursSafe(assignment.hoursPerDay);
+      }
+      return total;
+    }, 0);
+    totalActualHours += dayActualHours;
   }
 
-  const dailyHours = workingDaysCount > 0 ? totalHours / workingDaysCount : 0;
+  const dailyPlanHours = workingDaysCount > 0 ? totalPlanHours / workingDaysCount : 0;
+  const dailyActualHours = workingDaysCount > 0 ? totalActualHours / workingDaysCount : 0;
 
-  // Time off check - check if ANY day in the period has time off
+  // Cek Time Off (dari data plan assignment)
   const hasTimeOff = daysToCheck.some(currentDay =>
     assignments.some(a =>
       a.employeeId === resource.id &&
@@ -122,87 +139,156 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     )
   );
 
+  // Jika sedang Time Off, tampilkan 1 blok abu-abu full
   if (hasTimeOff) {
     return (
       <div
-        className="flex-1 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
+        className="shrink-0 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
+        style={{ width: `${cellWidth}px` }}
       >
         Time Off
       </div>
     );
   }
 
-  // Ensure dailyHours is a valid number before calculating percentage
-  const safeDailyHours = isNaN(dailyHours) ? 0 : dailyHours;
-  const percentage = dailyCapacity > 0 ? safeDailyHours / dailyCapacity : 0;
+  const safePlanHours = isNaN(dailyPlanHours) ? 0 : dailyPlanHours;
+  const safeActualHours = isNaN(dailyActualHours) ? 0 : dailyActualHours;
 
-  // Styling based on percentage
-  let bgClass = "";
-  let textClass = "text-white"; // Default white text for darker backgrounds
-  let label = "";
-  let borderClass = "";
+  const planPct = dailyCapacity > 0 ? safePlanHours / dailyCapacity : 0;
+  const actualPct = dailyCapacity > 0 ? safeActualHours / dailyCapacity : 0;
 
-  if (percentage <= 0) {
+  // Jika KEDUANYA 0, kembalikan garis putus-putus kosong
+  if (planPct <= 0 && actualPct <= 0) {
     return (
       <div
-        className="flex-1 h-[60px] border-r border-dashed"
+        className="shrink-0 h-[60px] border-r border-dashed"
+        style={{ width: `${cellWidth}px` }}
       />
     );
-  } else if (percentage <= 1) {
-    // Dynamic blue scale for 1-100%
-    // 0-25%: blue-200 (lightest visible)
-    // 26-50%: blue-300
-    // 51-75%: blue-400
-    // 76-100%: blue-500
-    if (percentage <= 0.25) {
-      bgClass = "bg-blue-200";
-      textClass = "text-blue-900"; // Dark text for light background
-    } else if (percentage <= 0.5) {
-      bgClass = "bg-blue-300";
-      textClass = "text-blue-900";
-    } else if (percentage <= 0.75) {
-      bgClass = "bg-blue-400";
-      textClass = "text-white";
-    } else {
-      bgClass = "bg-blue-500";
-      textClass = "text-white";
-    }
-
-    label = `${Math.round(percentage * 100)}%`;
-  } else {
-    bgClass = "bg-blue-800"; // Over 100%
-    textClass = "text-white";
-    label = `${Math.round(percentage * 100)}%`;
-    borderClass = "border-t-4 border-red-500";
   }
+
+  // Fungsi helper untuk mendapatkan warna (Biru untuk plan, Hijau untuk actual)
+  const getStyles = (pct: number, type: 'plan' | 'actual') => {
+    if (pct <= 0) return { bg: "bg-transparent", text: "text-transparent", border: "", label: "" };
+
+    let bg = "";
+    let text = "text-white";
+    let border = "";
+    const label = `${Math.round(pct * 100)}%`;
+
+    if (pct <= 1) {
+      if (pct <= 0.25) {
+        bg = type === 'plan' ? "bg-blue-200" : "bg-emerald-200";
+        text = type === 'plan' ? "text-blue-900" : "text-emerald-900";
+      } else if (pct <= 0.5) {
+        bg = type === 'plan' ? "bg-blue-300" : "bg-emerald-300";
+        text = type === 'plan' ? "text-blue-900" : "text-emerald-900";
+      } else if (pct <= 0.75) {
+        bg = type === 'plan' ? "bg-blue-400" : "bg-emerald-400";
+        text = "text-white";
+      } else {
+        bg = type === 'plan' ? "bg-blue-500" : "bg-emerald-500";
+        text = "text-white";
+      }
+    } else {
+      bg = type === 'plan' ? "bg-blue-800" : "bg-emerald-800";
+      text = "text-white";
+      border = "border-t-2 border-red-500";
+    }
+    return { bg, text, border, label };
+  };
+
+  const planStyles = getStyles(planPct, 'plan');
+  const actualStyles = getStyles(actualPct, 'actual');
 
   return (
     <div
-      className={cn(
-        "flex-1 h-[60px] border-r border-white/20 flex items-center justify-center text-xs font-bold transition-all",
-        bgClass,
-        textClass,
-        borderClass
-      )}
+      className="shrink-0 h-[60px] border-r border-white/20 flex flex-col overflow-hidden"
+      style={{ width: `${cellWidth}px` }}
     >
-      {label}
+      {/* KOTAK PLAN (Atas - Warna Biru) */}
+      <div
+        className={cn(
+          "flex-1 flex items-center justify-center text-[10px] font-bold transition-all",
+          planStyles.bg, planStyles.text, planStyles.border,
+          planPct > 0 ? "border-b border-white/20" : "border-b border-dashed"
+        )}
+      >
+        {planStyles.label}
+      </div>
+
+      {/* KOTAK ACTUAL (Bawah - Warna Hijau) */}
+      <div
+        className={cn(
+          "flex-1 flex items-center justify-center text-[10px] font-bold transition-all",
+          actualStyles.bg, actualStyles.text, actualStyles.border
+        )}
+      >
+        {actualStyles.label}
+      </div>
     </div>
   );
 });
+
 
 export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments }) => {
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const { data: brands = [] } = useBrands();
   const { session } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Debug logging
+  console.log('[ResourceRow] Received props:', {
+    resourceId: resource.id,
+    resourceName: resource.name,
+    cellWidth,
+    daysLength: days.length,
+    contentWidth: days.length * cellWidth,
+    assignmentsCount: resourceAssignments.length,
+  });
+
+  // Log when assignments change
+  useEffect(() => {
+    console.log('[ResourceRow] Assignments updated:', {
+      resourceId: resource.id,
+      assignmentsCount: resourceAssignments.length,
+      assignments: resourceAssignments.map(a => ({
+        id: a.id,
+        projectId: a.projectId,
+        startDate: a.startDate,
+        endDate: a.endDate,
+      })),
+    });
+  }, [resourceAssignments]);
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
   const deleteAssignmentMutation = useDeleteAssignment();
+
+  // Actual assignments hooks - fetch for the resource being displayed, not just logged-in user
+  const { data: actualAssignments = [], isLoading: actualsLoading } = useActualAssignments({
+    employee_uuid: resource.id,  // ← FIXED: Use resource.id instead of session?.employee.uuid
+    start_date: toLocalDateString(days[0]),
+    end_date: toLocalDateString(days[days.length - 1]),
+  });
+
+  // Debug: log actual assignments
+  // console.log('[ResourceRow] actualAssignments:', actualAssignments);
+  // console.log('[ResourceRow] actualsLoading:', actualsLoading);
+  const createActualAssignment = useCreateActualAssignment();
+  const updateActualAssignment = useUpdateActualAssignment();
+  const deleteActualAssignment = useDeleteActualAssignment();
+
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showAllProjects, setShowAllProjects] = useState(false);
   const PROJECT_DISPLAY_LIMIT = 5;
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
-  // Drag state for timeline cells
+  // State untuk fitur Select Project
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [isProjectsInitialized, setIsProjectsInitialized] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // Drag state - using refs for immediate synchronous access
+  const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartIndex = useRef<number | null>(null);
   const dragEndIndexRef = useRef<number | null>(null);
@@ -211,13 +297,51 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const [dragProjectId, setDragProjectId] = useState<string | null>(null);
   const dragProjectColorRef = useRef<string>("");
   const [dragProjectColor, setDragProjectColor] = useState<string>("");
+  const dragRowTypeRef = useRef<'plan' | 'actual' | null>(null);
+  const [dragRowType, setDragRowType] = useState<'plan' | 'actual' | null>(null);
   // Create refs for each timeline container
   const timeOffTimelineRef = useRef<HTMLDivElement>(null);
   const projectTimelineRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellBoundariesRef = useRef<Array<{ left: number; right: number }>>([]);
 
+  // Log container dimensions when they change
+  useEffect(() => {
+    if (timeOffTimelineRef.current) {
+      const rect = timeOffTimelineRef.current.getBoundingClientRect();
+      console.log('[ResourceRow] Time off timeline container dimensions:', {
+        resourceId: resource.id,
+        containerWidth: rect.width,
+        expectedWidth: days.length * cellWidth,
+        styleWidth: days.length * cellWidth,
+        cellWidth,
+        daysLength: days.length,
+      });
+    }
+
+    // Log project timeline dimensions
+    projectTimelineRefs.current.forEach((container, key) => {
+      const rect = container.getBoundingClientRect();
+      console.log('[ResourceRow] Project timeline container dimensions:', {
+        resourceId: resource.id,
+        timelineKey: key,
+        containerWidth: rect.width,
+        expectedWidth: days.length * cellWidth,
+        cellWidth,
+        daysLength: days.length,
+      });
+    });
+  }, [cellWidth, days.length, resource.id]);
+
   // Popover state for creating assignments
   const [popoverData, setPopoverData] = useState<{
+    projectId: string;
+    startDate: Date;
+    endDate: Date;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // Popover state for creating actual assignments
+  const [actualPopoverData, setActualPopoverData] = useState<{
     projectId: string;
     startDate: Date;
     endDate: Date;
@@ -302,18 +426,22 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     });
   }, [resourceProjects, brandId, resourceAssignments, days]);
 
-  const { visibleProjects, hiddenProjectCount } = useMemo(() => {
-    if (showAllProjects || sortedProjects.length <= PROJECT_DISPLAY_LIMIT) {
-      return {
-        visibleProjects: sortedProjects,
-        hiddenProjectCount: 0
-      };
+  // Set default 5 project pertama saat data siap
+  useEffect(() => {
+    if (!isProjectsInitialized && sortedProjects.length > 0) {
+      const defaultTop5 = sortedProjects.slice(0, PROJECT_DISPLAY_LIMIT).map(p => p.id);
+      setSelectedProjectIds(new Set(defaultTop5));
+      setIsProjectsInitialized(true);
     }
-    return {
-      visibleProjects: sortedProjects.slice(0, PROJECT_DISPLAY_LIMIT),
-      hiddenProjectCount: sortedProjects.length - PROJECT_DISPLAY_LIMIT
-    };
-  }, [sortedProjects, showAllProjects]);
+  }, [sortedProjects, isProjectsInitialized]);
+
+  const visibleProjects = useMemo(() => {
+    if (!isProjectsInitialized) {
+      return sortedProjects.slice(0, PROJECT_DISPLAY_LIMIT);
+    }
+    // Filter berdasarkan project yang dicentang user, dan pertahankan urutan dari sortedProjects
+    return sortedProjects.filter(p => selectedProjectIds.has(p.id));
+  }, [sortedProjects, selectedProjectIds, isProjectsInitialized]);
 
   // O(1) project lookup by ID
   const projectMap = useMemo(() =>
@@ -332,11 +460,26 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Handle drag complete - open popover
   const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date, position: { x: number; y: number }) => {
-    console.log('DRAG COMPLETE - startDay:', startDay.toISOString(), 'endDay:', endDay.toISOString());
     setPopoverData({ projectId, startDate: startDay, endDate: endDay, position });
   }, []);
 
-  // Handle save assignment
+  // Handle actual drag complete - open popover
+  const handleActualDragComplete = useCallback((
+    projectId: string,
+    startDay: Date,
+    endDay: Date,
+    position: { x: number; y: number }
+  ) => {
+    console.log('[ACTUAL DRAG COMPLETE] startDay:', startDay.toISOString(), 'endDay:', endDay.toISOString(), 'workDays:', Math.ceil((endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    setActualPopoverData({
+      projectId,
+      startDate: startDay,
+      endDate: endDay,
+      position,
+    });
+  }, []);
+
+  // Handle time-off drag complete - create time-off directly (no popover needed)
   const handleSaveAssignment = useCallback((data: {
     hoursPerDay: number;
     workDays: number;
@@ -346,15 +489,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   }) => {
     if (!popoverData) return;
 
-    console.log('SAVE ASSIGNMENT - popoverData.startDate:', popoverData.startDate.toISOString());
-    console.log('SAVE ASSIGNMENT - popoverData.endDate:', popoverData.endDate.toISOString());
-    console.log('SAVE ASSIGNMENT - workDays:', data.workDays);
-
     // Use the ORIGINAL dragged endDate to match the visual selection exactly
     // This ensures the assignment block aligns perfectly with the drag preview
     const finalEndDate = new Date(popoverData.endDate);
-
-    console.log('SAVE ASSIGNMENT - final endDate:', finalEndDate.toISOString());
 
     // Close popover immediately - optimistic update will show the block
     setPopoverData(null);
@@ -379,7 +516,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
   // Handle time-off drag complete - create time-off directly (no popover needed)
   const handleTimeOffDragComplete = useCallback((startDay: Date, endDay: Date) => {
-    console.log('TIME OFF DRAG COMPLETE - startDay:', startDay.toISOString(), 'endDay:', endDay.toISOString());
     // Optimistic update will show the block immediately
     createAssignment.mutate({
       employeeId: resource.id,
@@ -400,14 +536,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   }, [resource.id, createAssignment]);
 
   // Measure cell boundaries for accurate drag preview positioning
-  const measureCellBoundaries = useCallback((container: HTMLDivElement) => {
+  const measureCellBoundaries = useCallback((container: HTMLDivElement | null) => {
+    if (!container) return [];
+
     const allChildren = container.children;
     const cellCount = days.length;
     const boundaries: Array<{ left: number; right: number }> = [];
     const containerRect = container.getBoundingClientRect();
 
     // Filter to only DraggableTimelineCell elements (they have data-testid attribute ending with "-cell")
-    // We need to measure them in order - they're interspersed with AssignmentBlocks which use absolute positioning
     const cellElements: HTMLElement[] = [];
     for (let i = 0; i < allChildren.length; i++) {
       const child = allChildren[i] as HTMLElement;
@@ -427,32 +564,46 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       });
     }
 
-    console.log('Measured boundaries:', boundaries.map((b, i) => `Cell ${i}: ${b.left.toFixed(1)}-${b.right.toFixed(1)}`).join(', '));
-    console.log('Total cells found:', cellElements.length, 'Expected:', cellCount);
     cellBoundariesRef.current = boundaries;
     return boundaries;
   }, [days.length]);
 
-  // Drag handlers for timeline cells
-  const handleDragStart = useCallback((dayIndex: number, projectId: string, projectColor: string, containerRef: HTMLDivElement) => {
+  // Drag handlers for timeline cells - with rowType parameter
+  const handleDragStart = useCallback((dayIndex: number, projectId: string, projectColor: string, containerRef: HTMLDivElement | null, rowType: 'plan' | 'actual' | null = null, e?: React.MouseEvent | MouseEvent) => {
     if (createAssignment.isPending) return;
+
+    // If containerRef is not provided but we have an event, try to find the container from the event
+    let actualContainerRef = containerRef;
+    if (!actualContainerRef && e) {
+      const target = e.currentTarget as HTMLElement;
+      if (target) {
+        actualContainerRef = target.closest('.flex.relative.flex-1.overflow-hidden') as HTMLDivElement;
+      }
+    }
+
+    if (!actualContainerRef) return;
 
     // Measure cell boundaries for accurate positioning
     measureCellBoundaries(containerRef);
 
-    console.log('DRAG START - dayIndex:', dayIndex, 'Date:', days[dayIndex]?.toISOString(), 'Project:', projectId);
+    console.log('DRAG START - dayIndex:', dayIndex, 'Date:', days[dayIndex]?.toISOString(), 'Project:', projectId, 'RowType:', rowType);
 
-    setIsDragging(true);
+    // Set refs immediately for synchronous access
+    isDraggingRef.current = true;
     dragStartIndex.current = dayIndex;
     dragEndIndexRef.current = dayIndex;
-    setDragEndIndex(dayIndex);
     dragProjectIdRef.current = projectId;
-    setDragProjectId(projectId);
     dragProjectColorRef.current = projectColor;
+    dragRowTypeRef.current = rowType;
+
+    // Set states for re-render
+    setIsDragging(true);
+    setDragEndIndex(dayIndex);
+    setDragProjectId(projectId);
     setDragProjectColor(projectColor);
+    setDragRowType(rowType);
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      // Use the container ref passed from the clicked cell
       const container = containerRef;
       if (!container) return;
 
@@ -472,15 +623,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         }
         // Clamp to valid range
         rawIndex = Math.max(0, Math.min(days.length - 1, rawIndex));
-
-        // Debug: show which boundary matched
-        const matchedBoundary = boundaries[rawIndex];
-        console.log(`x: ${x.toFixed(1)} -> matched boundary [${matchedBoundary.left.toFixed(1)}, ${matchedBoundary.right.toFixed(1)}] -> index ${rawIndex}`);
       } else {
         // Fallback to percentage-based calculation if boundaries not available
         const actualCellWidth = rect.width / days.length;
         rawIndex = Math.max(0, Math.min(days.length - 1, Math.floor(x / actualCellWidth)));
-        console.log('x:', x.toFixed(1), 'rawIndex (fallback):', rawIndex);
       }
 
       dragEndIndexRef.current = rawIndex;
@@ -496,43 +642,66 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         const start = Math.min(dragStartIndex.current, endIdx);
         const end = Math.max(dragStartIndex.current, endIdx);
 
-        console.log('DRAG END - dragStartIndex:', dragStartIndex.current, 'dragEndIndex:', endIdx);
-        console.log('DRAG END - Using start index:', start, 'Date:', days[start]?.toISOString());
-        console.log('DRAG END - Using end index:', end, 'Date:', days[end]?.toISOString());
+        console.log('[DRAG END] startIdx:', start, 'endIdx:', end, 'rowType:', dragRowTypeRef.current);
 
-        // Call the appropriate drag complete handler
+        // Call the appropriate drag complete handler based on rowType
         const currentProjectId = dragProjectIdRef.current;
+        const currentRowType = dragRowTypeRef.current;
+
         if (currentProjectId) {
-          handleDragComplete(currentProjectId, days[start], days[end], {
-            x: upEvent.clientX,
-            y: upEvent.clientY,
-          });
+          // Use actual handler for actual row, plan handler for plan row
+          if (currentRowType === 'actual') {
+            handleActualDragComplete(currentProjectId, days[start], days[end], {
+              x: upEvent.clientX,
+              y: upEvent.clientY,
+            });
+          } else {
+            handleDragComplete(currentProjectId, days[start], days[end], {
+              x: upEvent.clientX,
+              y: upEvent.clientY,
+            });
+          }
         } else {
           handleTimeOffDragComplete(days[start], days[end]);
         }
       }
 
-      setIsDragging(false);
-      setDragEndIndex(null);
+      // Reset refs
+      isDraggingRef.current = false;
       dragEndIndexRef.current = null;
       dragStartIndex.current = null;
       dragProjectIdRef.current = null;
-      setDragProjectId(null);
       dragProjectColorRef.current = "";
+      dragRowTypeRef.current = null;
+
+      // Reset states
+      setIsDragging(false);
+      setDragEndIndex(null);
+      setDragProjectId(null);
       setDragProjectColor("");
+      setDragRowType(null);
     };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
-  }, [days, createAssignment.isPending, handleDragComplete, handleTimeOffDragComplete, measureCellBoundaries]);
+  }, [days, createAssignment.isPending, handleDragComplete, handleActualDragComplete, handleTimeOffDragComplete, measureCellBoundaries]);
 
-  // Check if a day index is in the current drag range
-  const isInDragRange = useCallback((dayIndex: number) => {
-    if (!isDragging || dragStartIndex.current === null || dragEndIndex === null) return false;
-    const start = Math.min(dragStartIndex.current, dragEndIndex);
-    const end = Math.max(dragStartIndex.current, dragEndIndex);
+  // Check if a day index is in the current drag range - using refs for synchronous access
+  const isInDragRange = useCallback((dayIndex: number, rowType?: 'plan' | 'actual' | null) => {
+    const isDragging = isDraggingRef.current;
+    const dragRowType = dragRowTypeRef.current;
+    const startIdx = dragStartIndex.current;
+    const endIdx = dragEndIndexRef.current;
+
+    if (!isDragging || startIdx === null || endIdx === null) return false;
+    // Check if this row type matches the current drag row type
+    // If dragRowType is null (time off mode), allow highlighting any row
+    // If dragRowType is 'plan' or 'actual', only highlight matching row
+    if (dragRowType !== null && rowType !== dragRowType) return false;
+    const start = Math.min(startIdx, endIdx);
+    const end = Math.max(startIdx, endIdx);
     return dayIndex >= start && dayIndex <= end;
-  }, [isDragging, dragEndIndex]);
+  }, []);
 
   // Count weekdays (Mon-Fri) between two dates, inclusive
   const countWorkdays = useCallback((start: Date, end: Date): number => {
@@ -553,20 +722,25 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
     const payload: any = { id };
 
-    // Always include required fields from current assignment as defaults
+    // Only include required fields from current assignment if not in updates
     if (currentAssignment) {
       payload.employeeId = currentAssignment.employeeId;
-      payload.startDate = currentAssignment.startDate;
-      payload.endDate = currentAssignment.endDate;
+      // Only set dates from currentAssignment if NOT being updated
+      if (updates.startDate === undefined) {
+        payload.startDate = currentAssignment.startDate;
+      }
+      if (updates.endDate === undefined) {
+        payload.endDate = currentAssignment.endDate;
+      }
     }
 
     // Handle date conversions if updates contain Date objects (overrides defaults)
-    if (updates.startDate) {
+    if (updates.startDate !== undefined) {
       payload.startDate = updates.startDate instanceof Date
         ? toLocalDateString(updates.startDate)
         : updates.startDate;
     }
-    if (updates.endDate) {
+    if (updates.endDate !== undefined) {
       payload.endDate = updates.endDate instanceof Date
         ? toLocalDateString(updates.endDate)
         : updates.endDate;
@@ -598,6 +772,64 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     deleteAssignmentMutation.mutate(id);
   }, [deleteAssignmentMutation]);
 
+  // Handle save actual assignment - Struktur sama dengan assignments
+  const handleSaveActualAssignment = useCallback((data: {
+    startDate: string;
+    endDate: string;
+    hoursPerDay: number;
+    category: AssignmentCategory;
+    isBillable: boolean;
+    note?: string;
+  }) => {
+    if (!actualPopoverData) return;
+
+    // Create a single actual assignment with date range (struktur sama dengan assignments)
+    const actualData = {
+      employeeUuid: resource.id,
+      projectUuid: actualPopoverData.projectId,
+      taskUuid: null,
+      startDate: toLocalDateString(new Date(data.startDate)),
+      endDate: toLocalDateString(new Date(data.endDate)),
+      hoursPerDay: data.hoursPerDay,
+      allocationPercentage: null,
+      isTimeOff: false,
+      timeOffTypeUuid: null,
+      category: data.category || null,
+      isBillable: data.isBillable,
+      status: 'confirmed',
+      note: data.note || null,
+      createdByUuid: session?.employee?.uuid || null,
+    };
+
+    createActualAssignment.mutate(actualData);
+
+    // Close popover
+    setActualPopoverData(null);
+  }, [actualPopoverData, resource.id, createActualAssignment, session]);
+
+  // Handle actual assignment update - Struktur sama dengan assignments
+  const handleUpdateActualAssignment = useCallback((uuid: string, updates: Partial<{
+    startDate: string;
+    endDate: string;
+    hoursPerDay: number;
+    allocationPercentage: number;
+    isTimeOff: boolean;
+    timeOffTypeUuid: string;
+    category: string;
+    isBillable: boolean;
+    status: string;
+    note: string;
+    projectUuid: string;
+    taskUuid: string;
+  }>) => {
+    updateActualAssignment.mutate({ uuid, ...updates });
+  }, [updateActualAssignment]);
+
+  // Handle actual assignment delete
+  const handleDeleteActualAssignment = useCallback((uuid: string) => {
+    deleteActualAssignment.mutate(uuid);
+  }, [deleteActualAssignment]);
+
   // Collapsed row content
   if (!isExpanded) {
     return (
@@ -622,13 +854,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         </div>
 
         {/* Allocation Bar - Collapsed */}
-        <div className="flex relative flex-1 overflow-hidden">
+        <div className="flex relative overflow-hidden" style={{ width: `${days.length * cellWidth}px` }}>
           {days.map((day) => (
             <AllocationCell
               key={day.toISOString()}
               day={day}
               resource={resource}
               assignments={resourceAssignments}
+              actualAssignments={actualAssignments}
               cellWidth={cellWidth}
               isWeekView={isWeekView}
             />
@@ -641,7 +874,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   // Expanded row content
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="border-b" data-testid="resource-row" data-resource-id={resource.id}>
+      <div
+        className={cn(
+          "border-b",
+          isFilterOpen ? "relative z-50" : "relative z-0"
+        )}
+        data-testid="resource-row"
+        data-resource-id={resource.id}
+      >
         {/* Main Row Header */}
         <div className="flex hover:bg-accent/5 transition-colors group">
           <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
@@ -663,13 +903,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           </div>
 
           {/* Allocation Bar - Expanded (Header) */}
-          <div className="flex relative flex-1 overflow-hidden">
+          <div className="flex relative overflow-hidden" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day) => (
               <AllocationCell
                 key={day.toISOString()}
                 day={day}
                 resource={resource}
                 assignments={resourceAssignments}
+                actualAssignments={actualAssignments}
                 cellWidth={cellWidth}
                 isWeekView={isWeekView}
               />
@@ -678,12 +919,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         </div>
 
         {/* Time Off Row */}
-        <div className="flex bg-gray-50/50 h-[50px]" data-testid="timeoff-row" data-resource-id={resource.id}>
-          <div className="w-[250px] shrink-0 px-4 border-r sticky left-0 bg-gray-50/50 z-20 flex items-center gap-2 pl-12 h-[50px]">
+        <div className="flex bg-gray-50/50 h-[40px]" data-testid="timeoff-row" data-resource-id={resource.id}>
+          <div className="w-[250px] shrink-0 px-4 border-r sticky left-0 bg-gray-50/50 z-20 flex items-center gap-2 pl-12 h-[40px]">
             <Icon icon="lucide:calendar-off" className="h-4 w-4 text-gray-500" />
             <span className="text-sm text-gray-600">Time Off</span>
           </div>
-          <div ref={timeOffTimelineRef} className="flex relative flex-1 h-[50px] overflow-hidden">
+          <div ref={timeOffTimelineRef} className="flex relative h-[40px] overflow-hidden" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day, dayIndex) => (
               <DraggableTimelineCell
                 key={day.toISOString()}
@@ -692,15 +933,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 projectColor="#6b7280"
                 days={days}
                 cellWidth={cellWidth}
-                cellHeight={50}
+                cellHeight={40}
                 isTimeOffMode={true}
                 containerRef={timeOffTimelineRef.current}
                 onDragComplete={(startDay, endDay) =>
                   handleTimeOffDragComplete(startDay, endDay)
                 }
                 disabled={createAssignment.isPending}
-                isDragging={isDragging && dragProjectId === ""}
-                isInDragRange={isInDragRange(dayIndex)}
+                isDragging={isDraggingRef.current && dragProjectIdRef.current === ""}
+                isInDragRange={isInDragRange(dayIndex, null)}
                 onMouseDown={(index, containerRef) => handleDragStart(index, "", "#6b7280", containerRef)}
               />
             ))}
@@ -711,7 +952,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 assignment={assignment}
                 project={undefined}
                 days={days}
-                resourceRowHeight={50}
+                resourceRowHeight={40}
                 cellWidth={cellWidth}
                 isWeekView={isWeekView}
                 onUpdate={handleUpdateAssignment}
@@ -720,9 +961,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               />
             ))}
             {/* Drag preview overlay for Time Off */}
-            {isDragging && dragProjectId === "" && dragStartIndex.current !== null && dragEndIndex !== null && (() => {
-              const startIdx = Math.min(dragStartIndex.current, dragEndIndex);
-              const endIdx = Math.max(dragStartIndex.current, dragEndIndex);
+            {isDraggingRef.current && dragProjectIdRef.current === "" && dragStartIndex.current !== null && dragEndIndexRef.current !== null && (() => {
+              const startIdx = Math.min(dragStartIndex.current, dragEndIndexRef.current);
+              const endIdx = Math.max(dragStartIndex.current, dragEndIndexRef.current);
               const boundaries = cellBoundariesRef.current;
 
               // Use measured boundaries for accurate positioning
@@ -730,7 +971,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 const left = boundaries[startIdx].left;
                 const width = boundaries[endIdx].right - boundaries[startIdx].left;
 
-                console.log('Preview Time Off - startIdx:', startIdx, 'endIdx:', endIdx, 'left:', left.toFixed(1), 'width:', width.toFixed(1));
 
                 return (
                   <div
@@ -765,7 +1005,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                     <Skeleton className="h-3 w-1/2" />
                   </div>
                 </div>
-                <div className="flex relative flex-1 overflow-hidden" style={{ height: 60 }}>
+                <div className="flex relative overflow-hidden" style={{ width: `${days.length * cellWidth}px`, height: 60 }}>
                   <div className="w-full h-full p-2">
                     <Skeleton className="h-full w-full opacity-20" />
                   </div>
@@ -775,174 +1015,330 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           </>
         )}
 
-        {/* Project Rows */}
+        {/* Project Rows - 3 rows per project (Header + Plan + Actual) */}
         {visibleProjects.map((project) => {
           const brand = brands.find(b => b.id === project.brandId);
-          // Filter out 0-hour placeholder assignments from timeline (they exist just to keep project in list)
-          // Keep assignment visible even if hoursPerDay is NaN (defensive) - parseHoursSafe keeps allocation stable
-          const projectAssignments = resourceAssignments.filter(
-            a => a.projectId === project.id && !a.isTimeOff && (() => {
+
+          // Filter plan assignments (from assignments table, status='draft')
+          const planAssignments = resourceAssignments.filter(
+            a => a.projectId === project.id && !a.isTimeOff && a.status === 'draft' && (() => {
               const hours = parseFloat(a.hoursPerDay);
-              // If NaN, show the block (defensive) - Step 2 guards keep allocation stable
               return isNaN(hours) ? true : hours > 0;
             })()
           );
 
+          // Filter actual assignments (from actual table) - Struktur sama dengan assignments
+          const projectActualAssignments = actualAssignments.filter(a =>
+            a.projectUuid === project.id
+          );
+
           return (
-            <div key={project.id} className="flex bg-white" data-testid="project-row" data-resource-id={resource.id} data-project-id={project.id}>
-              <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-white z-20 flex items-center gap-2 pl-12">
-                <div
-                  className="w-4 h-4 rounded flex items-center justify-center"
-                  style={{ backgroundColor: project.color }}
-                >
-                  <Icon icon="lucide:folder" className="h-3 w-3 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{project.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{brand?.name}</div>
+            <React.Fragment key={project.id}>
+              {/* Project Group Container */}
+              <div className="flex flex-col">
+                {/* Sidebar - Merged for PLAN & ACTUAL */}
+                <div className="flex" data-testid="project-group" data-resource-id={resource.id} data-project-id={project.id}>
+                  <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-background z-20 flex pl-12" style={{ height: 80 }}>
+                    <div className="flex items-center gap-2 w-4/6">
+                      <div className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: project.color }}>
+                        <Icon icon="lucide:folder" className="h-3 w-3 text-white" />
+                      </div>
+                      <div className="flex flex-col justify-center min-w-0">
+                        <div className="text-sm font-semibold truncate">{project.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{brand?.name}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-center gap-2 text-xs font-semibold w-2/5">
+                      <span className="text-blue-600">PLAN</span>
+                      <span className="text-green-600">ACTUAL</span>
+                    </div>
+                  </div>
+
+                  {/* Timeline Content Container */}
+                  <div className="flex-1 flex flex-col">
+                    {/* PLAN Row - from assignments table */}
+                    <div className="flex-1 bg-blue-50/30" style={{ height: 40 }} data-testid="plan-row" data-resource-id={resource.id} data-project-id={project.id}>
+                      {!session?.access.can_view_all ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
+                              className="flex relative overflow-hidden cursor-not-allowed"
+                              style={{ width: `${days.length * cellWidth}px`, height: 40 }}
+                            >
+                              {days.map((day) => (
+                                <div key={day.toISOString()} className="shrink-0 h-[40px] border-r border-white/20 bg-gray-100/50" style={{ width: `${cellWidth}px` }} />
+                              ))}
+                              {/* Show plan assignments but can't drag */}
+                              {planAssignments.map((assignment) => (
+                                <AssignmentBlock
+                                  key={assignment.id}
+                                  assignment={assignment}
+                                  project={projectMap.get(assignment.projectId ?? '')}
+                                  days={days}
+                                  resourceRowHeight={40}
+                                  cellWidth={cellWidth}
+                                  isWeekView={isWeekView}
+                                  onUpdate={handleUpdateAssignment}
+                                  onDelete={handleDeleteAssignment}
+                                  timeOffAssignments={timeOffAssignments}
+                                  isUpdating={updatingAssignmentId === assignment.id}
+                                />
+                              ))}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Plan mode - Full access only</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <div
+                          ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
+                          className="flex relative overflow-hidden"
+                          style={{ width: `${days.length * cellWidth}px`, height: 40 }}
+                        >
+                          {days.map((day, dayIndex) => (
+                            <DraggableTimelineCell
+                              key={day.toISOString()}
+                              day={day}
+                              projectId={project.id}
+                              projectColor={project.color}
+                              days={days}
+                              cellWidth={cellWidth}
+                              cellHeight={40}
+                              timeOffAssignments={timeOffAssignments}
+                              containerRef={projectTimelineRefs.current.get(`plan-${project.id}`) || null}
+                              onDragComplete={(startDay, endDay, position) =>
+                                handleDragComplete(project.id, startDay, endDay, position)
+                              }
+                              disabled={createAssignment.isPending}
+                              isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'plan'}
+                              isInDragRange={isInDragRange(dayIndex, 'plan')}
+                              onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef, 'plan')}
+                            />
+                          ))}
+                          {/* Plan Assignments */}
+                          {planAssignments.map((assignment) => (
+                            <AssignmentBlock
+                              key={assignment.id}
+                              assignment={assignment}
+                              project={projectMap.get(assignment.projectId ?? '')}
+                              days={days}
+                              resourceRowHeight={40}
+                              cellWidth={cellWidth}
+                              isWeekView={isWeekView}
+                              onUpdate={handleUpdateAssignment}
+                              onDelete={handleDeleteAssignment}
+                              timeOffAssignments={timeOffAssignments}
+                              isUpdating={updatingAssignmentId === assignment.id}
+                            />
+                          ))}
+                          {/* Drag preview overlay - PLAN only */}
+                          {(() => {
+                            // Use refs for synchronous access
+                            const shouldShow = isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'plan';
+                            if (!shouldShow || dragStartIndex.current === null || dragEndIndexRef.current === null) return null;
+                            const startIdx = Math.min(dragStartIndex.current, dragEndIndexRef.current);
+                            const endIdx = Math.max(dragStartIndex.current, dragEndIndexRef.current);
+                            const boundaries = cellBoundariesRef.current;
+
+                            if (boundaries.length > 0 && boundaries[startIdx] && boundaries[endIdx]) {
+                              const left = boundaries[startIdx].left;
+                              const width = boundaries[endIdx].right - boundaries[startIdx].left;
+                              return (
+                                <div
+                                  className="absolute top-2 h-[calc(100%-16px)] rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10"
+                                  style={{
+                                    backgroundColor: dragProjectColorRef.current,
+                                    left: `${left}px`,
+                                    width: `${width}px`,
+                                  }}
+                                >
+                                  {countWorkdays(days[startIdx], days[endIdx])} workdays
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ACTUAL Row - from actual table */}
+                    <div className="flex-1 bg-green-50/30" style={{ height: 40 }} data-testid="actual-row" data-resource-id={resource.id} data-project-id={project.id}>
+                      <div
+                        ref={(el) => {
+                          if (el) {
+                            projectTimelineRefs.current.set(`actual-${project.id}`, el);
+                            console.log('[ACTUAL ROW] Container ref set for:', project.name);
+                          }
+                        }}
+                        className="flex relative overflow-hidden"
+                        style={{ width: `${days.length * cellWidth}px`, height: 40 }}
+                      >
+                        {days.map((day, dayIndex) => (
+                          <DraggableTimelineCell
+                            key={day.toISOString()}
+                            day={day}
+                            projectId={project.id}
+                            projectColor={project.color}
+                            days={days}
+                            cellWidth={cellWidth}
+                            cellHeight={40}
+                            timeOffAssignments={timeOffAssignments}
+                            containerRef={projectTimelineRefs.current.get(`actual-${project.id}`)}
+                            onDragComplete={(startDay, endDay, position) =>
+                              handleActualDragComplete(project.id, startDay, endDay, position)
+                            }
+                            disabled={createActualAssignment.isPending}
+                            isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'actual'}
+                            isInDragRange={isInDragRange(dayIndex, 'actual')}
+                            onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef, 'actual')}
+                          />
+                        ))}
+                        {/* Actual Assignments - Struktur sama dengan plan assignments */}
+                        {projectActualAssignments.map((actualAssignment) => (
+                          <ActualAssignmentBlock
+                            key={actualAssignment.uuid}
+                            assignment={actualAssignment}
+                            project={projectMap.get(actualAssignment.projectUuid ?? '')}
+                            days={days}
+                            resourceRowHeight={40}
+                            cellWidth={cellWidth}
+                            isWeekView={isWeekView}
+                            onUpdate={handleUpdateActualAssignment}
+                            onDelete={handleDeleteActualAssignment}
+                            timeOffAssignments={timeOffAssignments}
+                          />
+                        ))}
+                        {/* Drag preview overlay for actual - ACTUAL only */}
+                        {(() => {
+                          // Use refs for synchronous access
+                          const shouldShow = isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'actual';
+                          if (!shouldShow || dragStartIndex.current === null || dragEndIndexRef.current === null) return null;
+                          const startIdx = Math.min(dragStartIndex.current, dragEndIndexRef.current);
+                          const endIdx = Math.max(dragStartIndex.current, dragEndIndexRef.current);
+                          const boundaries = cellBoundariesRef.current;
+
+                          if (boundaries.length > 0 && boundaries[startIdx] && boundaries[endIdx]) {
+                            const left = boundaries[startIdx].left;
+                            const width = boundaries[endIdx].right - boundaries[startIdx].left;
+                            return (
+                              <div
+                                className="absolute top-2 h-[calc(100%-16px)] rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10 bg-emerald-500"
+                                style={{
+                                  left: `${left}px`,
+                                  width: `${width}px`,
+                                }}
+                              >
+                                {countWorkdays(days[startIdx], days[endIdx])} workdays
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              {!session?.access.can_view_all ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div
-                      ref={(el) => { if (el) projectTimelineRefs.current.set(project.id, el); }}
-                      className="flex relative flex-1 overflow-hidden cursor-not-allowed"
-                      style={{ height: 60 }}
-                    >
-                      {days.map((day, dayIndex) => (
-                        <div
-                          key={day.toISOString()}
-                          className="flex-1 h-[60px] border-r border-white/20 bg-gray-100/50"
-                        />
-                      ))}
-                      {/* Project Assignments - show for restricted access */}
-                      {projectAssignments.map((assignment) => (
-                        <AssignmentBlock
-                          key={assignment.id}
-                          assignment={assignment}
-                          project={projectMap.get(assignment.projectId ?? '')}
-                          days={days}
-                          resourceRowHeight={60}
-                          cellWidth={cellWidth}
-                          isWeekView={isWeekView}
-                          onUpdate={handleUpdateAssignment}
-                          onDelete={handleDeleteAssignment}
-                          timeOffAssignments={timeOffAssignments}
-                          isUpdating={updatingAssignmentId === assignment.id}
-                        />
-                      ))}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>You can&apos;t create assignment plan. Restricted access.</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <div
-                  ref={(el) => { if (el) projectTimelineRefs.current.set(project.id, el); }}
-                  className="flex relative flex-1 overflow-hidden"
-                  style={{ height: 60 }}
-                >
-                  {days.map((day, dayIndex) => (
-                    <DraggableTimelineCell
-                      key={day.toISOString()}
-                      day={day}
-                      projectId={project.id}
-                      projectColor={project.color}
-                      days={days}
-                      cellWidth={cellWidth}
-                      cellHeight={60}
-                      timeOffAssignments={timeOffAssignments}
-                      containerRef={projectTimelineRefs.current.get(project.id) || null}
-                      onDragComplete={(startDay, endDay, position) =>
-                        handleDragComplete(project.id, startDay, endDay, position)
-                      }
-                      disabled={createAssignment.isPending}
-                      isDragging={isDragging && dragProjectId === project.id}
-                      isInDragRange={isInDragRange(dayIndex)}
-                      onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef)}
-                    />
-                  ))}
-                  {/* Project Assignments */}
-                  {projectAssignments.map((assignment) => (
-                    <AssignmentBlock
-                      key={assignment.id}
-                      assignment={assignment}
-                      project={projectMap.get(assignment.projectId ?? '')}
-                      days={days}
-                      resourceRowHeight={60}
-                      cellWidth={cellWidth}
-                      isWeekView={isWeekView}
-                      onUpdate={handleUpdateAssignment}
-                      onDelete={handleDeleteAssignment}
-                      timeOffAssignments={timeOffAssignments}
-                      isUpdating={updatingAssignmentId === assignment.id}
-                    />
-                  ))}
-                  {/* Drag preview overlay */}
-                  {isDragging && dragProjectId === project.id && dragStartIndex.current !== null && dragEndIndex !== null && (() => {
-                    const startIdx = Math.min(dragStartIndex.current, dragEndIndex);
-                    const endIdx = Math.max(dragStartIndex.current, dragEndIndex);
-                    const boundaries = cellBoundariesRef.current;
-
-                    // Use measured boundaries for accurate positioning
-                    if (boundaries.length > 0 && boundaries[startIdx] && boundaries[endIdx]) {
-                      const left = boundaries[startIdx].left;
-                      const width = boundaries[endIdx].right - boundaries[startIdx].left;
-
-                      console.log('Preview Project - startIdx:', startIdx, 'endIdx:', endIdx, 'left:', left.toFixed(1), 'width:', width.toFixed(1));
-
-                      return (
-                        <div
-                          className="absolute top-2 h-[calc(100%-16px)] rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10"
-                          style={{
-                            backgroundColor: dragProjectColorRef.current,
-                            left: `${left}px`,
-                            width: `${width}px`,
-                          }}
-                        >
-                          {countWorkdays(days[startIdx], days[endIdx])} workdays
-                        </div>
-                      );
-                    } else {
-                      // Fallback to percentage-based if boundaries not available
-                      console.log('Preview Project - fallback to percentage');
-                      return null;
-                    }
-                  })()}
-                </div>
-              )}
-            </div>
+            </React.Fragment>
           );
         })}
 
-        {/* Project Filter Toggle Row */}
-        {hiddenProjectCount > 0 && (
+        {/* Project Filter Select Row */}
+        {sortedProjects.length > PROJECT_DISPLAY_LIMIT && (
           <div className="flex bg-gray-50/30">
-            <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-gray-50/30 z-20 flex items-center gap-2 pl-12">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary"
-                onClick={() => setShowAllProjects(!showAllProjects)}
-                data-testid="toggle-projects-button"
-              >
-                <Icon
-                  icon={showAllProjects ? "lucide:chevron-up" : "lucide:chevron-down"}
-                  className="h-3 w-3 mr-1"
-                />
-                {showAllProjects
-                  ? `Show less (${hiddenProjectCount})`
-                  : `Show all ${hiddenProjectCount} more project${hiddenProjectCount > 1 ? 's' : ''}`
-                }
-              </Button>
+            <div
+              className={cn(
+                "w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-gray-50/30 flex items-center pl-12 overflow-visible",
+                isFilterOpen ? "z-50" : "z-20" // <-- Tambahkan logika ini
+              )}
+            >
+
+              {/* Dropdown Wrapper */}
+              <div className="relative w-full">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-between text-xs h-7 text-primary hover:text-primary border border-transparent hover:bg-accent"
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  data-testid="select-project-filter"
+                >
+                  <span className="truncate">Select Project ({selectedProjectIds.size}/{sortedProjects.length})</span>
+                  <Icon
+                    icon={isFilterOpen ? "lucide:chevron-up" : "lucide:chevron-down"}
+                    className="h-3 w-3 ml-1 shrink-0"
+                  />
+                </Button>
+
+                {/* Popover/Dropdown Menu */}
+                {isFilterOpen && (
+                  <>
+                    {/* Invisible backdrop to close dropdown when clicking outside */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsFilterOpen(false)}
+                    />
+
+                    {/* Ubah lebar menjadi w-[450px] dan tinggi menjadi max-h-[500px] */}
+                    <div className="absolute bottom-full left-0 mb-1 w-[450px] max-w-[95vw] bg-background border border-border rounded-md shadow-2xl z-50 max-h-[500px] overflow-y-auto py-2">
+                      {sortedProjects.map(p => {
+                        const isSelected = selectedProjectIds.has(p.id);
+                        const projectBrand = brands?.find(b => b.id === p.brandId);
+
+                        return (
+                          <label
+                            key={p.id}
+                            // Perbesar padding (px-5 py-4) dan jarak antar elemen (gap-4)
+                            className="flex items-start gap-4 px-5 py-4 transition-colors cursor-pointer hover:bg-muted/50 border-b border-border/50 last:border-0"
+                          >
+                            <input
+                              type="checkbox"
+                              // Perbesar ukuran checkbox menjadi h-5 w-5 (sebelumnya h-4 w-4 atau h-3 w-3)
+                              className="rounded border-primary text-primary focus:ring-primary h-5 w-5 mt-1 cursor-pointer shrink-0"
+                              checked={isSelected}
+                              onChange={() => {
+                                setSelectedProjectIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(p.id)) {
+                                    next.delete(p.id);
+                                  } else {
+                                    next.add(p.id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                            />
+                            <div className="flex flex-col min-w-0">
+                              {/* Perbesar nama project menjadi text-base (ukuran standar teks website) dan lebih tebal */}
+                              <span className="text-sm font-semibold text-foreground leading-snug">
+                                {p.name}
+                              </span>
+                              {/* Perbesar nama brand menjadi text-sm (sebelumnya sangat kecil text-[10px]) */}
+                              {projectBrand && (
+                                <span className="text-sm text-muted-foreground mt-1">
+                                  {projectBrand.name}
+                                </span>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
             </div>
-            <div className="flex relative flex-1">
+
+            {/* Timeline filler (garis-garis putus kosong di sisa row) */}
+            <div className="flex relative flex-1" style={{ width: `${days.length * cellWidth}px` }}>
               {days.map((day) => (
                 <div
                   key={day.toISOString()}
-                  className="flex-1 h-[32px] border-r border-dashed min-w-0"
+                  className="shrink-0 h-[44px] border-r border-dashed"
+                  style={{ width: `${cellWidth}px` }}
                 />
               ))}
             </div>
@@ -960,6 +1356,19 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             onClose={() => setPopoverData(null)}
             onSave={handleSaveAssignment}
             isCreating={createAssignment.isPending}
+          />
+        )}
+
+        {/* Actual Assignment Popover */}
+        {actualPopoverData && (
+          <ActualAssignmentPopover
+            projectId={actualPopoverData.projectId}
+            startDate={actualPopoverData.startDate}
+            endDate={actualPopoverData.endDate}
+            position={actualPopoverData.position}
+            onClose={() => setActualPopoverData(null)}
+            onSave={handleSaveActualAssignment}
+            isCreating={createActualAssignment.isPending}
           />
         )}
       </div>

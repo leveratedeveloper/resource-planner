@@ -28,6 +28,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const timelineRootRef = useRef<HTMLDivElement>(null);
 
   // Modal state for assigning projects
   const [assignModalResourceId, setAssignModalResourceId] = useState<string | null>(null);
@@ -49,28 +50,41 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
   }, []);
 
-  // Track container width with ResizeObserver on parent container
+  // Track container width with ResizeObserver on timeline-root container
   useEffect(() => {
-    const headerContainer = headerScrollRef.current?.parentElement;
-    if (!headerContainer) return;
+    console.log('[Timeline Width] useEffect running, ref:', timelineRootRef.current);
+
+    const rootContainer = timelineRootRef.current;
+    if (!rootContainer) {
+      console.log('[Timeline Width] rootContainer is null, skipping');
+      return;
+    }
 
     const updateWidth = () => {
-      setContainerWidth(headerContainer.offsetWidth);
+      // Use requestAnimationFrame to ensure measurement happens after layout is complete
+      requestAnimationFrame(() => {
+        if (!rootContainer) return;
+        // Measure the timeline-root container width (excluding borders and scrollbars)
+        const rootWidth = rootContainer.clientWidth;
+        // Subtract the fixed sidebar width (250px) to get available width for timeline
+        const sidebarWidth = 250;
+        const availableWidth = rootWidth - sidebarWidth;
+        console.log('[Timeline Width] rootWidth:', rootWidth, 'sidebarWidth:', sidebarWidth, 'availableWidth:', availableWidth, 'days.length:', days.length);
+        setContainerWidth(Math.max(availableWidth, 100)); // Minimum 100px
+      });
     };
 
     const resizeObserver = new ResizeObserver(() => {
       updateWidth();
     });
 
-    resizeObserver.observe(headerContainer);
-
-    // Initial measurement
+    resizeObserver.observe(rootContainer);
     updateWidth();
 
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [currentDate]); // Re-run when currentDate changes to ensure ref is ready
 
   // Calculate days/weeks based on view mode and current date
   const allDays = useMemo(() => {
@@ -133,14 +147,17 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
   }, [allDays, showWeekends, viewMode]);
 
-  // Cell width based on view mode - calculated to fill available space exactly
+  // Cell width based on visible days - fills available space exactly
   const cellWidth = useMemo(() => {
+    // Always use visible days count for cell width
+    // This ensures cells expand to fill available width when weekends are hidden
     const dayCount = days.length;
     if (dayCount === 0) return 100;
 
-    // Keep decimal precision to match flexbox behavior
-    // This ensures AssignmentBlock positioning aligns with flex cells
-    return containerWidth / dayCount;
+    const calculatedWidth = containerWidth / dayCount;
+    const contentWidth = dayCount * calculatedWidth;
+    console.log('[Timeline CellWidth] containerWidth:', containerWidth, 'dayCount:', dayCount, 'cellWidth:', calculatedWidth, 'contentWidth:', contentWidth);
+    return calculatedWidth;
   }, [days.length, containerWidth]);
 
   // Determine if we're in week view mode (where each cell = 1 week)
@@ -393,7 +410,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   }
 
   return (
-    <div className="flex flex-col h-full" data-testid="timeline-root">
+    <div ref={timelineRootRef} className="flex flex-col h-full" data-testid="timeline-root">
       {/* Timeline Controls */}
       <TimelineHeaderControls
         currentDate={currentDate}
@@ -418,7 +435,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           tabIndex={0}
           aria-label="Timeline day headers"
         >
-          <div className="flex w-full">
+          <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
               const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
@@ -427,9 +444,10 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                 <div
                   key={day.toISOString()}
                   className={cn(
-                    "flex-1 border-r p-2 text-center text-sm min-w-0",
+                    "border-r p-2 text-center text-sm shrink-0",
                     isWeekend && !isWeekView ? "bg-muted/50" : "bg-background"
                   )}
+                  style={{ width: `${cellWidth}px` }}
                   data-testid="timeline-day-cell"
                   data-date={format(day, "yyyy-MM-dd")}
                   data-weekend={String(isWeekend)}

@@ -33,7 +33,7 @@ interface DraggableTimelineCellProps {
   isDragging?: boolean;
   isInDragRange?: boolean;
   containerRef?: HTMLDivElement | null; // Container ref passed directly from parent
-  onMouseDown?: (dayIndex: number, containerRef: HTMLDivElement) => void;
+  onMouseDown?: (dayIndex: number, containerRef: HTMLDivElement | null, e?: React.MouseEvent) => void;
 }
 
 export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
@@ -99,11 +99,11 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       <div
         ref={cellRef}
         className={cn(
-          "flex-1 border-r border-dashed relative group min-w-0",
+          "border-r border-dashed relative group shrink-0",
           isBlocked && "cursor-not-allowed",
           isInDragRange && "bg-primary/20"
         )}
-        style={{ height: cellHeight }}
+        style={{ width: `${cellWidth}px`, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
@@ -195,10 +195,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       <div
         ref={cellRef}
         className={cn(
-          "flex-1 border-r border-dashed relative group cursor-not-allowed min-w-0",
+          "border-r border-dashed relative group cursor-not-allowed shrink-0",
           isInDragRange && "bg-primary/20"
         )}
-        style={{ height: cellHeight }}
+        style={{ width: `${cellWidth}px`, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
@@ -235,15 +235,18 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     <div
       ref={cellRef}
       className={cn(
-        "flex-1 border-r border-dashed relative group cursor-cell min-w-0",
+        "border-r border-dashed relative group cursor-cell shrink-0",
         isInDragRange && "bg-primary/20"
       )}
-      style={{ height: cellHeight }}
+      style={{ width: `${cellWidth}px`, height: cellHeight }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onMouseDown={(e) => {
-        if (!disabled && !isBlocked && onMouseDown && containerRef) {
-          onMouseDown(dayIndex, containerRef);
+        // Only start drag if not clicking on the + button
+        const target = e.target as HTMLElement;
+        const isPlusButton = target.closest('[data-plus-button]');
+        if (!isPlusButton && !disabled && !isBlocked && onMouseDown) {
+          onMouseDown(dayIndex, containerRef ?? null, e);
         }
       }}
       data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
@@ -253,8 +256,18 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     >
       {/* Add button - shown on hover */}
       {isHovered && !isDragging && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          onClick={(e) => {
+            e.stopPropagation();
+            // Trigger click for single-day assignment
+            if (!disabled && !isBlocked && onMouseDown) {
+              onMouseDown(dayIndex, containerRef ?? null, e);
+            }
+          }}
+        >
           <div
+            data-plus-button="true"
             className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm cursor-pointer hover:scale-110 transition-transform"
             style={{ backgroundColor: projectColor }}
           >
