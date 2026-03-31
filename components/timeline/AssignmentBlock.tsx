@@ -265,25 +265,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const LEFT_OFFSET = `${displayOffset * cellPercentage}%`;
   const WIDTH = `${displayDuration * cellPercentage}%`;
 
-  // Debug logging
-  console.log('[AssignmentBlock] Rendering:', {
-    assignmentId: assignment.id,
-    projectId: assignment.projectId,
-    startDate: assignment.startDate,
-    endDate: assignment.endDate,
-    timelineStart: format(timelineStart, 'yyyy-MM-dd'),
-    timelineEnd: format(timelineEnd, 'yyyy-MM-dd'),
-    daysLength: days.length,
-    startVisibleIdx,
-    endVisibleIdx,
-    displayOffset,
-    displayDuration,
-    LEFT_OFFSET,
-    WIDTH,
-    cellWidth,
-    containerWidth: days.length * cellWidth,
-  });
-
   // Time Off styling
   const isTimeOff = assignment.isTimeOff;
   const bgColor = isTimeOff ? "#6b7280" : "#2563eb";
@@ -312,31 +293,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const totalHours = workingDays * hoursPerDay;
   const formattedStartDate = format(startDate, "dd MMM");
   const formattedEndDate = format(endDate, "dd MMM");
-
-  // Log when block ref is available (after render)
-  useEffect(() => {
-    if (blockRef.current) {
-      const rect = blockRef.current.getBoundingClientRect();
-      const parentRect = blockRef.current.parentElement?.getBoundingClientRect();
-      const computedStyle = window.getComputedStyle(blockRef.current);
-
-      console.log('[AssignmentBlock] Block rendered with dimensions:', {
-        assignmentId: assignment.id,
-        blockRect: { width: rect.width, height: rect.height, left: rect.left, top: rect.top },
-        parentRect: parentRect ? { width: parentRect.width, height: parentRect.height } : null,
-        styles: {
-          left: LEFT_OFFSET,
-          width: WIDTH,
-          zIndex: 10,
-          position: computedStyle.position,
-          display: computedStyle.display,
-          visibility: computedStyle.visibility,
-          opacity: computedStyle.opacity,
-          backgroundColor: computedStyle.backgroundColor,
-        },
-      });
-    }
-  }, [LEFT_OFFSET, WIDTH, assignment.id]);
 
   // Resize handlers
   const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.PointerEvent) => {

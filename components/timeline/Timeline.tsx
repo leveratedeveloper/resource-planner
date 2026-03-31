@@ -52,11 +52,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   // Track container width with ResizeObserver on timeline-root container
   useEffect(() => {
-    console.log('[Timeline Width] useEffect running, ref:', timelineRootRef.current);
-
     const rootContainer = timelineRootRef.current;
     if (!rootContainer) {
-      console.log('[Timeline Width] rootContainer is null, skipping');
       return;
     }
 
@@ -69,7 +66,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         // Subtract the fixed sidebar width (250px) to get available width for timeline
         const sidebarWidth = 250;
         const availableWidth = rootWidth - sidebarWidth;
-        console.log('[Timeline Width] rootWidth:', rootWidth, 'sidebarWidth:', sidebarWidth, 'availableWidth:', availableWidth, 'days.length:', days.length);
         setContainerWidth(Math.max(availableWidth, 100)); // Minimum 100px
       });
     };
@@ -155,8 +151,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     if (dayCount === 0) return 100;
 
     const calculatedWidth = containerWidth / dayCount;
-    const contentWidth = dayCount * calculatedWidth;
-    console.log('[Timeline CellWidth] containerWidth:', containerWidth, 'dayCount:', dayCount, 'cellWidth:', calculatedWidth, 'contentWidth:', contentWidth);
     return calculatedWidth;
   }, [days.length, containerWidth]);
 

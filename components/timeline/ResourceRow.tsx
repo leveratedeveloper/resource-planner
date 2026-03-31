@@ -236,30 +236,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const { data: brands = [] } = useBrands();
   const { session } = useAuth();
   const queryClient = useQueryClient();
-
-  // Debug logging
-  console.log('[ResourceRow] Received props:', {
-    resourceId: resource.id,
-    resourceName: resource.name,
-    cellWidth,
-    daysLength: days.length,
-    contentWidth: days.length * cellWidth,
-    assignmentsCount: resourceAssignments.length,
-  });
-
-  // Log when assignments change
-  useEffect(() => {
-    console.log('[ResourceRow] Assignments updated:', {
-      resourceId: resource.id,
-      assignmentsCount: resourceAssignments.length,
-      assignments: resourceAssignments.map(a => ({
-        id: a.id,
-        projectId: a.projectId,
-        startDate: a.startDate,
-        endDate: a.endDate,
-      })),
-    });
-  }, [resourceAssignments]);
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
   const deleteAssignmentMutation = useDeleteAssignment();
@@ -303,34 +279,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const timeOffTimelineRef = useRef<HTMLDivElement>(null);
   const projectTimelineRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellBoundariesRef = useRef<Array<{ left: number; right: number }>>([]);
-
-  // Log container dimensions when they change
-  useEffect(() => {
-    if (timeOffTimelineRef.current) {
-      const rect = timeOffTimelineRef.current.getBoundingClientRect();
-      console.log('[ResourceRow] Time off timeline container dimensions:', {
-        resourceId: resource.id,
-        containerWidth: rect.width,
-        expectedWidth: days.length * cellWidth,
-        styleWidth: days.length * cellWidth,
-        cellWidth,
-        daysLength: days.length,
-      });
-    }
-
-    // Log project timeline dimensions
-    projectTimelineRefs.current.forEach((container, key) => {
-      const rect = container.getBoundingClientRect();
-      console.log('[ResourceRow] Project timeline container dimensions:', {
-        resourceId: resource.id,
-        timelineKey: key,
-        containerWidth: rect.width,
-        expectedWidth: days.length * cellWidth,
-        cellWidth,
-        daysLength: days.length,
-      });
-    });
-  }, [cellWidth, days.length, resource.id]);
 
   // Popover state for creating assignments
   const [popoverData, setPopoverData] = useState<{
