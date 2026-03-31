@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom"; // 1. IMPORT CREATE PORTAL DI SINI
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,16 +53,18 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
 
+  // 2. STATE UNTUK MENCEGAH NEXT.JS HYDRATION ERROR
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const project = projects.find((p) => p.id === projectId);
 
-  // Check if scheduling on a weekend
   const isWeekendSchedule = startDate.getDay() === 0 || startDate.getDay() === 6;
   const dayName = format(startDate, "EEEE");
 
-  // Parse hours
   const parsedHours = parseFloat(hoursInput.replace(",", "."));
-
-  // Calculate duration and total effort
   const durationDays = differenceInDays(endDate, startDate) + 1;
   const totalHours = isNaN(parsedHours) ? 0 : parsedHours * durationDays;
 
@@ -80,14 +83,22 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
     });
   };
 
-  return (
+  // Tunggu sampai komponen mounted di browser sebelum membuat Portal
+  if (!mounted) return null;
+
+  // 3. GUNAKAN CREATE PORTAL
+  return createPortal(
     <div
-      className="fixed z-50 bg-white rounded-lg shadow-xl border p-4 min-w-[320px]"
+      // Ubah z-index menjadi ekstrim (9999) agar tidak ada yang bisa menutupi
+      className="fixed z-[9999] bg-white rounded-lg shadow-xl border p-4 min-w-[320px]"
       style={{
         left: Math.min(position.x, window.innerWidth - 360),
         top: Math.min(position.y, window.innerHeight - 400),
       }}
       data-testid="actual-assignment-popover"
+      // Menahan klik agar tidak tembus ke belakang
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -105,7 +116,14 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
             </>
           )}
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close popover">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Close popover"
+        >
           <Icon icon="lucide:x" className="h-4 w-4" />
         </button>
       </div>
@@ -211,10 +229,26 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
 
       {/* Actions */}
       <div className="flex items-center justify-between pt-3 border-t mt-4">
-        <Button variant="link" onClick={onClose} className="text-sm px-0" disabled={isCreating}>
+        {/* KARENA SUDAH DI PORTAL, KITA BISA KEMBALI MENGGUNAKAN onClick */}
+        <Button
+          variant="link"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="text-sm px-0"
+          disabled={isCreating}
+        >
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={isCreating} data-testid="actual-save-button">
+        <Button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isCreating) handleSave();
+          }}
+          disabled={isCreating}
+          data-testid="actual-save-button"
+        >
           {isCreating ? (
             <>
               <span className="animate-spin mr-2">⏳</span>
@@ -225,6 +259,7 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
           )}
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body // <-- DIREnder DI LUAR KALENDER
   );
 };

@@ -1025,38 +1025,32 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                     {/* PLAN Row - from assignments table */}
                     <div className="flex-1 bg-blue-50/30" style={{ height: 40 }} data-testid="plan-row" data-resource-id={resource.id} data-project-id={project.id}>
                       {!session?.access.can_view_all ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div
-                              ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
-                              className="flex relative cursor-not-allowed"
-                              style={{ width: `${days.length * cellWidth}px`, height: 40 }}
-                            >
-                              {days.map((day) => (
-                                <div key={day.toISOString()} className="shrink-0 h-[40px] border-r border-white/20 bg-gray-100/50" style={{ width: `${cellWidth}px` }} />
-                              ))}
-                              {/* Show plan assignments but can't drag */}
-                              {planAssignments.map((assignment) => (
-                                <AssignmentBlock
-                                  key={assignment.id}
-                                  assignment={assignment}
-                                  project={projectMap.get(assignment.projectId ?? '')}
-                                  days={days}
-                                  resourceRowHeight={40}
-                                  cellWidth={cellWidth}
-                                  isWeekView={isWeekView}
-                                  onUpdate={handleUpdateAssignment}
-                                  onDelete={handleDeleteAssignment}
-                                  timeOffAssignments={timeOffAssignments}
-                                  isUpdating={updatingAssignmentId === assignment.id}
-                                />
-                              ))}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Plan mode - Full access only</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <div
+                          ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
+                          className="flex relative"
+                          style={{ width: `${days.length * cellWidth}px`, height: 40 }}
+                        >
+                          {days.map((day) => (
+                            <div key={day.toISOString()} className="shrink-0 h-[40px] border-r border-white/20 bg-gray-100/50" style={{ width: `${cellWidth}px` }} />
+                          ))}
+                          {/* Show plan assignments but disabled (no click, resize, drag) */}
+                          {planAssignments.map((assignment) => (
+                            <AssignmentBlock
+                              key={assignment.id}
+                              assignment={assignment}
+                              project={projectMap.get(assignment.projectId ?? '')}
+                              days={days}
+                              resourceRowHeight={40}
+                              cellWidth={cellWidth}
+                              isWeekView={isWeekView}
+                              onUpdate={handleUpdateAssignment}
+                              onDelete={handleDeleteAssignment}
+                              timeOffAssignments={timeOffAssignments}
+                              isUpdating={updatingAssignmentId === assignment.id}
+                              disabled={true}
+                            />
+                          ))}
+                        </div>
                       ) : (
                         <div
                           ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${project.id}`, el); }}
@@ -1113,8 +1107,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                               const width = boundaries[endIdx].right - boundaries[startIdx].left;
                               return (
                                 <div
-                                  className="absolute top-2 h-[calc(100%-16px)] rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10"
+                                  className="absolute rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10"
                                   style={{
+                                    top: 4,
+                                    height: 'calc(100% - 4px)',
                                     backgroundColor: dragProjectColorRef.current,
                                     left: `${left}px`,
                                     width: `${width}px`,
@@ -1156,7 +1152,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             onDragComplete={(startDay, endDay, position) =>
                               handleActualDragComplete(project.id, startDay, endDay, position)
                             }
-                            disabled={createActualAssignment.isPending}
+                            disabled={createActualAssignment.isPending || resource.id !== session?.employee?.uuid}
                             isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'actual'}
                             isInDragRange={isInDragRange(dayIndex, 'actual')}
                             onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef, 'actual')}
@@ -1175,6 +1171,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             onUpdate={handleUpdateActualAssignment}
                             onDelete={handleDeleteActualAssignment}
                             timeOffAssignments={timeOffAssignments}
+                            disabled={actualAssignment.createdByUuid !== session?.employee?.uuid}
                           />
                         ))}
                         {/* Drag preview overlay for actual - ACTUAL only */}
@@ -1191,8 +1188,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             const width = boundaries[endIdx].right - boundaries[startIdx].left;
                             return (
                               <div
-                                className="absolute top-2 h-[calc(100%-16px)] rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10 bg-emerald-500"
+                                className="absolute rounded-md opacity-80 flex items-center justify-center text-white text-xs font-medium pointer-events-none z-10 bg-emerald-500"
                                 style={{
+                                  top: -4,
+                                  height: 'calc(100% - 4px)',
                                   left: `${left}px`,
                                   width: `${width}px`,
                                 }}

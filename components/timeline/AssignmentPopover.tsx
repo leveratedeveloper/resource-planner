@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom"; // 1. IMPORT CREATE PORTAL DI SINI
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,12 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
 
+  // 2. STATE UNTUK MENCEGAH NEXT.JS HYDRATION ERROR (PORTAL)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const resource = employees.find((r) => r.id === resourceId);
   const project = projects.find((p) => p.id === projectId);
 
@@ -96,14 +103,22 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
     "Other",
   ];
 
-  return (
+  // Tunggu sampai komponen mounted di browser sebelum membuat Portal
+  if (!mounted) return null;
+
+  // 3. GUNAKAN CREATE PORTAL
+  return createPortal(
     <div
-      className="fixed z-50 bg-white rounded-lg shadow-xl border p-4 min-w-[320px]"
+      // Ubah z-index menjadi ekstrim (9999)
+      className="fixed z-[9999] bg-white rounded-lg shadow-xl border p-4 min-w-[320px]"
       style={{
         left: Math.min(position.x, window.innerWidth - 360),
         top: Math.min(position.y, window.innerHeight - 400),
       }}
       data-testid="assignment-popover"
+      // Menahan interaksi agar tidak bocor ke grid/kalender
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -122,7 +137,14 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
             </>
           )}
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close popover">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Close popover"
+        >
           <Icon icon="lucide:x" className="h-4 w-4" />
         </button>
       </div>
@@ -190,7 +212,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           </label>
           <div className="flex items-center gap-1">
             <Input
-              value={`${totalHours}:00`}
+              value={`${totalHours.toFixed(1)}`}
               className="w-20 text-center bg-muted"
               readOnly
             />
@@ -265,14 +287,30 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
 
       {/* Actions */}
       <div className="flex items-center justify-between pt-3 border-t mt-4">
-        <Button variant="link" onClick={onClose} className="text-sm px-0" disabled={isCreating}>
+        {/* GUNAKAN onClick */}
+        <Button
+          variant="link"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="text-sm px-0"
+          disabled={isCreating}
+        >
           Cancel
         </Button>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" disabled={isCreating} aria-label="Open calendar">
             <Icon icon="lucide:calendar" className="h-4 w-4" />
           </Button>
-          <Button onClick={handleSave} disabled={isCreating} data-testid="assignment-save-button">
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isCreating) handleSave();
+            }}
+            disabled={isCreating}
+            data-testid="assignment-save-button"
+          >
             {isCreating ? (
               <>
                 <span className="animate-spin mr-2">⏳</span>
@@ -284,6 +322,7 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body // <-- DIREnder DI LUAR KALENDER
   );
 };
