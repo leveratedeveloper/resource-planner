@@ -85,8 +85,8 @@ export async function PUT(
     }
 
     console.log('[API /actual/[uuid] PUT] Session found:', {
-      employeeId: session.employee?.id,
-      employeeName: session.employee?.fullName,
+      employeeId: session.employee?.uuid,
+      employeeName: session.employee?.full_name,
     });
 
     // Get the actual assignment first to check ownership
@@ -98,10 +98,11 @@ export async function PUT(
     });
 
     // Actual assignments can only be updated by the assigned employee themselves
-    if (existingActual.employeeId !== session.employee?.id) {
+    // Note: session.employee.uuid is the UUID in Supabase, not session.employee.id which is the old MySQL ID
+    if (existingActual.employeeId !== session.employee?.uuid) {
       console.error('[API /actual/[uuid] PUT] Permission denied - user trying to update another employee\'s actual assignment', {
         actual_employee_id: existingActual.employeeId,
-        session_employee_id: session.employee?.id,
+        session_employee_uuid: session.employee?.uuid,
       });
       return NextResponse.json(
         { error: "You can only update your own actual assignments" },
@@ -191,7 +192,8 @@ export async function DELETE(
     const existingActual = await getActualAssignmentById(uuid);
 
     // Actual assignments can only be deleted by the assigned employee themselves
-    if (existingActual.employeeId !== session.employee?.id) {
+    // Note: session.employee.uuid is the UUID in Supabase, not session.employee.id which is the old MySQL ID
+    if (existingActual.employeeId !== session.employee?.uuid) {
       console.error('[API /actual/[uuid] DELETE] Permission denied - user trying to delete another employee\'s actual assignment');
       return NextResponse.json(
         { error: "You can only delete your own actual assignments" },

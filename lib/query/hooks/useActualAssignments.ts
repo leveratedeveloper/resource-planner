@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/hooks/use-toast";
 
 // Types - Struktur sama dengan Assignment
 export interface ActualAssignment {
@@ -196,6 +197,26 @@ export function useCreateActualAssignment() {
           );
         }
       );
+      toast({
+        title: "Created successfully",
+        description: "Actual assignment has been created",
+        variant: "success",
+      });
+    },
+
+    // Show error toast on failure
+    onError: (err) => {
+      console.error('[useCreateActualAssignment] onError:', err);
+      toast({
+        title: "Failed to create",
+        description: err instanceof Error ? err.message : "Could not create actual assignment",
+        variant: "destructive",
+      });
+    },
+
+    // Invalidate queries to ensure fresh data
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["actual"] });
     },
   });
 }
@@ -247,12 +268,17 @@ export function useUpdateActualAssignment() {
       return { previousActuals };
     },
 
-    // Rollback on error
+    // Rollback on error and show toast
     onError: (err, variables, context) => {
       console.error('[useUpdateActualAssignment] onError:', err);
       if (context?.previousActuals) {
         queryClient.setQueryData(["actual"], context.previousActuals);
       }
+      toast({
+        title: "Failed to save",
+        description: err instanceof Error ? err.message : "Could not update actual assignment",
+        variant: "destructive",
+      });
     },
 
     // Server sync - update cache with actual server data
@@ -262,6 +288,16 @@ export function useUpdateActualAssignment() {
         if (!old) return [data];
         return old.map((a) => (a.uuid === data.uuid ? data : a));
       });
+      toast({
+        title: "Saved successfully",
+        description: "Actual assignment has been updated",
+        variant: "success",
+      });
+    },
+
+    // Invalidate queries to ensure fresh data
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["actual"] });
     },
   });
 }
@@ -289,11 +325,26 @@ export function useDeleteActualAssignment() {
       return { previousActuals };
     },
 
-    // Rollback on error
+    // Rollback on error and show toast
     onError: (err, uuid, context) => {
+      console.error('[useDeleteActualAssignment] onError:', err);
       if (context?.previousActuals) {
         queryClient.setQueryData(["actual"], context.previousActuals);
       }
+      toast({
+        title: "Failed to delete",
+        description: err instanceof Error ? err.message : "Could not delete actual assignment",
+        variant: "destructive",
+      });
+    },
+
+    // Show success toast
+    onSuccess: () => {
+      toast({
+        title: "Deleted successfully",
+        description: "Actual assignment has been deleted",
+        variant: "success",
+      });
     },
 
     // Invalidate related queries

@@ -788,7 +788,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       updates,
       resourceId: resource.id,
     });
-    updateActualAssignment.mutate({ uuid, ...updates });
+    updateActualAssignment.mutate(
+      { uuid, ...updates },
+      {
+        onError: (error) => {
+          console.error('[ResourceRow] Failed to update actual assignment:', error);
+          // Error will be shown through toast notification from the hook
+        },
+      }
+    );
   }, [updateActualAssignment]);
 
   // Handle actual assignment delete
