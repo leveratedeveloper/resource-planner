@@ -9,6 +9,7 @@ import {
   employeeBrandAssignments,
   projects,
   assignments,
+  actualAssignments,
   projectChannels,
   channelClassifications,
   deliverables
@@ -22,6 +23,7 @@ import type {
   NewEmployeeBrandAssignment,
   NewProject,
   NewAssignment,
+  NewActualAssignment,
   NewProjectChannel
 } from './schema';
 
@@ -684,4 +686,110 @@ export async function updateAssignment(id: string, data: Partial<NewAssignment>)
 
 export async function deleteAssignment(id: string) {
   await db.delete(assignments).where(eq(assignments.id, id));
+}
+
+// ============ ACTUAL ASSIGNMENTS ============
+export async function getAllActualAssignments() {
+  return db.query.actualAssignments.findMany({
+    with: {
+      employee: true,
+      project: {
+        with: {
+          brand: true,
+        },
+      },
+      createdBy: true,
+    },
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
+  });
+}
+
+export async function getActualAssignmentsByEmployee(employeeId: string) {
+  return db.query.actualAssignments.findMany({
+    where: eq(actualAssignments.employeeId, employeeId),
+    with: {
+      project: {
+        with: {
+          brand: true,
+        },
+      },
+    },
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
+  });
+}
+
+export async function getActualAssignmentsByProject(projectId: string) {
+  return db.query.actualAssignments.findMany({
+    where: eq(actualAssignments.projectId, projectId),
+    with: {
+      employee: true,
+    },
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
+  });
+}
+
+export async function getActualAssignmentsByDateRange(startDate: string, endDate: string) {
+  return db.query.actualAssignments.findMany({
+    where: and(
+      sql`${actualAssignments.startDate} <= ${endDate}`,
+      sql`${actualAssignments.endDate} >= ${startDate}`
+    ),
+    with: {
+      employee: true,
+      project: {
+        with: {
+          brand: true,
+        },
+      },
+    },
+    orderBy: (assign: any, { asc }: any) => [asc(assign.startDate)],
+  });
+}
+
+export async function getActualAssignmentById(id: string) {
+  const actual = await db.query.actualAssignments.findFirst({
+    where: eq(actualAssignments.id, id),
+    with: {
+      employee: true,
+      project: {
+        with: {
+          brand: true,
+        },
+      },
+      createdBy: true,
+    },
+  });
+
+  if (!actual) {
+    throw new Error(`Actual assignment ${id} not found`);
+  }
+
+  return actual;
+}
+
+export async function createActualAssignment(data: NewActualAssignment) {
+  const [actual] = await db.insert(actualAssignments).values(data).returning();
+  return actual;
+}
+
+export async function updateActualAssignment(id: string, data: Partial<NewActualAssignment>) {
+  const [actual] = await db
+    .update(actualAssignments)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(actualAssignments.id, id))
+    .returning();
+
+  if (!actual) {
+    throw new Error(`Actual assignment ${id} not found`);
+  }
+
+  return actual;
+}
+
+export async function deleteActualAssignment(id: string) {
+  const result = await db.delete(actualAssignments).where(eq(actualAssignments.id, id));
+
+  if (!result) {
+    throw new Error(`Actual assignment ${id} not found`);
+  }
 }

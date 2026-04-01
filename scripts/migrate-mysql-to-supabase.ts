@@ -19,7 +19,7 @@ import { createPool } from 'mysql2/promise';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../lib/db/schema';
-import type { NewAssignment } from '../lib/db/schema';
+import type { NewAssignment, NewActualAssignment } from '../lib/db/schema';
 
 // ============================================================
 // KONEKSI DATABASE
@@ -174,7 +174,7 @@ async function migrateAssignments() {
 }
 
 /**
- * Migrasi tabel actual
+ * Migrasi tabel actual ke actual_assignments
  */
 async function migrateActual() {
   console.log('\n=== MIGRASI ACTUAL ASSIGNMENTS ===');
@@ -191,19 +191,28 @@ async function migrateActual() {
       return;
     }
 
-    // Insert ke Supabase
+    // Insert ke Supabase actual_assignments table
     let success = 0;
     let failed = 0;
 
     for (const row of actuals) {
       try {
-        const converted = convertToCamelCase<any>(row);
+        const converted = convertToCamelCase<NewActualAssignment>(row);
 
-        // Insert sebagai assignment dengan status 'completed' untuk actual
-        // Atau bisa buat tabel terpisah jika schema berbeda
-        await db.insert(schema.assignments).values({
+        // Debug: print converted data for first row
+        if (success === 0 && failed === 0) {
+          console.log('Converted actual data:', JSON.stringify(converted, (key, value) => {
+            if (value instanceof Date) {
+              return { type: 'Date', value: value.toISOString(), toString: value.toString() };
+            }
+            return value;
+          }, 2));
+        }
+
+        // Insert ke tabel actual_assignments dengan status 'completed'
+        await db.insert(schema.actualAssignments).values({
           ...converted,
-          status: 'completed', // Actual assignments ditandai sebagai completed
+          status: 'completed', // Actual assignments default to completed
         });
         success++;
       } catch (error) {
@@ -225,19 +234,42 @@ async function validateMigration() {
   console.log('\n=== VALIDASI MIGRASI ===');
 
   try {
-    // Cek jumlah assignments di Supabase
+    // Validasi assignments
     const supabaseAssignments = await db.select().from(schema.assignments);
     console.log(`Total assignments di Supabase: ${supabaseAssignments.length}`);
 
-    // Cek jumlah assignments di MySQL
     const [mysqlRows] = await mysqlDb.execute('SELECT COUNT(*) as count FROM assignments');
     const mysqlCount = (mysqlRows as any)[0].count;
     console.log(`Total assignments di MySQL: ${mysqlCount}`);
 
     if (supabaseAssignments.length === mysqlCount) {
-      console.log('✓ Jumlah data cocok!');
+      console.log('✓ Jumlah data assignments cocok!');
     } else {
-      console.log(`⚠ Perbedaan jumlah: ${Math.abs(mysqlCount - supabaseAssignments.length)} records`);
+      console.log(`⚠ Perbedaan jumlah assignments: ${Math.abs(mysqlCount - supabaseAssignments.length)} records`);
+    }
+
+    // Validasi actual_assignments
+    const supabaseActuals = await db.select().from(schema.actualAssignments);
+    console.log(`Total actual_assignments di Supabase: ${supabaseActuals.length}`);
+
+    const [mysqlActualRows] = await mysqlDb.execute('SELECT COUNT(*) as count FROM actual');
+    const mysqlActualCount = (mysqlActualRows as any)[0].count;
+    console.log(`Total actual di MySQL: ${mysqlActualCount}`);
+
+    if (supabaseActuals.length === mysqlActualCount) {
+      console.log('✓ Jumlah data actual_assignments cocok!');
+    } else {
+      console.log(`⚠ Perbedaan jumlah actual_assignments: ${Math.abs(mysqlActualCount - supabaseActuals.length)} records`);
+    }
+
+    // Total summary
+    const totalSupabase = supabaseAssignments.length + supabaseActuals.length;
+    const totalMysql = mysqlCount + mysqlActualCount;
+    console.log(`\nTotal records di Supabase: ${totalSupabase} (assignments: ${supabaseAssignments.length}, actual_assignments: ${supabaseActuals.length})`);
+    console.log(`Total records di MySQL: ${totalMysql} (assignments: ${mysqlCount}, actual: ${mysqlActualCount})`);
+
+    if (totalSupabase === totalMysql) {
+      console.log('✓ Semua data berhasil dimigrasi!');
     }
   } catch (error) {
     console.error('Error validasi:', error);

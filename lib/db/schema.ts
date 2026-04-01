@@ -205,7 +205,7 @@ export const projectChannels = pgTable('project_channels', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// 7. Assignments table (ENHANCED)
+// 7. Assignments table (ENHANCED) - for planned hours
 export const assignments = pgTable('assignments', {
   id: uuid('id').defaultRandom().primaryKey(),
   employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'cascade' }).notNull(),
@@ -220,6 +220,27 @@ export const assignments = pgTable('assignments', {
   category: text('category'),
   isBillable: boolean('is_billable').notNull().default(true),
   status: assignmentStatusEnum('status').notNull().default('confirmed'),
+  note: text('note'),
+  createdById: uuid('created_by_id').references(() => employees.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 7a. Actual Assignments table (NEW - for actual/completed hours)
+export const actualAssignments = pgTable('actual_assignments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  taskId: uuid('task_id'), // For future phase
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  hoursPerDay: decimal('hours_per_day', { precision: 4, scale: 2 }).notNull().default('8'),
+  allocationPercentage: decimal('allocation_percentage', { precision: 5, scale: 2 }),
+  isTimeOff: boolean('is_time_off').notNull().default(false),
+  timeOffTypeId: uuid('time_off_type_id'), // For future phase
+  category: text('category'),
+  isBillable: boolean('is_billable').notNull().default(true),
+  status: assignmentStatusEnum('status').notNull().default('completed'),
   note: text('note'),
   createdById: uuid('created_by_id').references(() => employees.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -384,6 +405,23 @@ export const assignmentsRelations = relations(assignments, ({ one }) => ({
   }),
 }));
 
+export const actualAssignmentsRelations = relations(actualAssignments, ({ one }) => ({
+  employee: one(employees, {
+    fields: [actualAssignments.employeeId],
+    references: [employees.id],
+    relationName: 'actualEmployee',
+  }),
+  project: one(projects, {
+    fields: [actualAssignments.projectId],
+    references: [projects.id],
+  }),
+  createdBy: one(employees, {
+    fields: [actualAssignments.createdById],
+    references: [employees.id],
+    relationName: 'actualCreatedBy',
+  }),
+}));
+
 // Add relations for new tables
 export const timesheetCacheRelations = relations(timesheetCache, ({ one }) => ({
   project: one(projects, {
@@ -409,6 +447,8 @@ export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type Assignment = typeof assignments.$inferSelect;
 export type NewAssignment = typeof assignments.$inferInsert;
+export type ActualAssignment = typeof actualAssignments.$inferSelect;
+export type NewActualAssignment = typeof actualAssignments.$inferInsert;
 export type ChannelClassification = typeof channelClassifications.$inferSelect;
 export type NewChannelClassification = typeof channelClassifications.$inferInsert;
 export type Deliverable = typeof deliverables.$inferSelect;

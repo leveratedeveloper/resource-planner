@@ -1,34 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getActual,
+  getActualAssignmentById,
   updateActualAssignment,
   deleteActualAssignment,
-} from "@/lib/mysql-assignments/queries";
+} from "@/lib/db/queries";
 import { getSession } from "@/lib/auth/session";
 
 /**
- * Transform MySQL actual assignment format (snake_case) to frontend format (camelCase)
- * Struktur sama dengan assignments
+ * Transform Supabase actual assignment format (camelCase) to frontend format (camelCase with uuid suffix)
+ * This maintains compatibility with the existing frontend API
  */
-function transformMySqlActualToFrontend(mysqlActual: any) {
+function transformSupabaseActualToFrontend(actual: any) {
   return {
-    uuid: mysqlActual.uuid,
-    employeeUuid: mysqlActual.employee_uuid,
-    projectUuid: mysqlActual.project_uuid,
-    taskUuid: mysqlActual.task_uuid,
-    startDate: mysqlActual.start_date,
-    endDate: mysqlActual.end_date,
-    hoursPerDay: mysqlActual.hours_per_day,
-    allocationPercentage: mysqlActual.allocation_percentage,
-    isTimeOff: mysqlActual.is_time_off,
-    timeOffTypeUuid: mysqlActual.time_off_type_uuid,
-    category: mysqlActual.category || null,
-    isBillable: mysqlActual.is_billable,
-    status: mysqlActual.status,
-    note: mysqlActual.note,
-    createdByUuid: mysqlActual.created_by_uuid,
-    createdAt: mysqlActual.created_at,
-    updatedAt: mysqlActual.updated_at,
+    uuid: actual.id,
+    employeeUuid: actual.employeeId,
+    projectUuid: actual.projectId,
+    taskUuid: actual.taskId,
+    startDate: actual.startDate,
+    endDate: actual.endDate,
+    hoursPerDay: actual.hoursPerDay,
+    allocationPercentage: actual.allocationPercentage,
+    isTimeOff: actual.isTimeOff,
+    timeOffTypeUuid: actual.timeOffTypeId,
+    category: actual.category || null,
+    isBillable: actual.isBillable,
+    status: actual.status,
+    note: actual.note,
+    createdByUuid: actual.createdById,
+    createdAt: actual.createdAt,
+    updatedAt: actual.updatedAt,
   };
 }
 
@@ -42,8 +42,8 @@ export async function GET(
 ) {
   try {
     const { uuid } = await params;
-    const actual = await getActual(uuid);
-    const transformedActual = transformMySqlActualToFrontend(actual);
+    const actual = await getActualAssignmentById(uuid);
+    const transformedActual = transformSupabaseActualToFrontend(actual);
 
     return NextResponse.json({
       success: true,
@@ -85,23 +85,23 @@ export async function PUT(
     }
 
     console.log('[API /actual/[uuid] PUT] Session found:', {
-      employeeUuid: session.employee?.uuid,
-      employeeName: session.employee?.full_name,
+      employeeId: session.employee?.id,
+      employeeName: session.employee?.fullName,
     });
 
     // Get the actual assignment first to check ownership
-    const existingActual = await getActual(uuid);
+    const existingActual = await getActualAssignmentById(uuid);
 
     console.log('[API /actual/[uuid] PUT] Existing actual:', {
-      uuid: existingActual.uuid,
-      employee_uuid: existingActual.employee_uuid,
+      uuid: existingActual.id,
+      employeeId: existingActual.employeeId,
     });
 
     // Actual assignments can only be updated by the assigned employee themselves
-    if (existingActual.employee_uuid !== session.employee?.uuid) {
+    if (existingActual.employeeId !== session.employee?.id) {
       console.error('[API /actual/[uuid] PUT] Permission denied - user trying to update another employee\'s actual assignment', {
-        actual_employee_uuid: existingActual.employee_uuid,
-        session_employee_uuid: session.employee?.uuid,
+        actual_employee_id: existingActual.employeeId,
+        session_employee_id: session.employee?.id,
       });
       return NextResponse.json(
         { error: "You can only update your own actual assignments" },
@@ -113,40 +113,39 @@ export async function PUT(
 
     console.log('[API /actual/[uuid] PUT] Request body:', body);
 
-    // Transform frontend format (camelCase) to MySQL format (snake_case)
-    // Struktur sama dengan assignments
-    const mysqlData: Partial<{
-      start_date: string;
-      end_date: string;
-      hours_per_day: string | number;
-      allocation_percentage: number;
-      is_time_off: boolean;
-      time_off_type_uuid: string;
+    // Transform frontend format (camelCase with uuid suffix) to Supabase format (camelCase)
+    const supabaseData: Partial<{
+      startDate: string;
+      endDate: string;
+      hoursPerDay: string | number;
+      allocationPercentage: number;
+      isTimeOff: boolean;
+      timeOffTypeId: string;
       category: string;
-      is_billable: boolean;
+      isBillable: boolean;
       status: string;
       note: string;
-      project_uuid: string;
-      task_uuid: string;
+      projectId: string;
+      taskId: string;
     }> = {
-      ...(body.startDate !== undefined && { start_date: body.startDate }),
-      ...(body.endDate !== undefined && { end_date: body.endDate }),
-      ...(body.hoursPerDay !== undefined && { hours_per_day: body.hoursPerDay }),
-      ...(body.allocationPercentage !== undefined && { allocation_percentage: body.allocationPercentage }),
-      ...(body.isTimeOff !== undefined && { is_time_off: body.isTimeOff }),
-      ...(body.timeOffTypeUuid !== undefined && { time_off_type_uuid: body.timeOffTypeUuid }),
+      ...(body.startDate !== undefined && { startDate: body.startDate }),
+      ...(body.endDate !== undefined && { endDate: body.endDate }),
+      ...(body.hoursPerDay !== undefined && { hoursPerDay: body.hoursPerDay }),
+      ...(body.allocationPercentage !== undefined && { allocationPercentage: body.allocationPercentage }),
+      ...(body.isTimeOff !== undefined && { isTimeOff: body.isTimeOff }),
+      ...(body.timeOffTypeUuid !== undefined && { timeOffTypeId: body.timeOffTypeUuid }),
       ...(body.category !== undefined && { category: body.category }),
-      ...(body.isBillable !== undefined && { is_billable: body.isBillable }),
+      ...(body.isBillable !== undefined && { isBillable: body.isBillable }),
       ...(body.status !== undefined && { status: body.status }),
       ...(body.note !== undefined && { note: body.note }),
-      ...(body.projectUuid !== undefined && { project_uuid: body.projectUuid }),
-      ...(body.taskUuid !== undefined && { task_uuid: body.taskUuid }),
+      ...(body.projectUuid !== undefined && { projectId: body.projectUuid }),
+      ...(body.taskUuid !== undefined && { taskId: body.taskUuid }),
     };
 
-    console.log("[API /actual/[uuid]] Updating actual assignment:", { uuid, mysqlData });
+    console.log("[API /actual/[uuid]] Updating actual assignment:", { uuid, supabaseData });
 
-    const updatedActual = await updateActualAssignment(uuid, mysqlData);
-    const transformedActual = transformMySqlActualToFrontend(updatedActual);
+    const updatedActual = await updateActualAssignment(uuid, supabaseData);
+    const transformedActual = transformSupabaseActualToFrontend(updatedActual);
 
     return NextResponse.json({
       success: true,
@@ -189,10 +188,10 @@ export async function DELETE(
     }
 
     // Get the actual assignment first to check ownership
-    const existingActual = await getActual(uuid);
+    const existingActual = await getActualAssignmentById(uuid);
 
     // Actual assignments can only be deleted by the assigned employee themselves
-    if (existingActual.employee_uuid !== session.employee?.uuid) {
+    if (existingActual.employeeId !== session.employee?.id) {
       console.error('[API /actual/[uuid] DELETE] Permission denied - user trying to delete another employee\'s actual assignment');
       return NextResponse.json(
         { error: "You can only delete your own actual assignments" },

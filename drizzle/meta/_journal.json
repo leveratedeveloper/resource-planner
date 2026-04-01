@@ -36,6 +36,13 @@
       "when": 1775033825473,
       "tag": "0004_slim_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775082345484,
+      "tag": "0005_modern_arclight",
+      "breakpoints": true
     }
   ]
 }
