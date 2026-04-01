@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     console.log('====================================');
 
     // Actual assignments can only be created by the employee themselves, regardless of access level
-    if (body.employeeUuid !== session.employee?.id) {
+    if (body.employeeUuid !== session.employee?.uuid) {
       console.error('[API /actual POST] Permission denied - user trying to create actual assignment for another employee');
       return NextResponse.json(
         { error: "You can only create actual assignments for yourself" },
