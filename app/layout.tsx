@@ -4,6 +4,7 @@ import "./globals.css";
 import { QueryProvider } from "@/lib/query/QueryProvider";
 import { AppProvider } from "@/context/AppContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/components/ui/toast";
 
 const geistSans = localFont({
   src: "../public/fonts/geist/geist-latin.woff2",
@@ -32,7 +33,10 @@ export default function RootLayout({
       >
         <QueryProvider>
           <AuthProvider>
-            <AppProvider>{children}</AppProvider>
+            <AppProvider>
+              {children}
+              <ToastProvider />
+            </AppProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

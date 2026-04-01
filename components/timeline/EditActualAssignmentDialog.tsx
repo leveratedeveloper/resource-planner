@@ -69,7 +69,7 @@ export function EditActualAssignmentDialog({
   // Use string dates directly to avoid timezone issues
   const [startDateStr, setStartDateStr] = useState(() => assignment.startDate);
   const [endDateStr, setEndDateStr] = useState(() => assignment.endDate);
-  const [hoursPerDay, setHoursPerDay] = useState(assignment.hoursPerDay);
+  const [hoursPerDay, setHoursPerDay] = useState<number | string>(assignment.hoursPerDay);
   const [category, setCategory] = useState(assignment.category || 'Development');
   const [isBillable, setIsBillable] = useState(assignment.isBillable);
   const [note, setNote] = useState(assignment.note || '');
@@ -89,7 +89,7 @@ export function EditActualAssignmentDialog({
   const startDate = new Date(assignment.startDate);
   const endDate = new Date(assignment.endDate);
   const durationDays = differenceInDays(endDate, startDate) + 1;
-  const totalHours = durationDays * hoursPerDay;
+  const totalHours = durationDays * (typeof hoursPerDay === 'number' ? hoursPerDay : parseFloat(hoursPerDay));
 
   const handleSave = () => {
     const parsed = typeof hoursPerDay === 'string' ? parseFloat(hoursPerDay.replace(',', '.')) : hoursPerDay;
@@ -173,7 +173,7 @@ export function EditActualAssignmentDialog({
                   value={format(startDate, 'yyyy-MM-dd')}
                   onChange={(e) => {
                     setHoursError(null);
-                    setStartDate(new Date(e.target.value));
+                    setStartDateStr(e.target.value);
                   }}
                   className="mt-1.5"
                 />
@@ -187,7 +187,7 @@ export function EditActualAssignmentDialog({
                   value={format(endDate, 'yyyy-MM-dd')}
                   onChange={(e) => {
                     setHoursError(null);
-                    setEndDate(new Date(e.target.value));
+                    setEndDateStr(e.target.value);
                   }}
                   className="mt-1.5"
                 />

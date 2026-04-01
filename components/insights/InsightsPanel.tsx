@@ -13,6 +13,7 @@ import { InsightsSummary } from "./InsightsSummary";
 import { CapacityTab } from "./CapacityTab";
 import { ConflictsTab } from "./ConflictsTab";
 import { ForecastTab } from "./ForecastTab";
+import { ExportButton } from "@/components/export";
 
 interface InsightsPanelProps {
   isOpen: boolean;
@@ -127,6 +128,12 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ExportButton
+              filters={{
+                startDate: undefined,
+                endDate: undefined,
+              }}
+            />
             <Button
               variant="ghost"
               size="icon"

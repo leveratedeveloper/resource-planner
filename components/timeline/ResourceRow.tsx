@@ -773,15 +773,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     startDate: string;
     endDate: string;
     hoursPerDay: number;
-    allocationPercentage: number;
+    allocationPercentage: number | null;
     isTimeOff: boolean;
-    timeOffTypeUuid: string;
-    category: string;
+    timeOffTypeUuid: string | null;
+    category: string | null;
     isBillable: boolean;
     status: string;
-    note: string;
-    projectUuid: string;
-    taskUuid: string;
+    note: string | null;
+    projectUuid: string | null;
+    taskUuid: string | null;
   }>) => {
     console.log('[ResourceRow] handleUpdateActualAssignment called:', {
       uuid,
@@ -1170,7 +1170,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             isWeekView={isWeekView}
                             onUpdate={handleUpdateActualAssignment}
                             onDelete={handleDeleteActualAssignment}
-                            timeOffAssignments={timeOffAssignments}
+                            timeOffAssignments={timeOffAssignments as any}
                             disabled={actualAssignment.createdByUuid !== session?.employee?.uuid}
                           />
                         ))}

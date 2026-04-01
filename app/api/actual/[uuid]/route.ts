@@ -86,7 +86,7 @@ export async function PUT(
 
     console.log('[API /actual/[uuid] PUT] Session found:', {
       employeeUuid: session.employee?.uuid,
-      employeeName: session.employee?.name,
+      employeeName: session.employee?.full_name,
     });
 
     // Get the actual assignment first to check ownership

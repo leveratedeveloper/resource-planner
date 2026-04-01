@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ExportButton } from "@/components/export";
 
 // Assignment categories
 export const ASSIGNMENT_CATEGORIES = [
@@ -268,6 +269,15 @@ export const FilterBar = React.memo<FilterBarProps>(({
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+        <ExportButton
+          filters={{
+            brandId: selectedBrandId,
+            departmentId: selectedDepartment,
+            projectId,
+            startDate: undefined, // These would come from a date range picker if implemented
+            endDate: undefined,
+          }}
+        />
         <Button onClick={onOpenInsights} variant="default" data-testid="open-insights-button">
           <Icon icon="lucide:brain" className="mr-2 h-4 w-4" />
           AI Insights
