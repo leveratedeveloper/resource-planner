@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
           COUNT(DISTINCT employee_uuid) as unique_employees,
           COUNT(DISTINCT project_uuid) as unique_projects
         FROM assignments
-      `);
+      `) as [any[], any];
       debug.assignmentsDb = assignments[0];
 
       // Ambil sample 5 assignments untuk lihat struktur
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         SELECT uuid, employee_uuid, project_uuid, start_date, end_date, status
         FROM assignments
         LIMIT 5
-      `);
+      `) as [any[], any];
       debug.assignmentSamples = sampleAssignments;
     } catch (err) {
       debug.assignmentsDbError = err instanceof Error ? err.message : String(err);
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     try {
       const [assignmentEmployees] = await assignmentsDb.execute(`
         SELECT DISTINCT employee_uuid FROM assignments LIMIT 10
-      `);
+      `) as [any[], any];
 
       const employeeUuids = assignmentEmployees.map((a: any) => a.employee_uuid);
 
