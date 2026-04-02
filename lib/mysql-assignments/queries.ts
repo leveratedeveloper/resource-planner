@@ -22,8 +22,8 @@ const ALLOWED_UPDATE_COLUMNS = [
 
 type AllowedUpdateColumn = typeof ALLOWED_UPDATE_COLUMNS[number];
 
-// MySQL API base URL for validation
-const MYSQL_API_BASE_URL = process.env.MYSQL_API_BASE_URL || 'http://localhost/api/v1';
+// Timetrack API base URL for validation
+const TIMETRACK_API_URL = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 /**
  * Validate employee and project existence in MySQL API
@@ -34,7 +34,7 @@ async function validateAssignmentData(data: {
 }): Promise<void> {
   try {
     // Cek employee
-    const employeeRes = await fetch(`${MYSQL_API_BASE_URL}/employees/${data.employee_uuid}`, {
+    const employeeRes = await fetch(`${TIMETRACK_API_URL}/employees/${data.employee_uuid}`, {
       headers: {
         'Accept': 'application/json',
       },
@@ -45,7 +45,7 @@ async function validateAssignmentData(data: {
 
     // Cek project (jika ada)
     if (data.project_uuid) {
-      const projectRes = await fetch(`${MYSQL_API_BASE_URL}/campaigns/${data.project_uuid}`, {
+      const projectRes = await fetch(`${TIMETRACK_API_URL}/campaigns/${data.project_uuid}`, {
         headers: {
           'Accept': 'application/json',
         },

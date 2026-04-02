@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const baseUrl = process.env.MYSQL_API_BASE_URL || 'http://localhost/api/v1';
+  const baseUrl = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
 
   try {
     // Test if base URL is accessible

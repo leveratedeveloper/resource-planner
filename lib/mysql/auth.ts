@@ -19,7 +19,7 @@ export class MySqlAuthManager {
   private loginPromise: Promise<string> | null = null; // Prevent concurrent logins
 
   constructor() {
-    this.baseUrl = process.env.MYSQL_API_BASE_URL || 'http://localhost/api/v1';
+    this.baseUrl = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
     this.username = process.env.MYSQL_API_USERNAME || 'super@timetrack.id';
     this.password = process.env.MYSQL_API_PASSWORD || '';
     this.tokenExpiryMs = parseInt(process.env.MYSQL_API_TOKEN_EXPIRY_MS || '3600000', 10);

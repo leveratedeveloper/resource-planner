@@ -28,7 +28,7 @@ class MySqlApiClient {
   private getToken: () => Promise<string>; // Function to get token from session
 
   constructor(getTokenFn: () => Promise<string>) {
-    this.baseUrl = process.env.MYSQL_API_BASE_URL || 'http://localhost/api/v1';
+    this.baseUrl = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
     this.getToken = getTokenFn;
   }
 
