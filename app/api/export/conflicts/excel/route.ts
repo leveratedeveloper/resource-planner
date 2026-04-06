@@ -1,19 +1,15 @@
 /**
- * Export Conflicts API Route
- * GET /api/export/conflicts
+ * Export Conflicts Excel API Route
+ * GET /api/export/conflicts/excel
  *
- * Export conflict analysis to CSV format
+ * Export conflict analysis to Excel format with multiple sheets
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getExportAccessFilter, getExportMetadata } from '@/lib/export/permissions';
-import {
-  exportConflictsToCSV,
-  conflictToExportFormat,
-  generateExportFilename,
-} from '@/lib/export/csv-export';
-import type { Conflict } from '@/lib/analysis/types';
+import { exportConflictsToExcel, generateExcelFilename } from '@/lib/export/excel-export';
+import { conflictToExportFormat } from '@/lib/export/csv-export';
 import {
   fetchAssignmentsWithDetails,
   hasFullAccess,
@@ -21,8 +17,7 @@ import {
 } from '@/lib/export/data-fetcher';
 
 /**
- * Detect conflicts in assignments
- * Starts with assignments and builds employee data from them
+ * Detect conflicts in assignments (copied from conflicts route)
  */
 function detectConflictsFromAssignments(
   assignments: Array<{
@@ -43,8 +38,8 @@ function detectConflictsFromAssignments(
   }>,
   startDate: string,
   endDate: string
-): Conflict[] {
-  const conflicts: Conflict[] = [];
+) {
+  const conflicts: any[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
 
@@ -156,18 +151,18 @@ function detectConflictsFromAssignments(
 }
 
 /**
- * GET /api/export/conflicts
- * Export conflicts report to CSV
+ * GET /api/export/conflicts/excel
+ * Export conflicts report to Excel
  */
 export async function GET(request: NextRequest) {
   try {
     // Authentication check
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({ error: 'Not authenticated' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const { searchParams } = new URL(request.url);
@@ -175,21 +170,15 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const employeeIds = searchParams.get('employeeIds');
     const severity = searchParams.get('severity');
-    const format = searchParams.get('format') || 'csv';
-
-    if (format !== 'csv') {
-      return NextResponse.json(
-        { error: 'Only CSV format is supported for conflicts export' },
-        { status: 400 }
-      );
-    }
+    const groupBySeverity = searchParams.get('groupBySeverity') === 'true';
+    const groupByType = searchParams.get('groupByType') === 'true';
 
     // Validate date range
     if (!startDate || !endDate) {
-      return NextResponse.json(
-        { error: 'startDate and endDate are required' },
-        { status: 400 }
-      );
+      return new Response(JSON.stringify({ error: 'startDate and endDate are required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // Check access level
@@ -209,7 +198,7 @@ export async function GET(request: NextRequest) {
       skipCampaigns: true, // Skip fetching campaigns for faster conflicts export
     }, request);
 
-    console.log('[Export Conflicts] Fetched assignments:', assignments.length);
+    console.log('[Export Conflicts Excel] Fetched assignments:', assignments.length);
 
     // Filter by employee IDs if specified
     let filteredAssignments = assignments;
@@ -220,17 +209,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('[Export Conflicts] Filtered assignments:', filteredAssignments.length);
+    console.log('[Export Conflicts Excel] Filtered assignments:', filteredAssignments.length);
 
     if (filteredAssignments.length === 0) {
-      // Return empty CSV with headers instead of 404
-      console.log('[Export Conflicts] No assignments found, returning empty CSV');
-      const emptyCsv = 'Resource Name,Resource ID,Department,Conflict Type,Severity,Date,Description,Affected Assignments,Suggested Resolution\n';
-      return new NextResponse(emptyCsv, {
+      // Return empty Excel with message
+      const ExcelJS = require('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Summary');
+      worksheet.addRow(['No conflicts found']);
+      worksheet.addRow(['No assignments found for the specified criteria']);
+      const buffer = await workbook.xlsx.writeBuffer();
+      const filename = generateExcelFilename('conflicts-report', { start: startDate, end: endDate });
+      return new Response(new Uint8Array(Buffer.from(buffer)), {
         status: 200,
         headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${generateExportFilename('conflicts', 'csv', { start: startDate, end: endDate })}"`,
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${filename}"`,
         },
       });
     }
@@ -238,7 +232,7 @@ export async function GET(request: NextRequest) {
     // Detect conflicts from assignments
     let conflicts = detectConflictsFromAssignments(filteredAssignments, startDate, endDate);
 
-    console.log('[Export Conflicts] Detected conflicts:', conflicts.length);
+    console.log('[Export Conflicts Excel] Detected conflicts:', conflicts.length);
 
     // Apply severity filter if specified
     if (severity) {
@@ -246,14 +240,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (conflicts.length === 0) {
-      // Return empty CSV with headers instead of 404
-      console.log('[Export Conflicts] No conflicts found, returning empty CSV');
-      const emptyCsv = 'Resource Name,Resource ID,Department,Conflict Type,Severity,Date,Description,Affected Assignments,Suggested Resolution\n';
-      return new NextResponse(emptyCsv, {
+      // Return empty Excel with message
+      const ExcelJS = require('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Summary');
+      worksheet.addRow(['No conflicts found']);
+      worksheet.addRow(['Great! No scheduling conflicts detected in the selected period']);
+      const buffer = await workbook.xlsx.writeBuffer();
+      const filename = generateExcelFilename('conflicts-report', { start: startDate, end: endDate });
+      return new Response(new Uint8Array(Buffer.from(buffer)), {
         status: 200,
         headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${generateExportFilename('conflicts', 'csv', { start: startDate, end: endDate })}"`,
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${filename}"`,
         },
       });
     }
@@ -261,29 +260,38 @@ export async function GET(request: NextRequest) {
     // Convert to export format
     const exportData = conflictToExportFormat(conflicts);
 
-    // Generate CSV
-    const csvContent = exportConflictsToCSV(exportData);
+    // Generate Excel
+    console.log('[Export Conflicts Excel] Generating Excel...');
+    const buffer = await exportConflictsToExcel({
+      conflicts: exportData,
+      groupBySeverity,
+      groupByType,
+    });
 
     // Get export metadata
     const metadata = await getExportMetadata();
 
     // Generate filename
-    const filename = generateExportFilename('conflicts', 'csv', { start: startDate, end: endDate });
+    const filename = generateExcelFilename('conflicts-report', { start: startDate, end: endDate });
 
-    // Return CSV file
-    return new NextResponse(csvContent, {
+    // Return Excel file
+    console.log('[Export Conflicts Excel] Sending response...');
+    return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'X-Export-Metadata': JSON.stringify(metadata),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     });
   } catch (error) {
-    console.error('[API /export/conflicts] Export failed:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to export conflicts' },
-      { status: 500 }
-    );
+    console.error('[API /export/conflicts/excel] Export failed:', error);
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : 'Failed to export conflicts to Excel'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }

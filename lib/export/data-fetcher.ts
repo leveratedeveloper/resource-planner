@@ -225,7 +225,11 @@ export async function fetchAllDepartments(request?: NextRequest): Promise<Depart
   const cached = getFromCache(globalDepartmentCache, BRAND_CACHE_TTL);
   if (cached) {
     console.log('[Export Data] Using cached departments:', cached.size);
-    return Array.from(cached.values()).map(id => ({ id, department_name: cached.get(id)!, flag: 'active' }));
+    return Array.from(cached.entries()).map(([id, name]) => ({
+      id: parseInt(id, 10),
+      department_name: name,
+      flag: 'active'
+    }));
   }
 
   try {
@@ -239,7 +243,7 @@ export async function fetchAllDepartments(request?: NextRequest): Promise<Depart
     const apiClient = getMySqlApiClient(async () => session.access_token);
     const allDepartments: DepartmentData[] = [];
     let page = 1;
-    const perPage = 100;
+    const perPage = 500; // Increased from 100 to reduce API calls
     let hasMore = true;
 
     while (hasMore) {
@@ -319,11 +323,12 @@ export async function fetchAllBrands(request?: NextRequest): Promise<Map<number,
       return new Map();
     }
 
+    const brandFetchStart = Date.now();
     console.log('[Export Data] Cache miss, fetching brands from MySQL API...');
     const apiClient = getMySqlApiClient(async () => session.access_token);
     const brandMap = new Map<number, string>();
     let page = 1;
-    const perPage = 100;
+    const perPage = 500; // Increased from 100 to reduce API calls
     let hasMore = true;
 
     // Fetch all pages of brands
@@ -365,7 +370,7 @@ export async function fetchAllBrands(request?: NextRequest): Promise<Map<number,
       if (brandMap.size > 10000 || brandsArray.length === 0) break;
     }
 
-    console.log('[Export Data] Total brands fetched from MySQL API:', brandMap.size);
+    console.log('[Export Data] Total brands fetched from MySQL API:', brandMap.size, 'in', Date.now() - brandFetchStart, 'ms');
 
     // Cache the result
     globalBrandCache = setCache(brandMap);
@@ -669,9 +674,12 @@ export async function fetchAssignmentsWithDetails(
     start_date?: string;
     end_date?: string;
     status?: string;
+    skipCampaigns?: boolean; // NEW: Skip fetching campaigns for faster export
   },
   request?: NextRequest
 ): Promise<AssignmentWithDetails[]> {
+  const startTime = Date.now();
+  const skipCampaigns = filters?.skipCampaigns || false;
   try {
     let query = 'SELECT * FROM assignments WHERE 1=1';
     const params: any[] = [];
@@ -702,6 +710,8 @@ export async function fetchAssignmentsWithDetails(
     const [rows] = await assignmentsDb.execute(query, params);
     const assignments = rows as any[];
 
+    console.log('[Export Data] DB query time:', Date.now() - startTime, 'ms, assignments:', assignments.length);
+
     if (assignments.length === 0) {
       console.log('[Export Data] No assignments found for filters:', filters);
       return [];
@@ -716,98 +726,145 @@ export async function fetchAssignmentsWithDetails(
     console.log('[Export Data] Unique employee_uuids:', employeeUuids.length);
     console.log('[Export Data] Sample employee_uuids:', employeeUuids.slice(0, 3));
 
-    // Fetch employees that match our assignments (not all employees)
-    const employeesMap = new Map<string, EmployeeData>();
-
     // Get session and API client for authenticated requests
     const session = await getSession();
     const apiClient = session ? getMySqlApiClient(async () => session.access_token) : null;
 
-    // Fetch employees in parallel for better performance
-    if (apiClient) {
-      console.log('[Export Data] Fetching employees in parallel...');
-      const employeePromises = employeeUuids.map(async (empUuid) => {
+    // OPTIMIZATION: Fetch all data in PARALLEL instead of sequential
+    // This is the biggest performance improvement!
+    console.log('[Export Data] Fetching all data in PARALLEL...');
+    const parallelStartTime = Date.now();
+    const fetchStartTime = Date.now();
+
+    const [
+      employeesResult,
+      departmentsResult,
+      brandsResult
+    ] = await Promise.allSettled([
+      // Fetch employees (in batches internally)
+      (async () => {
+        const employeesMap = new Map<string, EmployeeData>();
+        if (!apiClient) return employeesMap;
+
+        console.log('[Export Data] Fetching employees in batches...');
+        const BATCH_SIZE = 10; // Increased for better parallelization
+
+        for (let i = 0; i < employeeUuids.length; i += BATCH_SIZE) {
+          const batch = employeeUuids.slice(i, i + BATCH_SIZE);
+          console.log('[Export Data] Fetching employee batch:', Math.floor(i / BATCH_SIZE) + 1, 'of', Math.ceil(employeeUuids.length / BATCH_SIZE));
+
+          const employeePromises = batch.map(async (empUuid) => {
+            try {
+              const response = await apiClient!.getEmployee(empUuid);
+              if (response.success && response.data) {
+                let emp = response.data;
+                if (emp && typeof emp === 'object' && !Array.isArray(emp) && !emp.uuid) {
+                  emp = emp.data || emp;
+                }
+                if (emp && emp.uuid) {
+                  const deptId = emp.dept_id || emp.departmentId;
+                  return {
+                    uuid: empUuid,
+                    data: {
+                      uuid: emp.uuid || emp.id || empUuid,
+                      nik: emp.employee_number || emp.nik || '',
+                      full_name: emp.full_name || emp.fullName || '',
+                      nickname: emp.nickname || '',
+                      position: emp.position || '',
+                      dept_id: parseInt(deptId?.toString() || '0', 10),
+                      department_name: emp.department_name || emp.department?.name || '',
+                      photo: emp.photo || '',
+                      flag: emp.flag === 'active' || emp.employment_status === 'active' ? 'active' : 'inactive',
+                    } as EmployeeData,
+                  };
+                }
+              }
+              return null;
+            } catch (err) {
+              console.warn('[Export Data] Could not fetch employee:', empUuid);
+              return null;
+            }
+          });
+
+          const results = await Promise.all(employeePromises);
+
+          for (const result of results) {
+            if (result) {
+              employeesMap.set(result.uuid, result.data);
+              console.log('[Export Data] Found employee:', result.uuid, result.data.full_name);
+            }
+          }
+        }
+
+        console.log('[Export Data] Matched employees:', employeesMap.size, 'of', employeeUuids.length);
+        return employeesMap;
+      })(),
+
+      // Fetch all departments (cached)
+      (async () => {
         try {
-          const response = await apiClient!.getEmployee(empUuid);
-          if (response.success && response.data) {
-            // Handle nested response structure: { data: { data: {...} } }
-            let emp = response.data;
-            if (emp && typeof emp === 'object' && !Array.isArray(emp) && !emp.uuid) {
-              emp = emp.data || emp;
-            }
-            if (emp && emp.uuid) {
-              const deptId = emp.dept_id || emp.departmentId;
-              return {
-                uuid: empUuid,
-                data: {
-                  uuid: emp.uuid || emp.id || empUuid,
-                  nik: emp.employee_number || emp.nik || '',
-                  full_name: emp.full_name || emp.fullName || '',
-                  nickname: emp.nickname || '',
-                  position: emp.position || '',
-                  dept_id: parseInt(deptId?.toString() || '0', 10),
-                  department_name: emp.department_name || emp.department?.name || '',
-                  photo: emp.photo || '',
-                  flag: emp.flag === 'active' || emp.employment_status === 'active' ? 'active' : 'inactive',
-                } as EmployeeData,
-              };
-            }
-          }
-          return null;
+          const departments = await fetchAllDepartments(request);
+          console.log('[Export Data] Departments fetched, sample:', departments.slice(0, 3).map(d => ({ id: d.id, name: d.department_name })));
+          const deptMap = new Map(departments.map(d => [d.id.toString(), d.department_name]));
+          console.log('[Export Data] Department map created, sample keys:', Array.from(deptMap.keys()).slice(0, 10));
+          return deptMap;
         } catch (err) {
-          console.warn('[Export Data] Could not fetch employee:', empUuid);
-          return null;
+          console.warn('[Export Data] Error fetching departments:', err);
+          return new Map();
         }
-      });
+      })(),
 
-      const results = await Promise.all(employeePromises);
+      // Fetch all brands (cached)
+      (async () => {
+        try {
+          const brands = await fetchAllBrands(request);
+          return brands;
+        } catch (err) {
+          console.warn('[Export Data] Error fetching brands:', err);
+          return new Map();
+        }
+      })(),
+    ]);
 
-      for (const result of results) {
-        if (result) {
-          employeesMap.set(result.uuid, result.data);
-          console.log('[Export Data] Found employee:', result.uuid, result.data.full_name, 'dept_id:', result.data.dept_id);
+    // Extract results
+    const employeesMap = employeesResult.status === 'fulfilled' ? employeesResult.value : new Map<string, EmployeeData>();
+    const deptMap = departmentsResult.status === 'fulfilled' ? departmentsResult.value : new Map<string, string>();
+    const brandMap = brandsResult.status === 'fulfilled' ? brandsResult.value : new Map<number, string>();
+
+    console.log('[Export Data] Parallel fetch completed in', Date.now() - parallelStartTime, 'ms. Employees:', employeesMap.size, 'Departments:', deptMap.size, 'Brands:', brandMap.size);
+
+    // DEBUG: Log deptMap keys and employee dept_ids
+    console.log('[Export Data] Department map keys:', Array.from(deptMap.keys()).slice(0, 10));
+    console.log('[Export Data] Employee dept_ids:', Array.from(employeesMap.values()).map(e => e.dept_id));
+
+    // Enrich employee data with department names
+    for (const [empUuid, empData] of employeesMap) {
+      if (empData.dept_id > 0) {
+        const deptIdKey = empData.dept_id.toString();
+        const deptName = deptMap.get(deptIdKey);
+        console.log('[Export Data] Enriching department for', empData.full_name, 'dept_id:', empData.dept_id, 'lookup key:', deptIdKey, 'found:', !!deptName);
+        if (deptName) {
+          empData.department_name = deptName;
+        } else {
+          console.warn('[Export Data] Department not found for dept_id:', empData.dept_id, 'Available keys:', Array.from(deptMap.keys()).slice(0, 5));
         }
       }
     }
 
-    console.log('[Export Data] Matched employees:', employeesMap.size, 'of', employeeUuids.length);
-
-    // Enrich department names from MySQL API using dept_id
-    const uniqueDeptIds = [...new Set(Array.from(employeesMap.values()).map(e => e.dept_id).filter(id => id > 0))];
-    console.log('[Export Data] Unique dept_ids to enrich:', uniqueDeptIds);
-
-    if (uniqueDeptIds.length > 0) {
-      try {
-        const departments = await fetchAllDepartments(request);
-        const deptMap = new Map(departments.map(d => [d.id.toString(), d.department_name]));
-        console.log('[Export Data] Department mapping from API:', Array.from(deptMap.entries()));
-
-        // Update employee data with department names
-        for (const [empUuid, empData] of employeesMap) {
-          if (empData.dept_id > 0) {
-            const deptName = deptMap.get(empData.dept_id.toString());
-            if (deptName) {
-              empData.department_name = deptName;
-              console.log('[Export Data] Enriched department for', empData.full_name, ':', deptName);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[Export Data] Error enriching departments from API:', err);
-      }
-    }
-
-    // Fetch campaigns that match our assignments
+    // Fetch campaigns that match our assignments (can now run in parallel with above)
+    // Skip if not needed (e.g., for conflicts export)
     const campaignsMap = new Map<string, CampaignData>();
-    // Fetch brands first to enrich campaign data
-    const brandMap = await fetchAllBrands(request);
-    // Only fetch campaigns that are referenced in assignments (not all 5465 campaigns!)
-    const campaigns = await fetchCampaignsByUUIDs(projectUuids, request, brandMap);
-    campaigns.forEach(c => campaignsMap.set(c.uuid, c));
+    if (!skipCampaigns && projectUuids.length > 0) {
+      console.log('[Export Data] Fetching campaigns...');
+      const campaigns = await fetchCampaignsByUUIDs(projectUuids, request, brandMap);
+      campaigns.forEach(c => campaignsMap.set(c.uuid, c));
 
-    console.log('[Export Data] Available campaigns:', campaigns.length);
-    console.log('[Export Data] Sample project_uuids from assignments:', [...new Set(assignments.map((a: any) => a.project_uuid).filter(Boolean))].slice(0, 5));
-    console.log('[Export Data] Sample campaign UUIDs from API:', campaigns.slice(0, 5).map(c => ({ uuid: c.uuid, name: c.campaign_name })));
+      console.log('[Export Data] Available campaigns:', campaigns.length);
+      console.log('[Export Data] Sample project_uuids from assignments:', projectUuids.slice(0, 5));
+      console.log('[Export Data] Sample campaign UUIDs from API:', campaigns.slice(0, 5).map(c => ({ uuid: c.uuid, name: c.campaign_name })));
+    } else {
+      console.log('[Export Data] Skipping campaigns fetch (skipCampaigns=true or no projects)');
+    }
 
     // Log unmatched projects
     const unmatchedProjects = assignments.filter((a: any) => a.project_uuid && !campaignsMap.has(a.project_uuid));
@@ -841,7 +898,7 @@ export async function fetchAssignmentsWithDetails(
       console.warn('[Export Data] Unmatched employee_uuids:', [...new Set(unmatchedEmployees.map(a => a.employee_uuid))]);
     }
 
-    console.log('[Export Data] Fetched assignments with details:', result.length);
+    console.log('[Export Data] Fetched assignments with details:', result.length, 'TOTAL TIME:', Date.now() - startTime, 'ms');
     return result;
   } catch (error) {
     console.error('[Export Data] Error fetching assignments:', error);

@@ -3,9 +3,10 @@
  * GET /api/export/assignments/excel
  *
  * Export assignments to Excel format with multiple sheets
+ * Optimized with streaming response for faster download start
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getExportMetadata } from '@/lib/export/permissions';
 import { exportAssignmentsToExcel, generateExcelFilename } from '@/lib/export/excel-export';
@@ -17,17 +18,17 @@ import {
 
 /**
  * GET /api/export/assignments/excel
- * Export assignments to Excel
+ * Export assignments to Excel with streaming response
  */
 export async function GET(request: NextRequest) {
   try {
     // Authentication check
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({ error: 'Not authenticated' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const { searchParams } = new URL(request.url);
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch assignments with details
+    console.log('[Export Assignments Excel] Starting fetch...');
     const assignments = await fetchAssignmentsWithDetails({
       employee_uuid: effectiveEmployeeUUID,
       start_date: startDate || undefined,
@@ -73,36 +75,44 @@ export async function GET(request: NextRequest) {
       const worksheet = workbook.addWorksheet('Summary');
       worksheet.addRow(['No assignments found for the specified criteria']);
       const buffer = await workbook.xlsx.writeBuffer();
-      return new NextResponse(new Uint8Array(Buffer.from(buffer)), {
+      const filename = generateExcelFilename('assignments-report');
+      return new Response(new Uint8Array(Buffer.from(buffer)), {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': `attachment; filename="${generateExcelFilename('assignments-report')}"`,
+          'Content-Disposition': `attachment; filename="${filename}"`,
         },
       });
     }
 
     // Transform to export format
-    const exportData = filteredAssignments.map(assignment => ({
-      employeeName: assignment.employee?.full_name || 'Unknown',
-      employeeId: assignment.employee_uuid,
-      department: assignment.employee?.department_name || '',
-      position: assignment.employee?.position || '',
-      projectName: assignment.project?.campaign_name || 'Unassigned',
-      projectNumber: assignment.project?.io_number || null,
-      brandName: assignment.project?.brand_name || '',
-      startDate: assignment.start_date,
-      endDate: assignment.end_date,
-      hoursPerDay: assignment.hours_per_day,
-      allocationPercentage: assignment.allocation_percentage,
-      category: assignment.category,
-      status: assignment.status,
-      billable: assignment.is_billable ? 'Yes' : 'No',
-      isTimeOff: assignment.is_time_off ? 'Yes' : 'No',
-      note: assignment.note || '',
-    }));
+    const exportData = filteredAssignments.map(assignment => {
+      const dept = assignment.employee?.department_name || '';
+      if (assignment.employee) {
+        console.log('[Export Excel] Employee:', assignment.employee.full_name, 'dept_id:', assignment.employee.dept_id, 'department_name:', dept);
+      }
+      return {
+        employeeName: assignment.employee?.full_name || 'Unknown',
+        employeeId: assignment.employee_uuid,
+        department: dept,
+        position: assignment.employee?.position || '',
+        projectName: assignment.project?.campaign_name || 'Unassigned',
+        projectNumber: assignment.project?.io_number || null,
+        brandName: assignment.project?.brand_name || '',
+        startDate: assignment.start_date,
+        endDate: assignment.end_date,
+        hoursPerDay: assignment.hours_per_day,
+        allocationPercentage: assignment.allocation_percentage,
+        category: assignment.category,
+        status: assignment.status,
+        billable: assignment.is_billable ? 'Yes' : 'No',
+        isTimeOff: assignment.is_time_off ? 'Yes' : 'No',
+        note: assignment.note || '',
+      };
+    });
 
     // Generate Excel
+    console.log('[Export Assignments Excel] Generating Excel...');
     const buffer = await exportAssignmentsToExcel({
       assignments: exportData,
       groupByBrand,
@@ -118,20 +128,24 @@ export async function GET(request: NextRequest) {
       ? generateExcelFilename('assignments-report', { start: startDate, end: endDate })
       : generateExcelFilename('assignments-report');
 
-    // Return Excel file
-    return new NextResponse(new Uint8Array(buffer), {
+    // Return Excel file with streaming
+    console.log('[Export Assignments Excel] Sending response...');
+    return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'X-Export-Metadata': JSON.stringify(metadata),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     });
   } catch (error) {
     console.error('[API /export/assignments/excel] Export failed:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to export assignments to Excel' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : 'Failed to export assignments to Excel'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }

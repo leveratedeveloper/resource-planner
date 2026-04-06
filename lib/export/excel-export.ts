@@ -86,7 +86,16 @@ function setColumnWidths(worksheet: ExcelJS.Worksheet, widths: number[]): void {
 }
 
 /**
- * Apply cell styling to a range
+ * Apply cell styling to a row (optimized - applies to entire row at once)
+ */
+function applyRowStyle(row: ExcelJS.Row, style: Partial<ExcelJS.Style>): void {
+  row.eachCell((cell) => {
+    cell.style = style;
+  });
+}
+
+/**
+ * Apply cell styling to a range (fallback for specific columns)
  */
 function applyCellStyle(
   worksheet: ExcelJS.Worksheet,
@@ -94,10 +103,8 @@ function applyCellStyle(
   columnCount: number,
   style: Partial<ExcelJS.Style>
 ): void {
-  for (let col = 1; col <= columnCount; col++) {
-    const cell = worksheet.getCell(rowNumber, col);
-    cell.style = style;
-  }
+  const row = worksheet.getRow(rowNumber);
+  applyRowStyle(row, style);
 }
 
 // ============================================================================
@@ -214,21 +221,27 @@ function createSummarySheet(
   const deptHeaderRow = worksheet.addRow(['Department', 'Resources', 'Avg Utilization', 'Overallocated', 'Utilization Status']);
   applyHeaderStyle(deptHeaderRow, SUBHEADER_STYLE);
 
-  // Department data
-  deptMap.forEach((stats, dept) => {
+  // Department data - Bulk optimization
+  const deptRows = Array.from(deptMap.entries()).map(([dept, stats]) => {
     const avgUtil = stats.avgUtil / stats.count;
     const status = avgUtil > 100 ? 'Overallocated' : avgUtil < 60 ? 'Underutilized' : 'Optimal';
 
-    const row = worksheet.addRow([
+    return [
       dept,
       stats.count,
       `${avgUtil.toFixed(1)}%`,
       stats.overallocated,
       status,
-    ]);
-
-    applyCellStyle(worksheet, row.number, 5, CELL_STYLE);
+    ];
   });
+
+  worksheet.addRows(deptRows);
+
+  // Apply base style to all department rows
+  const deptDataRows = worksheet.getRows(3, deptRows.length);
+  if (deptDataRows) {
+    deptDataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
 
   // Column widths
   setColumnWidths(worksheet, [20, 15, 15, 15, 15]);
@@ -262,11 +275,10 @@ function createDetailSheet(
 
   applyHeaderStyle(headerRow, HEADER_STYLE);
 
-  // Data rows
-  data.forEach(item => {
+  // Data rows - Bulk styling optimization
+  const rows = data.map(item => {
     const totalAssigned = item.dailyUtilization.reduce((sum, day) => sum + day.hoursAllocated, 0);
-
-    const row = worksheet.addRow([
+    return [
       item.resourceName,
       item.resourceId,
       item.department,
@@ -280,16 +292,24 @@ function createDetailSheet(
       item.overallocatedDays,
       item.underutilizedDays,
       Math.round(totalAssigned),
-    ]);
-
-    applyCellStyle(worksheet, row.number, 12, CELL_STYLE);
+    ];
   });
 
+  worksheet.addRows(rows);
+
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, data.length);
+  if (dataRows) {
+    dataRows.forEach((row, index) => {
+      applyRowStyle(row, CELL_STYLE);
+    });
+  }
+
   // Conditional formatting for utilization
-  data.forEach((item, index) => {
-    const rowNum = index + 2; // +1 for header, +1 for 1-based index
-    const utilCell = worksheet.getCell(rowNum, 6); // Avg Utilization column
-    const statusCell = worksheet.getCell(rowNum, 9); // Status column
+  dataRows?.forEach((row, index) => {
+    const item = data[index];
+    const utilCell = row.getCell(6); // Avg Utilization column
+    const statusCell = row.getCell(9); // Status column
 
     if (item.status === 'overallocated') {
       utilCell.fill = { type: 'pattern', pattern: 'solid' as any, fgColor: { argb: 'FFFFC7CE' } };
@@ -332,15 +352,15 @@ function createAtRiskSheet(workbook: ExcelJS.Workbook, data: ResourceCapacityAna
 
   applyHeaderStyle(headerRow, HEADER_STYLE);
 
-  // Data rows
-  atRiskData.forEach(item => {
+  // Data rows - Bulk styling optimization
+  const rows = atRiskData.map(item => {
     const issueType = item.status === 'overallocated' ? 'Overallocation' : 'Underutilization';
     const severity = item.averageUtilization > 120 || item.averageUtilization < 40 ? 'High' : 'Medium';
     const recommendation = item.status === 'overallocated'
       ? 'Reduce assignments or add resources'
       : 'Assign more projects';
 
-    const row = worksheet.addRow([
+    return [
       item.resourceName,
       item.department,
       item.status === 'overallocated' ? 'Overallocated' : 'Underutilized',
@@ -349,10 +369,16 @@ function createAtRiskSheet(workbook: ExcelJS.Workbook, data: ResourceCapacityAna
       severity,
       item.status === 'overallocated' ? item.overallocatedDays : item.underutilizedDays,
       recommendation,
-    ]);
-
-    applyCellStyle(worksheet, row.number, 8, CELL_STYLE);
+    ];
   });
+
+  worksheet.addRows(rows);
+
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, atRiskData.length);
+  if (dataRows) {
+    dataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
 
   // Column widths
   setColumnWidths(worksheet, [25, 20, 12, 12, 12, 10, 12, 30]);
@@ -393,27 +419,33 @@ function createTrendSheet(workbook: ExcelJS.Workbook, data: ResourceCapacityAnal
 
   applyHeaderStyle(headerRow, HEADER_STYLE);
 
-  // Data rows sorted by week
+  // Data rows sorted by week - Bulk optimization
   const sortedWeeks = Array.from(weeklyData.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   let prevUtil = 0;
 
-  sortedWeeks.forEach(([week, stats]) => {
+  const rows = sortedWeeks.map(([week, stats]) => {
     const avgUtil = (stats.totalAssigned / stats.totalCapacity) * 100;
     const trend = prevUtil > 0
       ? avgUtil > prevUtil + 5 ? 'Increasing' : avgUtil < prevUtil - 5 ? 'Decreasing' : 'Stable'
       : '-';
 
-    const row = worksheet.addRow([
+    prevUtil = avgUtil;
+    return [
       week,
       `${avgUtil.toFixed(1)}%`,
       Math.round(stats.totalCapacity),
       Math.round(stats.totalAssigned),
       trend,
-    ]);
-
-    applyCellStyle(worksheet, row.number, 5, CELL_STYLE);
-    prevUtil = avgUtil;
+    ];
   });
+
+  worksheet.addRows(rows);
+
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, sortedWeeks.length);
+  if (dataRows) {
+    dataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
 
   // Column widths
   setColumnWidths(worksheet, [15, 15, 20, 20, 12]);
@@ -491,31 +523,36 @@ function createProjectSummarySheet(
 
   applyHeaderStyle(headerRow, HEADER_STYLE);
 
-  // Data rows
-  projects.forEach(project => {
-    const row = worksheet.addRow([
-      project.projectName,
-      project.projectNumber || '',
-      project.projectUuid,
-      project.brandName,
-      project.status,
-      project.budget || 0,
-      project.currency,
-      project.startDate || '',
-      project.endDate || '',
-      project.allocatedResources,
-      project.totalAssignedHours,
-      project.ioNumber || '',
-    ]);
+  // Data rows - Bulk optimization
+  const rows = projects.map(project => [
+    project.projectName,
+    project.projectNumber || '',
+    project.projectUuid,
+    project.brandName,
+    project.status,
+    project.budget || 0,
+    project.currency,
+    project.startDate || '',
+    project.endDate || '',
+    project.allocatedResources,
+    project.totalAssignedHours,
+    project.ioNumber || '',
+  ]);
 
-    applyCellStyle(worksheet, row.number, 12, CELL_STYLE);
+  worksheet.addRows(rows);
 
-    // Format budget as currency
-    if (project.budget) {
-      const budgetCell = worksheet.getCell(row.number, 6);
-      budgetCell.numFmt = '#,##0.00';
-    }
-  });
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, projects.length);
+  if (dataRows) {
+    dataRows.forEach((row, index) => {
+      applyRowStyle(row, CELL_STYLE);
+
+      // Format budget as currency
+      if (projects[index].budget) {
+        row.getCell(6).numFmt = '#,##0.00';
+      }
+    });
+  }
 
   // Column widths
   setColumnWidths(worksheet, [30, 15, 20, 20, 12, 15, 10, 12, 12, 15, 18, 15]);
@@ -546,25 +583,30 @@ function createBrandSheet(
 
   applyHeaderStyle(headerRow, SUBHEADER_STYLE);
 
-  // Data rows
-  projects.forEach(project => {
-    const row = worksheet.addRow([
-      project.projectName,
-      project.projectNumber || '',
-      project.status,
-      project.budget || 0,
-      project.allocatedResources,
-      project.totalAssignedHours,
-    ]);
+  // Data rows - Bulk optimization
+  const rows = projects.map(project => [
+    project.projectName,
+    project.projectNumber || '',
+    project.status,
+    project.budget || 0,
+    project.allocatedResources,
+    project.totalAssignedHours,
+  ]);
 
-    applyCellStyle(worksheet, row.number, 6, CELL_STYLE);
+  worksheet.addRows(rows);
 
-    // Format budget as currency
-    if (project.budget) {
-      const budgetCell = worksheet.getCell(row.number, 4);
-      budgetCell.numFmt = '#,##0.00';
-    }
-  });
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, projects.length);
+  if (dataRows) {
+    dataRows.forEach((row, index) => {
+      applyRowStyle(row, CELL_STYLE);
+
+      // Format budget as currency
+      if (projects[index].budget) {
+        row.getCell(4).numFmt = '#,##0.00';
+      }
+    });
+  }
 
   // Column widths
   setColumnWidths(worksheet, [30, 15, 12, 15, 15, 15]);
@@ -757,9 +799,9 @@ function createAssignmentsDetailSheet(
 
   applyHeaderStyle(headerRow, HEADER_STYLE);
 
-  // Data rows
-  assignments.forEach(assignment => {
-    const row = worksheet.addRow([
+  // Data rows - Bulk styling optimization
+  const rows = assignments.map(assignment =>
+    [
       assignment.employeeName,
       assignment.employeeId,
       assignment.department,
@@ -776,22 +818,32 @@ function createAssignmentsDetailSheet(
       assignment.billable,
       assignment.isTimeOff,
       assignment.note || '',
-    ]);
+    ]
+  );
 
-    applyCellStyle(worksheet, row.number, 15, CELL_STYLE);
+  // Add all rows at once
+  worksheet.addRows(rows);
 
-    // Add some color coding for status
-    if (assignment.status === 'confirmed') {
-      row.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0C5' } };
-    } else if (assignment.status === 'pending') {
-      row.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: 'FFFFEB9C' };
-    }
+  // Apply base style to all data rows in one operation
+  const dataRows = worksheet.getRows(2, assignments.length);
+  if (dataRows) {
+    dataRows.forEach((row, index) => {
+      applyRowStyle(row, CELL_STYLE);
 
-    // Highlight billable
-    if (assignment.billable === 'Yes') {
-      row.getCell(14).font = { bold: true, color: { argb: 'FF107C10' } };
-    }
-  });
+      // Add some color coding for status
+      const assignment = assignments[index];
+      if (assignment.status === 'confirmed') {
+        row.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0C5' } };
+      } else if (assignment.status === 'pending') {
+        row.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } };
+      }
+
+      // Highlight billable
+      if (assignment.billable === 'Yes') {
+        row.getCell(14).font = { bold: true, color: { argb: 'FF107C10' } };
+      }
+    });
+  }
 
   // Column widths
   setColumnWidths(worksheet, [25, 20, 20, 20, 30, 15, 20, 12, 12, 10, 12, 15, 12, 12, 30]);
@@ -824,21 +876,26 @@ function createBrandSheetForAssignments(
 
   applyHeaderStyle(headerRow, SUBHEADER_STYLE);
 
-  assignments.forEach(assignment => {
-    const row = worksheet.addRow([
-      assignment.employeeName,
-      assignment.department,
-      assignment.position,
-      assignment.projectName,
-      assignment.startDate,
-      assignment.endDate,
-      assignment.hoursPerDay,
-      assignment.billable,
-      assignment.status,
-    ]);
+  // Data rows - Bulk optimization
+  const rows = assignments.map(assignment => [
+    assignment.employeeName,
+    assignment.department,
+    assignment.position,
+    assignment.projectName,
+    assignment.startDate,
+    assignment.endDate,
+    assignment.hoursPerDay,
+    assignment.billable,
+    assignment.status,
+  ]);
 
-    applyCellStyle(worksheet, row.number, 9, CELL_STYLE);
-  });
+  worksheet.addRows(rows);
+
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, assignments.length);
+  if (dataRows) {
+    dataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
 
   setColumnWidths(worksheet, [25, 20, 20, 30, 12, 12, 10, 10, 12]);
 }
@@ -869,20 +926,25 @@ function createDepartmentSheetForAssignments(
 
   applyHeaderStyle(headerRow, SUBHEADER_STYLE);
 
-  assignments.forEach(assignment => {
-    const row = worksheet.addRow([
-      assignment.employeeName,
-      assignment.position,
-      assignment.projectName,
-      assignment.startDate,
-      assignment.endDate,
-      assignment.hoursPerDay,
-      assignment.billable,
-      assignment.status,
-    ]);
+  // Data rows - Bulk optimization
+  const rows = assignments.map(assignment => [
+    assignment.employeeName,
+    assignment.position,
+    assignment.projectName,
+    assignment.startDate,
+    assignment.endDate,
+    assignment.hoursPerDay,
+    assignment.billable,
+    assignment.status,
+  ]);
 
-    applyCellStyle(worksheet, row.number, 9, CELL_STYLE);
-  });
+  worksheet.addRows(rows);
+
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, assignments.length);
+  if (dataRows) {
+    dataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
 
   setColumnWidths(worksheet, [25, 20, 30, 12, 12, 10, 10, 12]);
 }
@@ -895,6 +957,295 @@ function calculateHours(startDate: string, endDate: string, hoursPerDay: number)
   const end = new Date(endDate);
   const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   return hoursPerDay * days;
+}
+
+// ============================================================================
+// Conflicts Excel Export
+// ============================================================================
+
+export interface ConflictsExcelExportOptions {
+  conflicts: Array<{
+    resourceName: string;
+    resourceId: string;
+    department: string;
+    conflictType: string;
+    severity: string;
+    date: string;
+    description: string;
+    affectedAssignments: number;
+    suggestedResolution: string | undefined;
+  }>;
+  groupBySeverity?: boolean;
+  groupByType?: boolean;
+}
+
+/**
+ * Export conflicts report to Excel with formatting
+ */
+export async function exportConflictsToExcel(
+  options: ConflictsExcelExportOptions
+): Promise<Buffer> {
+  const { conflicts, groupBySeverity, groupByType } = options;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Resource Planner';
+  workbook.created = new Date();
+
+  // Main conflicts sheet
+  createConflictsDetailSheet(workbook, conflicts);
+
+  // Group by severity if requested
+  if (groupBySeverity) {
+    createConflictsBySeveritySheet(workbook, conflicts);
+  }
+
+  // Group by type if requested
+  if (groupByType) {
+    createConflictsByTypeSheet(workbook, conflicts);
+  }
+
+  // Summary sheet
+  createConflictsSummarySheet(workbook, conflicts);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+/**
+ * Create main conflicts detail sheet
+ */
+function createConflictsDetailSheet(
+  workbook: ExcelJS.Workbook,
+  conflicts: ConflictsExcelExportOptions['conflicts']
+): void {
+  const worksheet = workbook.addWorksheet('All Conflicts', { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  // Header
+  const headerRow = worksheet.addRow([
+    'Resource Name',
+    'Resource ID',
+    'Department',
+    'Conflict Type',
+    'Severity',
+    'Date',
+    'Description',
+    'Affected Assignments',
+    'Suggested Resolution',
+  ]);
+
+  applyHeaderStyle(headerRow, HEADER_STYLE);
+
+  // Data rows - Bulk optimization
+  const rows = conflicts.map(conflict => [
+    conflict.resourceName,
+    conflict.resourceId,
+    conflict.department,
+    conflict.conflictType,
+    conflict.severity,
+    conflict.date,
+    conflict.description,
+    conflict.affectedAssignments,
+    conflict.suggestedResolution || '',
+  ]);
+
+  worksheet.addRows(rows);
+
+  // Apply base style to all data rows
+  const dataRows = worksheet.getRows(2, conflicts.length);
+  if (dataRows) {
+    dataRows.forEach((row, index) => {
+      applyRowStyle(row, CELL_STYLE);
+
+      // Color code by severity
+      const conflict = conflicts[index];
+      if (conflict.severity === 'critical') {
+        row.eachCell((cell, colNumber) => {
+          if (colNumber <= 8) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+          }
+        });
+      } else if (conflict.severity === 'warning') {
+        row.eachCell((cell, colNumber) => {
+          if (colNumber <= 8) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } };
+          }
+        });
+      }
+    });
+  }
+
+  // Column widths
+  setColumnWidths(worksheet, [25, 20, 20, 18, 12, 12, 40, 15, 35]);
+}
+
+/**
+ * Create conflicts summary sheet
+ */
+function createConflictsSummarySheet(
+  workbook: ExcelJS.Workbook,
+  conflicts: ConflictsExcelExportOptions['conflicts']
+): void {
+  const worksheet = workbook.addWorksheet('Summary', { views: [{ state: 'frozen', ySplit: 2 }] });
+
+  let currentRow = 1;
+
+  // Report Title
+  worksheet.mergeCells('A1:E1');
+  const titleCell = worksheet.getCell('A1');
+  titleCell.value = 'Resource Conflicts Report';
+  titleCell.font = { bold: true, size: 16 };
+  titleCell.alignment = { horizontal: 'center' as const };
+
+  currentRow += 2;
+
+  // Overall Statistics
+  const totalConflicts = conflicts.length;
+  const criticalCount = conflicts.filter(c => c.severity === 'critical').length;
+  const warningCount = conflicts.filter(c => c.severity === 'warning').length;
+  const uniqueResources = new Set(conflicts.map(c => c.resourceId)).size;
+
+  worksheet.addRow(['Total Conflicts', totalConflicts]);
+  worksheet.addRow(['Critical Conflicts', criticalCount]);
+  worksheet.addRow(['Warning Conflicts', warningCount]);
+  worksheet.addRow(['Affected Resources', uniqueResources]);
+
+  currentRow += 5;
+
+  // By Severity
+  worksheet.getCell(`A${currentRow}`).value = 'Conflicts by Severity';
+  worksheet.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
+  currentRow++;
+
+  const severityHeaderRow = worksheet.addRow(['Severity', 'Count', 'Percentage']);
+  applyHeaderStyle(severityHeaderRow, SUBHEADER_STYLE);
+
+  const severityCounts = new Map<string, number>();
+  conflicts.forEach(c => {
+    severityCounts.set(c.severity, (severityCounts.get(c.severity) || 0) + 1);
+  });
+
+  severityCounts.forEach((count, severity) => {
+    const percentage = ((count / totalConflicts) * 100).toFixed(1) + '%';
+    worksheet.addRow([severity.charAt(0).toUpperCase() + severity.slice(1), count, percentage]);
+  });
+
+  currentRow += severityCounts.size + 2;
+
+  // By Conflict Type
+  worksheet.getCell(`A${currentRow}`).value = 'Conflicts by Type';
+  worksheet.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
+  currentRow++;
+
+  const typeHeaderRow = worksheet.addRow(['Conflict Type', 'Count']);
+  applyHeaderStyle(typeHeaderRow, SUBHEADER_STYLE);
+
+  const typeCounts = new Map<string, number>();
+  conflicts.forEach(c => {
+    typeCounts.set(c.conflictType, (typeCounts.get(c.conflictType) || 0) + 1);
+  });
+
+  Array.from(typeCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([type, count]) => {
+      worksheet.addRow([type, count]);
+    });
+
+  // Column widths
+  setColumnWidths(worksheet, [20, 15, 15]);
+}
+
+/**
+ * Create conflicts by severity sheet
+ */
+function createConflictsBySeveritySheet(
+  workbook: ExcelJS.Workbook,
+  conflicts: ConflictsExcelExportOptions['conflicts']
+): void {
+  const worksheet = workbook.addWorksheet('By Severity', { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  // Header
+  const headerRow = worksheet.addRow([
+    'Severity',
+    'Resource Name',
+    'Department',
+    'Date',
+    'Description',
+    'Suggested Resolution',
+  ]);
+
+  applyHeaderStyle(headerRow, SUBHEADER_STYLE);
+
+  // Sort by severity (critical first)
+  const sorted = [...conflicts].sort((a, b) => {
+    if (a.severity === 'critical' && b.severity !== 'critical') return -1;
+    if (a.severity !== 'critical' && b.severity === 'critical') return 1;
+    return 0;
+  });
+
+  // Data rows
+  const rows = sorted.map(conflict => [
+    conflict.severity,
+    conflict.resourceName,
+    conflict.department,
+    conflict.date,
+    conflict.description,
+    conflict.suggestedResolution || '',
+  ]);
+
+  worksheet.addRows(rows);
+
+  // Apply base style
+  const dataRows = worksheet.getRows(2, sorted.length);
+  if (dataRows) {
+    dataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
+
+  setColumnWidths(worksheet, [12, 25, 20, 12, 40, 35]);
+}
+
+/**
+ * Create conflicts by type sheet
+ */
+function createConflictsByTypeSheet(
+  workbook: ExcelJS.Workbook,
+  conflicts: ConflictsExcelExportOptions['conflicts']
+): void {
+  const worksheet = workbook.addWorksheet('By Type', { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  // Header
+  const headerRow = worksheet.addRow([
+    'Conflict Type',
+    'Resource Name',
+    'Department',
+    'Severity',
+    'Date',
+    'Description',
+  ]);
+
+  applyHeaderStyle(headerRow, SUBHEADER_STYLE);
+
+  // Sort by type
+  const sorted = [...conflicts].sort((a, b) => a.conflictType.localeCompare(b.conflictType));
+
+  // Data rows
+  const rows = sorted.map(conflict => [
+    conflict.conflictType,
+    conflict.resourceName,
+    conflict.department,
+    conflict.severity,
+    conflict.date,
+    conflict.description,
+  ]);
+
+  worksheet.addRows(rows);
+
+  // Apply base style
+  const dataRows = worksheet.getRows(2, sorted.length);
+  if (dataRows) {
+    dataRows.forEach(row => applyRowStyle(row, CELL_STYLE));
+  }
+
+  setColumnWidths(worksheet, [20, 25, 20, 12, 12, 40]);
 }
 
 // ============================================================================

@@ -67,10 +67,35 @@ export async function GET(request: NextRequest) {
 
     console.log('[Export Projects Excel] Unique project_uuids from assignments:', uniqueProjectUuids.length);
 
-    // Fetch campaigns to get project details
-    const campaigns = await fetchAllCampaigns(request);
+    // OPTIMIZATION: Use campaign data that's already fetched in fetchAssignmentsWithDetails
+    // instead of fetching ALL campaigns again
+    const campaigns: any[] = [];
 
-    console.log('[Export Projects Excel] Fetched campaigns from API:', campaigns.length);
+    // First, extract campaign data from assignments (already fetched)
+    const existingCampaignMap = new Map<string, any>();
+    for (const assignment of allAssignments) {
+      if (assignment.project && !existingCampaignMap.has(assignment.project_uuid)) {
+        existingCampaignMap.set(assignment.project_uuid, assignment.project);
+        campaigns.push(assignment.project);
+      }
+    }
+
+    console.log('[Export Projects Excel] Campaigns from assignments:', campaigns.length);
+
+    // Identify missing campaigns (project_uuids without campaign data)
+    const missingProjectUuids = uniqueProjectUuids.filter(uuid => !existingCampaignMap.has(uuid));
+    console.log('[Export Projects Excel] Missing campaigns:', missingProjectUuids.length);
+
+    // Fetch only missing campaigns
+    if (missingProjectUuids.length > 0) {
+      const { fetchCampaignsByUUIDs, fetchAllBrands } = await import('@/lib/export/data-fetcher');
+      const brandMap = await fetchAllBrands(request);
+      const missingCampaigns = await fetchCampaignsByUUIDs(missingProjectUuids, request, brandMap);
+      campaigns.push(...missingCampaigns);
+      console.log('[Export Projects Excel] Fetched missing campaigns:', missingCampaigns.length);
+    }
+
+    console.log('[Export Projects Excel] Total campaigns available:', campaigns.length);
 
     // Build a map of campaign UUIDs to campaign data for quick lookup
     const campaignMap = new Map<string, typeof campaigns[0]>();

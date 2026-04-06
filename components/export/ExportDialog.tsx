@@ -40,6 +40,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
 }) => {
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState("");
   const [recordCount, setRecordCount] = useState<number | null>(null);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
 
@@ -92,6 +93,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
 
   const handleExport = async () => {
     setIsExporting(true);
+    setExportProgress("Initializing export...");
 
     try {
       // Build query parameters
@@ -109,6 +111,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
           description: "Start date and end date are required for this export.",
         });
         setIsExporting(false);
+        setExportProgress("");
         return;
       }
 
@@ -125,29 +128,60 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
         apiUrl = `/api/export/projects/excel?${params.toString()}`;
       } else if (format === "excel" && exportOption.type === "assignments") {
         apiUrl = `/api/export/assignments/excel?${params.toString()}`;
+      } else if (format === "excel" && exportOption.type === "conflicts") {
+        apiUrl = `/api/export/conflicts/excel?${params.toString()}`;
       } else {
         apiUrl = `/api/export/${exportOption.type}?${params.toString()}`;
       }
 
-      // Fetch export data
+      // Fetch export data with better progress tracking
       console.log('[Export Dialog] Fetching from:', apiUrl);
-      const response = await fetch(apiUrl);
+      setExportProgress("Fetching data from database...");
+
+      // Add timeout to prevent hanging - different timeouts for different export types
+      // Project export needs more time due to complex data processing
+      const timeoutMs = exportOption.type === 'projects' ? 120000 : 60000; // 120s for projects, 60s for others
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      let response;
+      try {
+        console.log('[Export Dialog] Starting fetch:', apiUrl);
+        response = await fetch(apiUrl, { signal: controller.signal });
+        console.log('[Export Dialog] Response status:', response.status, 'ok:', response.ok, 'content-type:', response.headers.get('content-type'));
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error('Export timed out. Please try again or contact support.');
+        }
+        throw fetchError;
+      }
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        // Try to parse error as JSON first
+        let errorMessage = 'Export failed';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If JSON parse fails, try text
+          errorMessage = await response.text().catch(() => errorMessage);
+        }
 
         // Handle 404 (no data) gracefully
         if (response.status === 404) {
           toast({
             variant: "destructive",
             title: "No Data Found",
-            description: error.error || `No ${exportOption.label.toLowerCase()} data found for the selected criteria. Try adjusting the date range or filters.`,
+            description: errorMessage || `No ${exportOption.label.toLowerCase()} data found for the selected criteria. Try adjusting the date range or filters.`,
           });
           setIsExporting(false);
+          setExportProgress("");
           return;
         }
 
-        throw new Error(error.error || "Export failed");
+        throw new Error(errorMessage);
       }
 
       // Get filename from Content-Disposition header or generate one
@@ -161,12 +195,16 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
         filename = generateExportFilename(exportOption.type, format);
       }
 
-      // Download file
+      // Download file with progress
+      setExportProgress(format === "excel" ? "Generating Excel file..." : "Preparing CSV download...");
+
       if (format === "excel") {
         const buffer = await response.arrayBuffer();
+        setExportProgress("Downloading Excel file...");
         downloadExcelFile(Buffer.from(buffer), filename);
       } else {
         const csvContent = await response.text();
+        setExportProgress("Downloading CSV file...");
         downloadCsvFile(csvContent, filename);
       }
 
@@ -185,6 +223,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       });
     } finally {
       setIsExporting(false);
+      setExportProgress("");
     }
   };
 
@@ -318,7 +357,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
             {isExporting ? (
               <>
                 <Icon icon="lucide:loader-2" className="mr-2 h-4 w-4 animate-spin" />
-                Exporting...
+                {exportProgress || "Exporting..."}
               </>
             ) : (
               <>

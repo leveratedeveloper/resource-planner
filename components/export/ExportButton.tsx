@@ -52,7 +52,7 @@ const EXPORT_OPTIONS: ExportOption[] = [
     label: "Conflicts Report",
     icon: "lucide:alert-triangle",
     description: "Export conflict analysis",
-    formats: ["csv"],
+    formats: ["csv", "excel"],
     requireDateRange: true,
   },
 ];
