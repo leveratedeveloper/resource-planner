@@ -255,7 +255,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       data-cell-state="weekday"
     >
       {/* Add button - shown on hover */}
-      {isHovered && !isDragging && (
+      {isHovered && !isDragging && !disabled && (
         <div
           className="absolute inset-0 flex items-center justify-center"
           onClick={(e) => {

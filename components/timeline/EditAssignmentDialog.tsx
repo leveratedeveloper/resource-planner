@@ -137,23 +137,24 @@ export function EditAssignmentDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[480px] max-h-[90vh] overflow-y-auto"
+        className="max-w-[480px] max-h-[75vh] flex flex-col p-0"
         data-testid="edit-assignment-dialog"
       >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: project?.color || '#94a3b8' }}
-            />
-            {project?.name || 'Time Off'}
-          </DialogTitle>
-          <DialogDescription>
-            View and edit plan assignment details
-          </DialogDescription>
-        </DialogHeader>
+        <div className="flex flex-col min-h-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: project?.color || '#94a3b8' }}
+              />
+              {project?.name || 'Time Off'}
+            </DialogTitle>
+            <DialogDescription>
+              View and edit plan assignment details
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-6">
+          <div className="min-h-0 overflow-y-auto px-6 space-y-6">
           {/* Read-only section */}
           <div className="space-y-3 pb-4 border-b">
             <div className="grid grid-cols-2 gap-4">
@@ -282,7 +283,7 @@ export function EditAssignmentDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex justify-between sm:justify-between">
+        <DialogFooter className="px-6 pb-6 pt-2">
           <Button
             variant="destructive"
             onClick={handleDelete}
@@ -307,6 +308,7 @@ export function EditAssignmentDialog({
             </Button>
           </div>
         </DialogFooter>
+        </div>
       </DialogContent>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>

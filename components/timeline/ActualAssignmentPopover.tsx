@@ -83,8 +83,46 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
     });
   };
 
+  // Calculate popover position
+  // Popover dimensions
+  const POPOVER_WIDTH = 320;
+  const POPOVER_HEIGHT = 420; // Estimated height including margins
+  const POPOVER_MARGIN = 10; // Margin from click position
+
+  const getPopoverPosition = () => {
+    // Horizontal positioning
+    let left = position.x;
+    if (left + POPOVER_WIDTH > window.innerWidth - POPOVER_MARGIN) {
+      left = window.innerWidth - POPOVER_WIDTH - POPOVER_MARGIN;
+    }
+    if (left < POPOVER_MARGIN) left = POPOVER_MARGIN;
+
+    // Vertical positioning - check if there's enough space below
+    const spaceBelow = window.innerHeight - position.y;
+    const spaceAbove = position.y;
+
+    let top: number;
+    if (spaceBelow >= POPOVER_HEIGHT) {
+      // Enough space below, position below click
+      top = position.y + POPOVER_MARGIN;
+    } else if (spaceAbove >= POPOVER_HEIGHT) {
+      // Not enough space below, but enough above - position above click
+      top = position.y - POPOVER_HEIGHT - POPOVER_MARGIN;
+    } else if (spaceBelow >= spaceAbove) {
+      // Neither space is sufficient, use the larger one (below)
+      top = window.innerHeight - POPOVER_HEIGHT - POPOVER_MARGIN;
+    } else {
+      // Neither space is sufficient, use the larger one (above)
+      top = POPOVER_MARGIN;
+    }
+
+    return { left, top };
+  };
+
   // Tunggu sampai komponen mounted di browser sebelum membuat Portal
   if (!mounted) return null;
+
+  const popoverPosition = getPopoverPosition();
 
   // 3. GUNAKAN CREATE PORTAL
   return createPortal(
@@ -92,8 +130,8 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
       // Ubah z-index menjadi ekstrim (9999) agar tidak ada yang bisa menutupi
       className="fixed z-[9999] bg-white rounded-lg shadow-xl border p-4 min-w-[320px]"
       style={{
-        left: Math.min(position.x, window.innerWidth - 360),
-        top: Math.min(position.y, window.innerHeight - 400),
+        left: popoverPosition.left,
+        top: popoverPosition.top,
       }}
       data-testid="actual-assignment-popover"
       // Menahan klik agar tidak tembus ke belakang
