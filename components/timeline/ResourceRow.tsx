@@ -993,9 +993,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         {visibleProjects.map((project) => {
           const brand = brands.find(b => b.id === project.brandId);
 
-          // Filter plan assignments (from assignments table, status='draft')
+          // Filter plan assignments (from assignments table) - include all statuses
           const planAssignments = resourceAssignments.filter(
-            a => a.projectId === project.id && !a.isTimeOff && a.status === 'draft' && (() => {
+            a => a.projectId === project.id && !a.isTimeOff && (() => {
               const hours = parseFloat(a.hoursPerDay);
               return isNaN(hours) ? true : hours > 0;
             })()

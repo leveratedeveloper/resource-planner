@@ -39,29 +39,19 @@ export async function GET(request: NextRequest) {
     // Get access filter (for projects, full access vs restricted doesn't matter much as we show all)
     await getExportAccessFilter();
 
-    // Fetch campaigns/projects
-    let campaigns = await fetchAllCampaigns(request);
+    // Fetch assignments first to get actual project_uuids that have data
+    const allAssignments = await fetchAssignmentsWithDetails({}, request);
 
-    // Apply brand filter if specified
-    if (brandIds) {
-      const brandIdArray = brandIds.split(',').map(id => parseInt(id, 10));
-      campaigns = campaigns.filter(c => brandIdArray.includes(c.brand_id));
-    }
+    console.log('[Export Projects Excel] Fetched assignments:', allAssignments.length);
 
-    // Apply project filter if specified
-    if (projectIds) {
-      const projectIdArray = projectIds.split(',');
-      campaigns = campaigns.filter(c => projectIdArray.includes(c.uuid));
-    }
-
-    if (campaigns.length === 0) {
+    if (allAssignments.length === 0) {
       // Return empty Excel with just headers
-      console.log('[Export Projects Excel] No projects found, returning empty Excel');
+      console.log('[Export Projects Excel] No assignments found, returning empty Excel');
       const ExcelJS = require('exceljs');
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Summary');
-      worksheet.addRow(['No projects found']);
-      worksheet.addRow(['Try adjusting your filters or check if projects exist.']);
+      worksheet.addRow(['No project data found']);
+      worksheet.addRow(['Try adjusting your filters or check if assignments exist.']);
       const buffer = await workbook.xlsx.writeBuffer();
       return new NextResponse(new Uint8Array(Buffer.from(buffer)), {
         status: 200,
@@ -72,14 +62,31 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch all assignments to calculate allocated resources and hours
-    const allAssignments = await fetchAssignmentsWithDetails({}, request);
+    // Get unique project_uuids from assignments
+    const uniqueProjectUuids = [...new Set(allAssignments.map(a => a.project_uuid).filter(Boolean) as string[])];
 
-    // Build export data
-    const exportData: ProjectExportData[] = campaigns.map(campaign => {
+    console.log('[Export Projects Excel] Unique project_uuids from assignments:', uniqueProjectUuids.length);
+
+    // Fetch campaigns to get project details
+    const campaigns = await fetchAllCampaigns(request);
+
+    console.log('[Export Projects Excel] Fetched campaigns from API:', campaigns.length);
+
+    // Build a map of campaign UUIDs to campaign data for quick lookup
+    const campaignMap = new Map<string, typeof campaigns[0]>();
+    for (const campaign of campaigns) {
+      campaignMap.set(campaign.uuid, campaign);
+    }
+
+    // Build export data from projects that have assignments
+    const exportDataMap = new Map<string, ProjectExportData>();
+
+    for (const projectUuid of uniqueProjectUuids) {
+      const campaign = campaignMap.get(projectUuid);
+
       // Get assignments for this project
       const projectAssignments = allAssignments.filter(
-        a => a.project_uuid === campaign.uuid
+        a => a.project_uuid === projectUuid
       );
 
       // Calculate unique resources and total assigned hours
@@ -94,33 +101,54 @@ export async function GET(request: NextRequest) {
         totalAssignedHours += hoursPerDay * days;
       }
 
-      return {
-        projectName: campaign.campaign_name,
-        projectNumber: campaign.io_number,
-        projectUuid: campaign.uuid,
-        brandName: campaign.brand_name || campaign.company_name || 'Unknown',
-        status: campaign.state === 'publish' ? 'Active' :
-                campaign.state === 'draft' ? 'Draft' : 'Archived',
-        budget: campaign.budget,
-        currency: campaign.currency,
-        startDate: campaign.start_date,
-        endDate: campaign.end_date,
+      // Use campaign data if available, otherwise use assignment data
+      const projectName = campaign?.campaign_name || projectAssignments[0]?.project?.campaign_name || `Project ${projectUuid.substring(0, 8)}`;
+      const brandName = campaign?.brand_name || campaign?.company_name || projectAssignments[0]?.project?.brand_name || 'Unknown';
+
+      exportDataMap.set(projectUuid, {
+        projectName,
+        projectNumber: campaign?.io_number || projectAssignments[0]?.project?.io_number || null,
+        projectUuid,
+        brandName,
+        status: campaign?.state === 'publish' ? 'Active' :
+                campaign?.state === 'draft' ? 'Draft' : 'Archived',
+        budget: campaign?.budget || null,
+        currency: campaign?.currency || 'IDR',
+        startDate: campaign?.start_date || null,
+        endDate: campaign?.end_date || null,
         allocatedResources: uniqueResources.size,
         totalAssignedHours: Math.round(totalAssignedHours),
-        ioNumber: campaign.io_number,
-      };
-    });
+        ioNumber: campaign?.io_number || null,
+      });
+    }
 
-    if (exportData.length === 0) {
-      return NextResponse.json(
-        { error: 'No project data found' },
-        { status: 404 }
-      );
+    // Apply project filter if specified
+    let filteredData = Array.from(exportDataMap.values());
+    if (projectIds) {
+      const projectIdArray = projectIds.split(',');
+      filteredData = filteredData.filter(p => projectIdArray.includes(p.projectUuid));
+    }
+
+    if (filteredData.length === 0) {
+      // Return empty Excel with just headers
+      console.log('[Export Projects Excel] No project data found after filtering, returning empty Excel');
+      const ExcelJS = require('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Summary');
+      worksheet.addRow(['No projects found for the specified filters']);
+      const buffer = await workbook.xlsx.writeBuffer();
+      return new NextResponse(new Uint8Array(Buffer.from(buffer)), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${generateExcelFilename('projects-report')}"`,
+        },
+      });
     }
 
     // Generate Excel
     const buffer = await exportProjectsToExcel({
-      projects: exportData,
+      projects: filteredData,
       groupByBrand,
       includeSummary,
     });

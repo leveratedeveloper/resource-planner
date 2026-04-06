@@ -380,6 +380,7 @@ class MySqlApiClient {
 
   /**
    * Get single employee by UUID
+   * Note: include parameter may cause 500 error on single endpoint
    */
   getEmployee(uuid: string): Promise<MySqlApiResponse<MySqlEmployee>> {
     return this.request<MySqlEmployee>(`/employees/${uuid}`);

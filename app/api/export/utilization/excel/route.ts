@@ -12,24 +12,24 @@ import { exportUtilizationToExcel, generateExcelFilename } from '@/lib/export/ex
 import { ResourceCapacityAnalysis } from '@/lib/analysis/types';
 import {
   fetchAssignmentsWithDetails,
-  fetchAllEmployees,
   hasFullAccess,
   getCurrentEmployeeUUID,
 } from '@/lib/export/data-fetcher';
 
 /**
- * Calculate utilization for employees
+ * Calculate utilization for employees based on their assignments
+ * Starts with assignments and builds employee data from them
  */
-function calculateUtilization(
-  employees: Array<{
-    uuid: string;
-    full_name: string;
-    position: string;
-    dept_id: number;
-    department_name: string;
-  }>,
+function calculateUtilizationFromAssignments(
   assignments: Array<{
     employee_uuid: string;
+    employee?: {
+      uuid: string;
+      full_name: string;
+      position: string;
+      department_name: string;
+      dept_id: number;
+    };
     start_date: string;
     end_date: string;
     hours_per_day: number;
@@ -38,22 +38,37 @@ function calculateUtilization(
   startDate: string,
   endDate: string
 ): ResourceCapacityAnalysis[] {
-  const results: ResourceCapacityAnalysis[] = [];
+  // Group assignments by employee
+  const employeeMap = new Map<string, {
+    uuid: string;
+    full_name: string;
+    position: string;
+    department_name: string;
+    assignments: typeof assignments;
+  }>();
 
-  // Parse date range
+  for (const assignment of assignments) {
+    if (!employeeMap.has(assignment.employee_uuid)) {
+      const deptName = assignment.employee?.department_name || '';
+      console.log('[Utilization Excel Export] Employee:', assignment.employee_uuid, 'name:', assignment.employee?.full_name, 'dept:', deptName, 'position:', assignment.employee?.position);
+
+      employeeMap.set(assignment.employee_uuid, {
+        uuid: assignment.employee_uuid,
+        full_name: assignment.employee?.full_name || 'Unknown Employee',
+        position: assignment.employee?.position || '',
+        department_name: deptName,
+        assignments: [],
+      });
+    }
+    employeeMap.get(assignment.employee_uuid)!.assignments.push(assignment);
+  }
+
+  const results: ResourceCapacityAnalysis[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  for (const employee of employees) {
-    // Get assignments for this employee within date range
-    const employeeAssignments = assignments.filter(a => {
-      if (a.employee_uuid !== employee.uuid) return false;
-
-      const assignStart = new Date(a.start_date);
-      const assignEnd = new Date(a.end_date);
-
-      return assignStart <= end && assignEnd >= start;
-    });
+  for (const [empUuid, employeeData] of employeeMap) {
+    const employeeAssignments = employeeData.assignments;
 
     // Calculate daily utilization
     const dailyUtilization: ResourceCapacityAnalysis['dailyUtilization'] = [];
@@ -98,7 +113,7 @@ function calculateUtilization(
             const assignEnd = new Date(a.end_date);
             return d >= assignStart && d <= assignEnd;
           })
-          .map((a, i) => `${employee.uuid}-${dateStr}-${i}`),
+          .map((a, i) => `${empUuid}-${dateStr}-${i}`),
       });
 
       totalAssignedHours += hoursAllocated;
@@ -125,10 +140,10 @@ function calculateUtilization(
       averageUtilization < 60 ? 'underutilized' : 'optimal';
 
     results.push({
-      resourceId: employee.uuid,
-      resourceName: employee.full_name,
-      department: employee.department_name,
-      role: employee.position,
+      resourceId: empUuid,
+      resourceName: employeeData.full_name,
+      department: employeeData.department_name,
+      role: employeeData.position,
       weeklyCapacity: 40, // Standard 40-hour week
       dailyUtilization,
       averageUtilization,
@@ -185,42 +200,35 @@ export async function GET(request: NextRequest) {
       effectiveEmployeeUUID = await getCurrentEmployeeUUID() || undefined;
     }
 
-    // Fetch employees
-    let employees = await fetchAllEmployees(request);
-
-    // Apply access filter for restricted users
-    if (!canExportAll && effectiveEmployeeUUID) {
-      employees = employees.filter(e => e.uuid === effectiveEmployeeUUID);
-    }
-
-    // Apply department filter if specified
-    if (departmentIds) {
-      const deptIdArray = departmentIds.split(',').map(id => parseInt(id, 10));
-      employees = employees.filter(e => deptIdArray.includes(e.dept_id));
-    }
-
-    // Apply employee filter if specified
-    if (employeeIds) {
-      const employeeIdArray = employeeIds.split(',');
-      employees = employees.filter(e => employeeIdArray.includes(e.uuid));
-    }
-
-    // Fetch assignments
+    // Fetch assignments with details first (this includes employee data)
     const assignments = await fetchAssignmentsWithDetails({
       start_date: startDate,
       end_date: endDate,
       employee_uuid: effectiveEmployeeUUID,
     }, request);
 
-    // Calculate utilization
-    const capacityAnalysis = calculateUtilization(
-      employees,
-      assignments,
-      startDate,
-      endDate
-    );
+    console.log('[Export Utilization Excel] Fetched assignments:', assignments.length);
 
-    if (capacityAnalysis.length === 0) {
+    // Filter by department if specified
+    let filteredAssignments = assignments;
+    if (departmentIds) {
+      const deptIdArray = departmentIds.split(',').map(id => parseInt(id, 10));
+      filteredAssignments = assignments.filter(a =>
+        a.employee && deptIdArray.includes(parseInt(a.employee.dept_id?.toString() || '0', 10))
+      );
+    }
+
+    // Filter by employee IDs if specified
+    if (employeeIds) {
+      const employeeIdArray = employeeIds.split(',');
+      filteredAssignments = filteredAssignments.filter(a =>
+        employeeIdArray.includes(a.employee_uuid)
+      );
+    }
+
+    console.log('[Export Utilization Excel] Filtered assignments:', filteredAssignments.length);
+
+    if (filteredAssignments.length === 0) {
       // Return empty Excel with just headers
       console.log('[Export Utilization Excel] No data found, returning empty Excel');
       const ExcelJS = require('exceljs');
@@ -237,6 +245,15 @@ export async function GET(request: NextRequest) {
         },
       });
     }
+
+    // Calculate utilization from assignments
+    const capacityAnalysis = calculateUtilizationFromAssignments(
+      filteredAssignments,
+      startDate,
+      endDate
+    );
+
+    console.log('[Export Utilization Excel] Capacity analysis results:', capacityAnalysis.length);
 
     // Generate Excel
     const buffer = await exportUtilizationToExcel({

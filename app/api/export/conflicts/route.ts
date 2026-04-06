@@ -16,30 +16,30 @@ import {
 import type { Conflict } from '@/lib/analysis/types';
 import {
   fetchAssignmentsWithDetails,
-  fetchAllEmployees,
   hasFullAccess,
   getCurrentEmployeeUUID,
 } from '@/lib/export/data-fetcher';
 
 /**
  * Detect conflicts in assignments
+ * Starts with assignments and builds employee data from them
  */
-function detectConflicts(
+function detectConflictsFromAssignments(
   assignments: Array<{
     uuid: string;
     employee_uuid: string;
+    employee?: {
+      uuid: string;
+      full_name: string;
+      position: string;
+      department_name: string;
+      dept_id: number;
+    };
     start_date: string;
     end_date: string;
     hours_per_day: number;
     is_billable: boolean;
     is_time_off: boolean;
-  }>,
-  employees: Array<{
-    uuid: string;
-    full_name: string;
-    position: string;
-    dept_id: number;
-    department_name: string;
   }>,
   startDate: string,
   endDate: string
@@ -48,18 +48,34 @@ function detectConflicts(
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // Build map of assignments per employee
-  const employeeAssignments = new Map<string, typeof assignments>();
-  assignments.forEach(a => {
-    const existing = employeeAssignments.get(a.employee_uuid) || [];
-    existing.push(a);
-    employeeAssignments.set(a.employee_uuid, existing);
-  });
+  // Build map of assignments per employee with employee details
+  const employeeAssignments = new Map<string, {
+    employee: {
+      uuid: string;
+      full_name: string;
+      department_name: string;
+    };
+    assignments: typeof assignments;
+  }>();
+
+  for (const assignment of assignments) {
+    const existing = employeeAssignments.get(assignment.employee_uuid);
+    if (!existing) {
+      employeeAssignments.set(assignment.employee_uuid, {
+        employee: {
+          uuid: assignment.employee_uuid,
+          full_name: assignment.employee?.full_name || 'Unknown Employee',
+          department_name: assignment.employee?.department_name || '',
+        },
+        assignments: [assignment],
+      });
+    } else {
+      existing.assignments.push(assignment);
+    }
+  }
 
   // Check each day for each employee
-  for (const employee of employees) {
-    const empAssignments = employeeAssignments.get(employee.uuid) || [];
-
+  for (const [empUuid, { employee, empAssignments }] of employeeAssignments) {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split('T')[0];
 
@@ -86,11 +102,12 @@ function detectConflicts(
       // Detect overallocation
       if (totalHours > 8) {
         conflicts.push({
-          id: `conflict-${employee.uuid}-${dateStr}-overallocation`,
+          id: `conflict-${empUuid}-${dateStr}-overallocation`,
           type: 'overallocation',
           severity: totalHours > 10 ? 'critical' : 'warning',
-          resourceId: employee.uuid,
+          resourceId: empUuid,
           resourceName: employee.full_name,
+          department: employee.department_name,
           date: dateStr,
           description: `Assigned ${totalHours.toFixed(1)} hours (exceeds 8-hour capacity)`,
           affectedAssignments: activeAssignments.map(a => a.uuid),
@@ -101,11 +118,12 @@ function detectConflicts(
       // Detect low billable ratio
       if (totalHours >= 6 && billableHours / totalHours < 0.5) {
         conflicts.push({
-          id: `conflict-${employee.uuid}-${dateStr}-billable`,
+          id: `conflict-${empUuid}-${dateStr}-billable`,
           type: 'billable_target',
           severity: 'warning',
-          resourceId: employee.uuid,
+          resourceId: empUuid,
           resourceName: employee.full_name,
+          department: employee.department_name,
           date: dateStr,
           description: `Only ${((billableHours / totalHours) * 100).toFixed(0)}% billable (${billableHours.toFixed(1)}h of ${totalHours.toFixed(1)}h)`,
           affectedAssignments: activeAssignments.map(a => a.uuid),
@@ -119,11 +137,12 @@ function detectConflicts(
 
       if (timeOffAssignments.length > 0 && workAssignments.length > 0) {
         conflicts.push({
-          id: `conflict-${employee.uuid}-${dateStr}-timeoff`,
+          id: `conflict-${empUuid}-${dateStr}-timeoff`,
           type: 'resource_unavailable',
           severity: 'critical',
-          resourceId: employee.uuid,
+          resourceId: empUuid,
           resourceName: employee.full_name,
+          department: employee.department_name,
           date: dateStr,
           description: `Has both time-off and work assignments on the same day`,
           affectedAssignments: activeAssignments.map(a => a.uuid),
@@ -181,29 +200,43 @@ export async function GET(request: NextRequest) {
       effectiveEmployeeUUID = await getCurrentEmployeeUUID() || undefined;
     }
 
-    // Fetch employees
-    let employees = await fetchAllEmployees(request);
-
-    // Apply access filter for restricted users
-    if (!canExportAll && effectiveEmployeeUUID) {
-      employees = employees.filter(e => e.uuid === effectiveEmployeeUUID);
-    }
-
-    // Apply employee filter if specified
-    if (employeeIds) {
-      const employeeIdArray = employeeIds.split(',');
-      employees = employees.filter(e => employeeIdArray.includes(e.uuid));
-    }
-
-    // Fetch assignments
+    // Fetch assignments with details first (this includes employee data)
     const assignments = await fetchAssignmentsWithDetails({
       start_date: startDate,
       end_date: endDate,
       employee_uuid: effectiveEmployeeUUID,
     }, request);
 
-    // Detect conflicts
-    let conflicts = detectConflicts(assignments, employees, startDate, endDate);
+    console.log('[Export Conflicts] Fetched assignments:', assignments.length);
+
+    // Filter by employee IDs if specified
+    let filteredAssignments = assignments;
+    if (employeeIds) {
+      const employeeIdArray = employeeIds.split(',');
+      filteredAssignments = assignments.filter(a =>
+        employeeIdArray.includes(a.employee_uuid)
+      );
+    }
+
+    console.log('[Export Conflicts] Filtered assignments:', filteredAssignments.length);
+
+    if (filteredAssignments.length === 0) {
+      // Return empty CSV with headers instead of 404
+      console.log('[Export Conflicts] No assignments found, returning empty CSV');
+      const emptyCsv = 'Resource Name,Resource ID,Department,Conflict Type,Severity,Date,Description,Affected Assignments,Suggested Resolution\n';
+      return new NextResponse(emptyCsv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${generateExportFilename('conflicts', 'csv', { start: startDate, end: endDate })}"`,
+        },
+      });
+    }
+
+    // Detect conflicts from assignments
+    let conflicts = detectConflictsFromAssignments(filteredAssignments, startDate, endDate);
+
+    console.log('[Export Conflicts] Detected conflicts:', conflicts.length);
 
     // Apply severity filter if specified
     if (severity) {
@@ -223,13 +256,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Convert to export format with department info
-    const exportData = conflictToExportFormat(
-      conflicts.map(c => ({
-        ...c,
-        department: employees.find(e => e.uuid === c.resourceId)?.department_name,
-      }))
-    );
+    // Convert to export format
+    const exportData = conflictToExportFormat(conflicts);
 
     // Generate CSV
     const csvContent = exportConflictsToCSV(exportData);

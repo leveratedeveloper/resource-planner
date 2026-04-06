@@ -30,7 +30,7 @@ const EXPORT_OPTIONS: ExportOption[] = [
     label: "Assignments",
     icon: "lucide:calendar-check",
     description: "Export all/filtered assignments",
-    formats: ["csv"],
+    formats: ["csv", "excel"],
   },
   {
     type: "utilization",

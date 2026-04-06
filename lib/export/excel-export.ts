@@ -530,7 +530,7 @@ function createBrandSheet(
   projects: ProjectExportData[]
 ): void {
   // Sanitize sheet name (Excel limits to 31 chars and certain characters)
-  const sheetName = brandName.replace(/[\\/?*[\]]/g, '_').substring(0, 31);
+  const sheetName = brandName.replace(/[\\/?*[\]]/g, '_').substring(0, 31) || 'Unknown Brand';
 
   const worksheet = workbook.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
 
@@ -568,6 +568,333 @@ function createBrandSheet(
 
   // Column widths
   setColumnWidths(worksheet, [30, 15, 12, 15, 15, 15]);
+}
+
+// ============================================================================
+// Assignments Excel Export
+// ============================================================================
+
+export interface AssignmentsExcelExportOptions {
+  assignments: Array<{
+    employeeName: string;
+    employeeId: string;
+    department: string;
+    position: string;
+    projectName: string;
+    projectNumber: string | null;
+    brandName: string;
+    startDate: string;
+    endDate: string;
+    hoursPerDay: number;
+    allocationPercentage: number | null;
+    category: string | null;
+    status: string;
+    billable: string;
+    isTimeOff: string;
+    note: string | null;
+  }>;
+  groupByBrand?: boolean;
+  groupByDepartment?: boolean;
+  includeSummary: boolean;
+}
+
+/**
+ * Export assignments to Excel with multiple sheets
+ */
+export async function exportAssignmentsToExcel(
+  options: AssignmentsExcelExportOptions
+): Promise<Buffer> {
+  const { assignments, groupByBrand, groupByDepartment, includeSummary } = options;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Resource Planner';
+  workbook.created = new Date();
+
+  // Summary sheet
+  if (includeSummary) {
+    createAssignmentsSummarySheet(workbook, assignments);
+  }
+
+  // All Assignments sheet
+  createAssignmentsDetailSheet(workbook, assignments);
+
+  // Per-brand sheets if requested
+  if (groupByBrand) {
+    const brandGroups = new Map<string, typeof assignments>();
+    assignments.forEach(a => {
+      const existing = brandGroups.get(a.brandName) || [];
+      existing.push(a);
+      brandGroups.set(a.brandName, existing);
+    });
+
+    brandGroups.forEach((brandAssignments, brandName) => {
+      createBrandSheetForAssignments(workbook, brandName, brandAssignments);
+    });
+  }
+
+  // Per-department sheets if requested
+  if (groupByDepartment) {
+    const deptGroups = new Map<string, typeof assignments>();
+    assignments.forEach(a => {
+      const existing = deptGroups.get(a.department) || [];
+      existing.push(a);
+      deptGroups.set(a.department, existing);
+    });
+
+    deptGroups.forEach((deptAssignments, deptName) => {
+      createDepartmentSheetForAssignments(workbook, deptName, deptAssignments);
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+/**
+ * Create Summary Sheet for Assignments
+ */
+function createAssignmentsSummarySheet(
+  workbook: ExcelJS.Workbook,
+  assignments: AssignmentsExcelExportOptions['assignments']
+): void {
+  const worksheet = workbook.addWorksheet('Summary', { views: [{ state: 'frozen', ySplit: 2 }] });
+
+  let currentRow = 1;
+
+  // Report Title
+  worksheet.mergeCells('A1:E1');
+  const titleCell = worksheet.getCell('A1');
+  titleCell.value = 'Assignments Report';
+  titleCell.font = { bold: true, size: 16 };
+  titleCell.alignment = { horizontal: 'center' as const };
+
+  currentRow++;
+
+  // Statistics
+  const totalAssignments = assignments.length;
+  const totalHours = assignments.reduce((sum, a) => sum + calculateHours(a.startDate, a.endDate, a.hoursPerDay), 0);
+  const billableCount = assignments.filter(a => a.billable === 'Yes').length;
+  const timeOffCount = assignments.filter(a => a.isTimeOff === 'Yes').length;
+
+  worksheet.addRow(['Total Assignments', totalAssignments]);
+  worksheet.addRow(['Total Hours', Math.round(totalHours)]);
+  worksheet.addRow(['Billable Assignments', billableCount]);
+  worksheet.addRow(['Time Off Assignments', timeOffCount]);
+  worksheet.addRow(['Unique Resources', new Set(assignments.map(a => a.employeeId)).size]);
+  worksheet.addRow(['Unique Projects', new Set(assignments.map(a => a.projectName)).size]);
+
+  currentRow += 6;
+
+  // By Brand
+  const brandCounts = new Map<string, number>();
+  assignments.forEach(a => {
+    brandCounts.set(a.brandName, (brandCounts.get(a.brandName) || 0) + 1);
+  });
+
+  worksheet.getCell(`A${currentRow}`).value = 'By Brand';
+  worksheet.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
+
+  currentRow++;
+
+  const brandHeaderRow = worksheet.addRow(['Brand', 'Assignments']);
+  applyHeaderStyle(brandHeaderRow, SUBHEADER_STYLE);
+
+  Array.from(brandCounts.entries()).sort((a, b) => b[1] - a[1]).forEach(([brand, count]) => {
+    worksheet.addRow([brand, count]);
+  });
+
+  currentRow += Array.from(brandCounts.entries()).length + 2;
+
+  // By Department
+  const deptCounts = new Map<string, number>();
+  assignments.forEach(a => {
+    deptCounts.set(a.department || 'Unassigned', (deptCounts.get(a.department || 'Unassigned') || 0) + 1);
+  });
+
+  worksheet.getCell(`A${currentRow}`).value = 'By Department';
+  worksheet.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
+
+  currentRow++;
+
+  const deptHeaderRow = worksheet.addRow(['Department', 'Assignments']);
+  applyHeaderStyle(deptHeaderRow, SUBHEADER_STYLE);
+
+  Array.from(deptCounts.entries()).sort((a, b) => b[1] - a[1]).forEach(([dept, count]) => {
+    worksheet.addRow([dept, count]);
+  });
+
+  setColumnWidths(worksheet, [20, 15]);
+}
+
+/**
+ * Create All Assignments Detail Sheet
+ */
+function createAssignmentsDetailSheet(
+  workbook: ExcelJS.Workbook,
+  assignments: AssignmentsExcelExportOptions['assignments']
+): void {
+  const worksheet = workbook.addWorksheet('All Assignments', { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  // Header
+  const headerRow = worksheet.addRow([
+    'Employee Name',
+    'Employee ID',
+    'Department',
+    'Position',
+    'Project',
+    'Project Number',
+    'Brand',
+    'Start Date',
+    'End Date',
+    'Hours/Day',
+    'Allocation %',
+    'Category',
+    'Status',
+    'Billable',
+    'Time Off',
+    'Notes',
+  ]);
+
+  applyHeaderStyle(headerRow, HEADER_STYLE);
+
+  // Data rows
+  assignments.forEach(assignment => {
+    const row = worksheet.addRow([
+      assignment.employeeName,
+      assignment.employeeId,
+      assignment.department,
+      assignment.position,
+      assignment.projectName,
+      assignment.projectNumber,
+      assignment.brandName,
+      assignment.startDate,
+      assignment.endDate,
+      assignment.hoursPerDay,
+      assignment.allocationPercentage || '',
+      assignment.category || '',
+      assignment.status,
+      assignment.billable,
+      assignment.isTimeOff,
+      assignment.note || '',
+    ]);
+
+    applyCellStyle(worksheet, row.number, 15, CELL_STYLE);
+
+    // Add some color coding for status
+    if (assignment.status === 'confirmed') {
+      row.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0C5' } };
+    } else if (assignment.status === 'pending') {
+      row.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: 'FFFFEB9C' };
+    }
+
+    // Highlight billable
+    if (assignment.billable === 'Yes') {
+      row.getCell(14).font = { bold: true, color: { argb: 'FF107C10' } };
+    }
+  });
+
+  // Column widths
+  setColumnWidths(worksheet, [25, 20, 20, 20, 30, 15, 20, 12, 12, 10, 12, 15, 12, 12, 30]);
+}
+
+/**
+ * Create Brand-specific Sheet for Assignments
+ */
+function createBrandSheetForAssignments(
+  workbook: ExcelJS.Workbook,
+  brandName: string,
+  assignments: AssignmentsExcelExportOptions['assignments']
+): void {
+  // Sanitize sheet name
+  const sheetName = brandName.replace(/[\\/?*[\]]/g, '_').substring(0, 31) || 'Unknown Brand';
+
+  const worksheet = workbook.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  const headerRow = worksheet.addRow([
+    'Employee Name',
+    'Department',
+    'Position',
+    'Project',
+    'Start Date',
+    'End Date',
+    'Hours/Day',
+    'Billable',
+    'Status',
+  ]);
+
+  applyHeaderStyle(headerRow, SUBHEADER_STYLE);
+
+  assignments.forEach(assignment => {
+    const row = worksheet.addRow([
+      assignment.employeeName,
+      assignment.department,
+      assignment.position,
+      assignment.projectName,
+      assignment.startDate,
+      assignment.endDate,
+      assignment.hoursPerDay,
+      assignment.billable,
+      assignment.status,
+    ]);
+
+    applyCellStyle(worksheet, row.number, 9, CELL_STYLE);
+  });
+
+  setColumnWidths(worksheet, [25, 20, 20, 30, 12, 12, 10, 10, 12]);
+}
+
+/**
+ * Create Department-specific Sheet for Assignments
+ */
+function createDepartmentSheetForAssignments(
+  workbook: ExcelJS.Workbook,
+  deptName: string,
+  assignments: AssignmentsExcelExportOptions['assignments']
+): void {
+  // Sanitize sheet name
+  const sheetName = deptName.replace(/[\\/?*[\]]/g, '_').substring(0, 31) || 'Unassigned';
+
+  const worksheet = workbook.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  const headerRow = worksheet.addRow([
+    'Employee Name',
+    'Position',
+    'Project',
+    'Start Date',
+    'End Date',
+    'Hours/Day',
+    'Billable',
+    'Status',
+  ]);
+
+  applyHeaderStyle(headerRow, SUBHEADER_STYLE);
+
+  assignments.forEach(assignment => {
+    const row = worksheet.addRow([
+      assignment.employeeName,
+      assignment.position,
+      assignment.projectName,
+      assignment.startDate,
+      assignment.endDate,
+      assignment.hoursPerDay,
+      assignment.billable,
+      assignment.status,
+    ]);
+
+    applyCellStyle(worksheet, row.number, 9, CELL_STYLE);
+  });
+
+  setColumnWidths(worksheet, [25, 20, 30, 12, 12, 10, 10, 12]);
+}
+
+/**
+ * Calculate hours between two dates
+ */
+function calculateHours(startDate: string, endDate: string, hoursPerDay: number): number {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return hoursPerDay * days;
 }
 
 // ============================================================================

@@ -8,6 +8,49 @@ import { assignmentsDb } from '@/lib/mysql-assignments/db';
 import { NextRequest } from 'next/server';
 import { getMySqlApiClient } from '@/lib/mysql/api-client';
 
+// ============================================================================
+// In-Memory Cache (with TTL)
+// ============================================================================
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const brandCache: CacheEntry<Map<number, string>> | null = null;
+const BRAND_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const EMPLOYEE_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+function getFromCache<T>(cache: CacheEntry<T> | null, ttl: number): T | null {
+  if (!cache) return null;
+  const now = Date.now();
+  if (now - cache.timestamp > ttl) {
+    return null; // Cache expired
+  }
+  return cache.data;
+}
+
+function setCache<T>(data: T): CacheEntry<T> {
+  return { data, timestamp: Date.now() };
+}
+
+// Global cache variables (will persist across requests in the same server instance)
+let globalBrandCache: CacheEntry<Map<number, string>> | null = null;
+let globalDepartmentCache: CacheEntry<Map<string, string>> | null = null;
+let globalCampaignCache: CacheEntry<CampaignData[]> | null = null;
+let globalEmployeeCache: CacheEntry<Map<string, EmployeeData>> | null = null;
+
+/**
+ * Clear all caches (useful for testing or after data updates)
+ */
+export function clearExportDataCache(): void {
+  globalBrandCache = null;
+  globalDepartmentCache = null;
+  globalCampaignCache = null;
+  globalEmployeeCache = null;
+  console.log('[Export Data] All caches cleared');
+}
+
 // Get base URL for server-side fetch (for local API calls)
 function getBaseUrl(request?: NextRequest): string {
   if (typeof window !== 'undefined') {
@@ -59,6 +102,7 @@ export async function fetchAllEmployees(request?: NextRequest): Promise<Employee
       const response = await apiClient.getEmployees({
         page,
         per_page: perPage,
+        include: 'department',
       });
 
       if (response.error || !response.success) {
@@ -164,6 +208,176 @@ export async function fetchEmployeeByUUID(uuid: string, request?: NextRequest): 
 }
 
 // ============================================================================
+// Department Data
+// ============================================================================
+
+export interface DepartmentData {
+  id: number;
+  department_name: string;
+  flag: string;
+}
+
+/**
+ * Fetch all departments from MySQL API (with caching)
+ */
+export async function fetchAllDepartments(request?: NextRequest): Promise<DepartmentData[]> {
+  // Check cache first
+  const cached = getFromCache(globalDepartmentCache, BRAND_CACHE_TTL);
+  if (cached) {
+    console.log('[Export Data] Using cached departments:', cached.size);
+    return Array.from(cached.values()).map(id => ({ id, department_name: cached.get(id)!, flag: 'active' }));
+  }
+
+  try {
+    const session = await getSession();
+    if (!session) {
+      console.warn('[Export Data] No session found for fetching departments');
+      return [];
+    }
+
+    console.log('[Export Data] Cache miss, fetching departments from MySQL API...');
+    const apiClient = getMySqlApiClient(async () => session.access_token);
+    const allDepartments: DepartmentData[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(`${apiClient['baseUrl'] || 'http://127.0.0.1:8000/api/v1'}/departments?page=${page}&per_page=${perPage}`, {
+        headers: {
+          'Authorization': `Bearer ${await (await apiClient.getToken())}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('[Export Data] Failed to fetch departments from MySQL API');
+        break;
+      }
+
+      const data = await response.json();
+      let departments = data.data?.data || data.data || [];
+
+      const deptArray = Array.isArray(departments) ? departments : [];
+      console.log('[Export Data] Departments array length:', deptArray.length);
+
+      const transformed = deptArray.map((d: any) => ({
+        id: d.id,
+        department_name: d.department_name,
+        flag: d.flag,
+      }));
+
+      allDepartments.push(...transformed);
+
+      const total = data.data?.meta?.total || data.meta?.total || 0;
+      hasMore = allDepartments.length < total && deptArray.length > 0;
+      page++;
+
+      if (allDepartments.length > 10000 || deptArray.length === 0) break;
+    }
+
+    console.log('[Export Data] Fetched departments from MySQL API:', allDepartments.length);
+
+    // Cache as Map for faster lookup
+    const deptMap = new Map(allDepartments.map(d => [d.id.toString(), d.department_name]));
+    globalDepartmentCache = setCache(deptMap);
+
+    return allDepartments;
+  } catch (error) {
+    console.warn('[Export Data] Error fetching departments from MySQL API:', error);
+    return [];
+  }
+}
+
+// ============================================================================
+// Brand Data
+// ============================================================================
+
+export interface BrandData {
+  id: number;
+  uuid: string;
+  brand_name: string;
+  flag: string;
+}
+
+/**
+ * Fetch ALL brands from MySQL API (with caching)
+ */
+export async function fetchAllBrands(request?: NextRequest): Promise<Map<number, string>> {
+  // Check cache first
+  const cached = getFromCache(globalBrandCache, BRAND_CACHE_TTL);
+  if (cached) {
+    console.log('[Export Data] Using cached brands:', cached.size);
+    return new Map(cached); // Return a copy to avoid mutations
+  }
+
+  try {
+    const session = await getSession();
+    if (!session) {
+      console.warn('[Export Data] No session found for fetching brands');
+      return new Map();
+    }
+
+    console.log('[Export Data] Cache miss, fetching brands from MySQL API...');
+    const apiClient = getMySqlApiClient(async () => session.access_token);
+    const brandMap = new Map<number, string>();
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    // Fetch all pages of brands
+    while (hasMore) {
+      const response = await apiClient.getBrands({ page, per_page: perPage });
+
+      if (response.error) {
+        console.warn('[Export Data] Error fetching brands page:', page, response.error);
+        break;
+      }
+
+      // Handle nested response structure
+      let brands = response || {};
+      if (brands.data) {
+        brands = brands.data;
+      }
+      if (brands.data && Array.isArray(brands.data)) {
+        brands = brands.data;
+      }
+
+      const brandsArray = Array.isArray(brands) ? brands : [];
+
+      // Add to brand map
+      brandsArray.forEach((b: any) => {
+        const id = parseInt(b.brand_id?.toString() || b.id?.toString() || '0', 10);
+        if (id > 0 && b.brand_name) {
+          brandMap.set(id, b.brand_name);
+        }
+      });
+
+      console.log('[Export Data] Fetched brands page:', page, 'total so far:', brandMap.size);
+
+      // Check if there are more pages
+      const meta = response?.data?.meta || response?.meta;
+      hasMore = meta && meta.current_page < meta.last_page;
+      page++;
+
+      // Safety break
+      if (brandMap.size > 10000 || brandsArray.length === 0) break;
+    }
+
+    console.log('[Export Data] Total brands fetched from MySQL API:', brandMap.size);
+
+    // Cache the result
+    globalBrandCache = setCache(brandMap);
+
+    return brandMap;
+  } catch (error) {
+    console.warn('[Export Data] Error fetching brands from MySQL API:', error);
+    return new Map();
+  }
+}
+
+// ============================================================================
 // Campaign/Project Data
 // ============================================================================
 
@@ -184,8 +398,13 @@ export interface CampaignData {
 /**
  * Fetch all campaigns from MySQL API using authenticated client
  * This matches the project_uuid format used in the assignments table
+ * Note: brandMap is passed in but campaigns are cached without brand enrichment
  */
-export async function fetchAllCampaigns(request?: NextRequest): Promise<CampaignData[]> {
+export async function fetchAllCampaigns(request?: NextRequest, brandMap?: Map<number, string>): Promise<CampaignData[]> {
+  // Note: We don't cache campaigns with brand enrichment since brandMap may change
+  // But we can cache raw campaigns data and enrich on each call
+  const CAMPAIGN_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
   try {
     const session = await getSession();
     if (!session) {
@@ -234,27 +453,55 @@ export async function fetchAllCampaigns(request?: NextRequest): Promise<Campaign
 
       console.log('[Export Data] Campaigns array length:', campaignsArray.length);
 
+      // Debug: log brandMap size and sample entries
+      if (page === 1 && brandMap) {
+        console.log('[Export Data] BrandMap size:', brandMap.size);
+        console.log('[Export Data] BrandMap sample entries:', Array.from(brandMap.entries()).slice(0, 5));
+      }
+
       // Transform to our format
-      const transformed = campaignsArray.map((c: any) => ({
-        uuid: c.uuid || c.id,
-        io_number: c.io_number || c.project_number || '',
-        campaign_name: c.campaign_name || c.name || '',
-        brand_id: c.brand_id?.toString() || c.brandId?.toString() || '',
-        brand_name: c.brand_name || c.brand?.name || '',
-        company_name: c.company_name || c.brand_name || '',
-        state: c.state || 'publish',
-        start_date: c.start_date || c.startDate || '',
-        end_date: c.end_date || c.endDate || '',
-        budget: parseFloat(c.budget) || 0,
-        currency: c.currency || 'IDR',
-      }));
+      const transformed = campaignsArray.map((c: any) => {
+        const brandId = parseInt(c.brand_id?.toString() || c.brandId?.toString() || '0', 10);
+        const brandName = c.brand_name || c.brand?.name || (brandMap && brandMap.get(brandId)) || '';
+
+        // Debug: log when brand name is not found
+        if (brandId > 0 && !brandName) {
+          console.log('[Export Data] Brand not found for campaign:', {
+            campaign: c.campaign_name || c.name,
+            brand_id: brandId,
+            brand_name_from_api: c.brand_name,
+            brand_name_from_map: brandMap?.get(brandId),
+          });
+        }
+
+        return {
+          uuid: c.uuid || c.id,
+          io_number: c.io_number || c.project_number || '',
+          campaign_name: c.campaign_name || c.name || '',
+          brand_id: brandId.toString(),
+          brand_name: brandName,
+          company_name: c.company_name || c.brand_name || '',
+          state: c.state || 'publish',
+          start_date: c.start_date || c.startDate || '',
+          end_date: c.end_date || c.endDate || '',
+          budget: parseFloat(c.budget) || 0,
+          currency: c.currency || 'IDR',
+        };
+      });
 
       allCampaigns.push(...transformed);
 
       // Check if there are more pages (total is in the first data object)
-      // Response structure: { data: { data: [...], total: 123 } }
-      const total = (response && response.data && response.data.total) || 0;
+      // Response structure: { data: { data: [...], meta: { total: 123 } } }
+      const total = (response && response.data && response.data.meta && response.data.meta.total) ||
+                    (response && response.meta && response.meta.total) ||
+                    (response && response.data && response.data.total) || 0;
       hasMore = allCampaigns.length < total && campaignsArray.length > 0;
+
+      if (page === 1) {
+        console.log('[Export Data] Campaigns pagination:', { total, fetched: allCampaigns.length, hasMore });
+      }
+
       page++;
 
       // Safety break to prevent infinite loop
@@ -275,6 +522,119 @@ export async function fetchAllCampaigns(request?: NextRequest): Promise<Campaign
 export async function fetchCampaignByUUID(uuid: string, request?: NextRequest): Promise<CampaignData | null> {
   const campaigns = await fetchAllCampaigns(request);
   return campaigns.find(c => c.uuid === uuid) || null;
+}
+
+/**
+ * Fetch campaigns by specific UUIDs (optimized - only fetches what's needed)
+ * This is much faster than fetchAllCampaigns when we only need a few campaigns
+ */
+export async function fetchCampaignsByUUIDs(
+  uuids: string[],
+  request?: NextRequest,
+  brandMap?: Map<number, string>
+): Promise<CampaignData[]> {
+  if (!uuids || uuids.length === 0) {
+    return [];
+  }
+
+  try {
+    const session = await getSession();
+    if (!session) {
+      console.warn('[Export Data] No session found for fetching campaigns by UUIDs');
+      return [];
+    }
+
+    console.log('[Export Data] Fetching specific campaigns by UUIDs:', uuids.length, 'campaigns');
+    const apiClient = getMySqlApiClient(async () => session.access_token);
+
+    // If no brandMap provided, fetch it
+    const effectiveBrandMap = brandMap || await fetchAllBrands(request);
+
+    // Fetch campaigns page by page until we find all the UUIDs we need
+    const foundCampaigns = new Map<string, CampaignData>();
+    const remainingUuids = new Set(uuids);
+    let page = 1;
+    const perPage = 500; // Increased from 100 to reduce API calls
+    let hasMore = true;
+    let pageCount = 0;
+    const maxPages = 20; // Safety limit
+
+    while (hasMore && remainingUuids.size > 0 && pageCount < maxPages) {
+      const response = await apiClient.getCampaigns({
+        page,
+        per_page: perPage,
+      });
+
+      // Check for errors
+      const hasError = response && typeof response === 'object' && 'error' in response;
+      const hasSuccess = response && typeof response === 'object' && 'success' in response;
+      const isFailed = hasSuccess && response.success === false;
+
+      if (hasError || isFailed) {
+        console.warn('[Export Data] Failed to fetch campaigns page:', page);
+        break;
+      }
+
+      // Handle nested response structure
+      let campaigns = response || {};
+      if (campaigns.data) {
+        campaigns = campaigns.data;
+      }
+      if (campaigns.data && Array.isArray(campaigns.data)) {
+        campaigns = campaigns.data;
+      }
+
+      const campaignsArray = Array.isArray(campaigns) ? campaigns : [];
+
+      // Find campaigns that match our UUIDs
+      for (const c of campaignsArray) {
+        const uuid = c.uuid || c.id;
+        if (remainingUuids.has(uuid)) {
+          const brandId = parseInt(c.brand_id?.toString() || c.brandId?.toString() || '0', 10);
+          const brandName = c.brand_name || c.brand?.name || (effectiveBrandMap && effectiveBrandMap.get(brandId)) || '';
+
+          foundCampaigns.set(uuid, {
+            uuid: uuid,
+            io_number: c.io_number || c.project_number || '',
+            campaign_name: c.campaign_name || c.name || '',
+            brand_id: brandId.toString(),
+            brand_name: brandName,
+            company_name: c.company_name || c.brand_name || '',
+            state: c.state || 'publish',
+            start_date: c.start_date || c.startDate || '',
+            end_date: c.end_date || c.endDate || '',
+            budget: parseFloat(c.budget) || 0,
+            currency: c.currency || 'IDR',
+          });
+
+          remainingUuids.delete(uuid);
+        }
+      }
+
+      pageCount++;
+      console.log('[Export Data] Fetched campaigns page:', page, 'found:', foundCampaigns.size, 'remaining:', remainingUuids.size);
+
+      // Check if there are more pages
+      const total = (response && response.data && response.data.meta && response.data.meta.total) ||
+                    (response && response.meta && response.meta.total) ||
+                    (response && response.data && response.data.total) || 0;
+      hasMore = campaignsArray.length > 0 && (page * perPage) < total;
+
+      page++;
+    }
+
+    console.log('[Export Data] Total campaigns fetched by UUID:', foundCampaigns.size, 'of', uuids.length, 'requested');
+
+    // Log any UUIDs that weren't found
+    if (remainingUuids.size > 0) {
+      console.warn('[Export Data] Campaign UUIDs not found:', Array.from(remainingUuids));
+    }
+
+    return Array.from(foundCampaigns.values());
+  } catch (error) {
+    console.warn('[Export Data] Error fetching campaigns by UUIDs:', error);
+    return [];
+  }
 }
 
 // ============================================================================
@@ -363,11 +723,12 @@ export async function fetchAssignmentsWithDetails(
     const session = await getSession();
     const apiClient = session ? getMySqlApiClient(async () => session.access_token) : null;
 
-    // For each employee_uuid in assignments, try to find matching employee from MySQL API
+    // Fetch employees in parallel for better performance
     if (apiClient) {
-      for (const empUuid of employeeUuids) {
+      console.log('[Export Data] Fetching employees in parallel...');
+      const employeePromises = employeeUuids.map(async (empUuid) => {
         try {
-          const response = await apiClient.getEmployee(empUuid);
+          const response = await apiClient!.getEmployee(empUuid);
           if (response.success && response.data) {
             // Handle nested response structure: { data: { data: {...} } }
             let emp = response.data;
@@ -375,31 +736,73 @@ export async function fetchAssignmentsWithDetails(
               emp = emp.data || emp;
             }
             if (emp && emp.uuid) {
-              employeesMap.set(empUuid, {
-                uuid: emp.uuid || emp.id || empUuid,
-                nik: emp.employee_number || emp.nik || '',
-                full_name: emp.full_name || emp.fullName || '',
-                nickname: emp.nickname || '',
-                position: emp.position || '',
-                dept_id: parseInt(emp.dept_id?.toString() || emp.departmentId?.toString() || '0', 10),
-                department_name: emp.department_name || emp.department?.name || '',
-                photo: emp.photo || '',
-                flag: emp.flag === 'active' || emp.employment_status === 'active' ? 'active' : 'inactive',
-              });
-              console.log('[Export Data] Found employee:', empUuid, emp.full_name || emp.fullName);
+              const deptId = emp.dept_id || emp.departmentId;
+              return {
+                uuid: empUuid,
+                data: {
+                  uuid: emp.uuid || emp.id || empUuid,
+                  nik: emp.employee_number || emp.nik || '',
+                  full_name: emp.full_name || emp.fullName || '',
+                  nickname: emp.nickname || '',
+                  position: emp.position || '',
+                  dept_id: parseInt(deptId?.toString() || '0', 10),
+                  department_name: emp.department_name || emp.department?.name || '',
+                  photo: emp.photo || '',
+                  flag: emp.flag === 'active' || emp.employment_status === 'active' ? 'active' : 'inactive',
+                } as EmployeeData,
+              };
             }
           }
+          return null;
         } catch (err) {
-          console.warn('[Export Data] Could not fetch employee:', empUuid, err);
+          console.warn('[Export Data] Could not fetch employee:', empUuid);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(employeePromises);
+
+      for (const result of results) {
+        if (result) {
+          employeesMap.set(result.uuid, result.data);
+          console.log('[Export Data] Found employee:', result.uuid, result.data.full_name, 'dept_id:', result.data.dept_id);
         }
       }
     }
 
     console.log('[Export Data] Matched employees:', employeesMap.size, 'of', employeeUuids.length);
 
+    // Enrich department names from MySQL API using dept_id
+    const uniqueDeptIds = [...new Set(Array.from(employeesMap.values()).map(e => e.dept_id).filter(id => id > 0))];
+    console.log('[Export Data] Unique dept_ids to enrich:', uniqueDeptIds);
+
+    if (uniqueDeptIds.length > 0) {
+      try {
+        const departments = await fetchAllDepartments(request);
+        const deptMap = new Map(departments.map(d => [d.id.toString(), d.department_name]));
+        console.log('[Export Data] Department mapping from API:', Array.from(deptMap.entries()));
+
+        // Update employee data with department names
+        for (const [empUuid, empData] of employeesMap) {
+          if (empData.dept_id > 0) {
+            const deptName = deptMap.get(empData.dept_id.toString());
+            if (deptName) {
+              empData.department_name = deptName;
+              console.log('[Export Data] Enriched department for', empData.full_name, ':', deptName);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Export Data] Error enriching departments from API:', err);
+      }
+    }
+
     // Fetch campaigns that match our assignments
     const campaignsMap = new Map<string, CampaignData>();
-    const campaigns = await fetchAllCampaigns(request);
+    // Fetch brands first to enrich campaign data
+    const brandMap = await fetchAllBrands(request);
+    // Only fetch campaigns that are referenced in assignments (not all 5465 campaigns!)
+    const campaigns = await fetchCampaignsByUUIDs(projectUuids, request, brandMap);
     campaigns.forEach(c => campaignsMap.set(c.uuid, c));
 
     console.log('[Export Data] Available campaigns:', campaigns.length);

@@ -123,6 +123,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
         apiUrl = `/api/export/utilization/excel?${params.toString()}`;
       } else if (format === "excel" && exportOption.type === "projects") {
         apiUrl = `/api/export/projects/excel?${params.toString()}`;
+      } else if (format === "excel" && exportOption.type === "assignments") {
+        apiUrl = `/api/export/assignments/excel?${params.toString()}`;
       } else {
         apiUrl = `/api/export/${exportOption.type}?${params.toString()}`;
       }
