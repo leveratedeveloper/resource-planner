@@ -103,7 +103,9 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     // Plan assignments can only be created by users with full access
-    if (!session.access.can_view_all) {
+    // Time off can be created by users for themselves
+    const isCreatingOwnTimeOff = body.isTimeOff && body.employeeId === session.employee?.uuid;
+    if (!session.access.can_view_all && !isCreatingOwnTimeOff) {
       return NextResponse.json(
         { error: 'Insufficient permissions - only users with full access can create plan assignments' },
         { status: 403 }

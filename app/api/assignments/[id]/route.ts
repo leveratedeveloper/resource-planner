@@ -79,7 +79,10 @@ export async function PUT(
     }
 
     // Plan assignments can only be updated by users with full access
-    if (!session.access.can_view_all) {
+    // Time off can be updated by users for themselves
+    const assignment = await getAssignment(id);
+    const isUpdatingOwnTimeOff = assignment.is_time_off && assignment.employee_uuid === session.employee?.uuid;
+    if (!session.access.can_view_all && !isUpdatingOwnTimeOff) {
       return NextResponse.json(
         { error: 'Insufficient permissions - only users with full access can update plan assignments' },
         { status: 403 }
@@ -157,7 +160,10 @@ export async function DELETE(
     }
 
     // Plan assignments can only be deleted by users with full access
-    if (!session.access.can_view_all) {
+    // Time off can be deleted by users for themselves
+    const assignment = await getAssignment(id);
+    const isDeletingOwnTimeOff = assignment.is_time_off && assignment.employee_uuid === session.employee?.uuid;
+    if (!session.access.can_view_all && !isDeletingOwnTimeOff) {
       return NextResponse.json(
         { error: 'Insufficient permissions - only users with full access can delete plan assignments' },
         { status: 403 }
