@@ -358,6 +358,13 @@ class MySqlApiClient {
   }
 
   /**
+   * Get departments with pagination
+   */
+  getDepartments(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
+    return this.request<any>('/departments', params);
+  }
+
+  /**
    * Get single brand by UUID
    */
   getBrand(uuid: string): Promise<MySqlApiResponse<MySqlBrand>> {

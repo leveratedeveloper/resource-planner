@@ -23,12 +23,23 @@ export type NewDepartment = Omit<Department, "id" | "createdAt" | "updatedAt" | 
 
 // API Functions
 async function fetchDepartments(): Promise<Department[]> {
-  const response = await fetch("/api/departments");
-  if (!response.ok) {
-    throw new Error("Failed to fetch departments");
+  const allDepartments: Department[] = [];
+  let offset = 0;
+  const limit = 100;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(`/api/departments?limit=${limit}&offset=${offset}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch departments");
+    }
+    const data = await response.json();
+    allDepartments.push(...(data.data || []));
+    hasMore = data.hasMore;
+    offset += limit;
   }
-  const data = await response.json();
-  return data.data;
+
+  return allDepartments;
 }
 
 async function fetchDepartment(id: string): Promise<Department> {
@@ -93,7 +104,7 @@ export function useDepartment(id: string) {
 
 export function useCreateDepartment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: createDepartment,
     onSuccess: () => {
@@ -104,7 +115,7 @@ export function useCreateDepartment() {
 
 export function useUpdateDepartment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: updateDepartment,
     onSuccess: (data) => {
@@ -116,7 +127,7 @@ export function useUpdateDepartment() {
 
 export function useDeleteDepartment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: deleteDepartment,
     onSuccess: () => {
