@@ -57,10 +57,13 @@ export type NewAssignment = Omit<
 >;
 
 // API Functions
-async function fetchAssignments(params?: { startDate?: string; endDate?: string }): Promise<Assignment[]> {
+async function fetchAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }): Promise<Assignment[]> {
   const url = new URL("/api/assignments", window.location.origin);
   if (params?.startDate) url.searchParams.set("startDate", params.startDate);
   if (params?.endDate) url.searchParams.set("endDate", params.endDate);
+  if (params?.projectIds) {
+    params.projectIds.forEach(id => url.searchParams.append("projectIds", id));
+  }
 
   const response = await fetch(url.toString());
   if (!response.ok) {
@@ -140,7 +143,7 @@ async function deleteAssignment(id: string): Promise<void> {
 }
 
 // Hooks
-export function useAssignments(params?: { startDate?: string; endDate?: string }) {
+export function useAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }) {
   return useQuery({
     queryKey: [...queryKeys.assignments, params],
     queryFn: () => fetchAssignments(params),

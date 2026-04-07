@@ -177,7 +177,16 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   // Fetch ALL assignments (no date filter) for employee filtering by brand
   // This ensures employees with assignments outside the visible date range are still shown
-  const { data: allAssignments = [] } = useAssignments();
+  // PERFORMANCE: When brandId is selected, filter assignments by project UUIDs at the server level
+  // This reduces the dataset by ~90% when a brand is selected
+  const brandProjectIds = useMemo(() => {
+    if (!brandId || !projects.length) return undefined;
+    return projects.filter(p => p.brandId === brandId).map(p => p.id);
+  }, [brandId, projects]);
+
+  const { data: allAssignments = [] } = useAssignments(
+    brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined
+  );
 
   // Apply additional filters (project, category, status) to date-filtered assignments for display
   const filteredAssignments = useMemo(() => {
@@ -201,24 +210,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     return filtered;
   }, [dateFilteredAssignments, projectId, category, status]);
 
-  // Debug logging to understand data flow
-  useEffect(() => {
-    console.log('[Timeline Debug] Data state:', {
-      employeesCount: employees.length,
-      brandsCount: brands.length,
-      assignmentsCount: filteredAssignments.length,
-      projectsCount: projects.length,
-      isLoadingEmployees,
-      brandId,
-      department,
-      searchQuery,
-      dateRange: assignmentDateRange,
-      filters: { projectId, category, status },
-    });
-    if (employees.length > 0) {
-      console.log('[Timeline Debug] First employee:', employees[0]);
-    }
-  }, [employees, brands, filteredAssignments, projects, isLoadingEmployees, brandId, department, searchQuery, assignmentDateRange, projectId, category, status]);
 
   // PERFORMANCE: Pre-group assignments by employee ID to avoid N+1 query problem
   // Each ResourceRow was previously fetching ALL assignments and filtering them
@@ -261,23 +252,10 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
        const hasEmployeeBrandData = brand?.employeeBrandAssignments && brand.employeeBrandAssignments.length > 0;
        const hasAssignmentData = assignmentIds.size > 0;
 
-       console.log('[Timeline Filter] Brand filtering:', {
-         brandId,
-         brandFound: !!brand,
-         brandName: brand?.name,
-         memberIdsCount: memberIds.size,
-         assignmentIdsCount: assignmentIds.size,
-         hasEmployeeBrandData,
-         hasAssignmentData,
-         willSkipFilter: !hasEmployeeBrandData && !hasAssignmentData,
-         employeesBeforeFilter: filtered.length,
-       });
-
        // Skip filtering entirely if we have no brand relationship data at all
        // This allows users to see all employees and create assignments
        if (!hasEmployeeBrandData && !hasAssignmentData) {
          // No filtering - show all employees
-         console.log('[Timeline Filter] Skipping brand filter - no relationship data available');
        } else {
          filtered = filtered.filter((emp) => {
            // When employeeBrandAssignments is available, require either membership OR assignment
@@ -287,9 +265,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
            // When employeeBrandAssignments is NOT available (MySQL API), only filter by assignment
            // This ensures employees with project assignments in the brand are still shown
            return assignmentIds.has(emp.id);
-         });
-         console.log('[Timeline Filter] After brand filter:', {
-           employeesAfterFilter: filtered.length,
          });
        }
     }
@@ -329,14 +304,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         return false;
       });
     }
-
-    console.log('[Timeline Filter] Final result:', {
-      originalEmployeesCount: employees.length,
-      filteredEmployeesCount: filtered.length,
-      brandId,
-      department,
-      searchQuery,
-    });
 
     return filtered;
   }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);

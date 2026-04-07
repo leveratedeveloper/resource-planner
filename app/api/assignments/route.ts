@@ -48,6 +48,7 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const status = searchParams.get('status');
+    const projectIds = searchParams.getAll('projectIds');
 
     // For restricted access, force filter to current user's employee UUID
     let effectiveEmployeeId = employeeId;
@@ -60,6 +61,7 @@ export async function GET(request: Request) {
     const assignments = await getAssignments({
       employee_uuid: effectiveEmployeeId || undefined,
       project_uuid: projectId || undefined,
+      project_uuids: projectIds.length > 0 ? projectIds : undefined,
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       status: status || undefined,

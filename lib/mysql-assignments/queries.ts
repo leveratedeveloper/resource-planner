@@ -69,6 +69,7 @@ async function validateAssignmentData(data: {
 export async function getAssignments(filters?: {
   employee_uuid?: string;
   project_uuid?: string;
+  project_uuids?: string[];
   start_date?: string;
   end_date?: string;
   status?: string;
@@ -83,6 +84,12 @@ export async function getAssignments(filters?: {
   if (filters?.project_uuid) {
     query += ' AND project_uuid = ?';
     params.push(filters.project_uuid);
+  }
+  if (filters?.project_uuids && filters.project_uuids.length > 0) {
+    // Filter by multiple project UUIDs (for brand filtering)
+    const placeholders = filters.project_uuids.map(() => '?').join(',');
+    query += ` AND project_uuid IN (${placeholders})`;
+    params.push(...filters.project_uuids);
   }
   if (filters?.start_date) {
     query += ' AND end_date >= ?';
