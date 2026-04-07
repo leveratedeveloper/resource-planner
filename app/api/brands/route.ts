@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
 
+// Simple in-memory cache for brands data
+let brandsCache: {
+  data: any[];
+  timestamp: number;
+} | null = null;
+
+const CACHE_TTL = 1 * 60 * 1000; // 1 minute (faster refresh, minimal performance impact)
+
 export async function GET(request: Request) {
   try {
     // Get session and check authentication
@@ -17,6 +25,20 @@ export async function GET(request: Request) {
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
+
+    // Only use cache for first page without search
+    const useCache = !search && (searchParams.get("offset") || "0") === "0";
+
+    // Check cache
+    if (useCache && brandsCache && (Date.now() - brandsCache.timestamp) < CACHE_TTL) {
+      console.log('[Brands API] Returning cached data');
+      return NextResponse.json({
+        success: true,
+        data: brandsCache.data,
+        total: brandsCache.data.length,
+        hasMore: false,
+      });
+    }
 
     // Get API client with session token
     const client = getMySqlApiClient(async () => session.access_token);
@@ -262,6 +284,15 @@ export async function GET(request: Request) {
     });
 
     console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map((b: any) => ({ id: b.id, name: b.name, original: mergedBrands.find((mb: any) => mb.brand_name === b.name)?.id || mergedBrands.find((mb: any) => mb.brand_name === b.name)?.brand_id })));
+
+    // Store in cache (only first page, no search)
+    if (useCache) {
+      brandsCache = {
+        data: transformedBrands,
+        timestamp: Date.now(),
+      };
+      console.log('[Brands API] Cached', transformedBrands.length, 'brands');
+    }
 
     return NextResponse.json({
       success: response.success ?? true,
