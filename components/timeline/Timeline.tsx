@@ -7,7 +7,7 @@ import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays, startOfDay } from "date-fns";
+import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays, startOfDay, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -400,18 +400,21 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
             {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
               const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+              const today = isToday(day);
 
               return (
                 <div
                   key={day.toISOString()}
                   className={cn(
-                    "border-r p-2 text-center text-sm shrink-0",
-                    isWeekend && !isWeekView ? "bg-muted/50" : "bg-background"
+                    "border-r p-2 text-center text-sm shrink-0 relative",
+                    isWeekend && !isWeekView ? "bg-muted/50" : "bg-background",
+                    today && "border-b-2 border-b-primary bg-muted/30"
                   )}
                   style={{ width: `${cellWidth}px` }}
                   data-testid="timeline-day-cell"
                   data-date={format(day, "yyyy-MM-dd")}
                   data-weekend={String(isWeekend)}
+                  data-today={String(today)}
                 >
                   {isWeekView ? (
                     <div className="flex flex-col">
