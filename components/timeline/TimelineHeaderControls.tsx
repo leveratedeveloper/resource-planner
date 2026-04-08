@@ -105,7 +105,9 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
             </Button>
           </div>
           <span className="font-medium text-sm min-w-[140px]">
-            {viewMode === "year" ? format(currentDate, "yyyy") : format(currentDate, "MMMM yyyy")}
+            {viewMode === "year" || viewMode === "quarter" || viewMode === "halfYear"
+              ? format(currentDate, "yyyy")
+              : format(currentDate, "MMMM yyyy")}
           </span>
         </div>
 
@@ -173,8 +175,8 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
           </Button>
         </div>
 
-        {/* Right: Weekend Toggle (only for week and month views) */}
-        {(viewMode === "week" || viewMode === "month") ? (
+        {/* Right: Weekend Toggle (only for week view) */}
+        {viewMode === "week" ? (
           <div className="flex items-center gap-2">
             <Button
               variant={showWeekends ? "default" : "outline"}

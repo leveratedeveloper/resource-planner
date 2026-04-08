@@ -202,8 +202,8 @@ export const FilterBar = React.memo<FilterBarProps>(({
           </SelectContent>
         </Select>
 
-        {/* More Dropdown with Category, Status, Clear All */}
-        <DropdownMenu>
+        {/* More Dropdown with Category, Status, Clear All - HIDDEN */}
+        {/* <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" data-testid="filter-more-trigger">
               More
@@ -211,7 +211,7 @@ export const FilterBar = React.memo<FilterBarProps>(({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[200px]">
-            {/* Category Filter */}
+            {/* Category Filter *\/}
             <div className="px-2 py-1.5">
               <label className="text-xs font-medium text-muted-foreground">Category: {category || "All"}</label>
             </div>
@@ -231,7 +231,7 @@ export const FilterBar = React.memo<FilterBarProps>(({
 
             <DropdownMenuSeparator />
 
-            {/* Status Filter */}
+            {/* Status Filter *\/}
             <div className="px-2 py-1.5">
               <label className="text-xs font-medium text-muted-foreground">Status: {status || "All"}</label>
             </div>
@@ -251,7 +251,7 @@ export const FilterBar = React.memo<FilterBarProps>(({
 
             <DropdownMenuSeparator />
 
-            {/* Clear All Filters */}
+            {/* Clear All Filters *\/}
             <DropdownMenuItem
               onClick={() => {
                 onProjectChange(null);
@@ -265,7 +265,7 @@ export const FilterBar = React.memo<FilterBarProps>(({
               Clear Assignment Filters
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu> */}
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
@@ -282,10 +282,12 @@ export const FilterBar = React.memo<FilterBarProps>(({
           <Icon icon="lucide:brain" className="mr-2 h-4 w-4" />
           AI Insights
         </Button>
-        <Button onClick={onOpenSetup} variant="outline" data-testid="open-setup-button">
-          <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
-          Setup / Manage Brands
-        </Button>
+        {session?.access.level === 'full' && (
+          <Button onClick={onOpenSetup} variant="outline" data-testid="open-setup-button">
+            <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
+            Setup / Manage Brands
+          </Button>
+        )}
 
         {/* User Menu */}
         {session && (

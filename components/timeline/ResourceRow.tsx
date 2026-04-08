@@ -76,13 +76,13 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
 
   const getDaysToCheck = () => {
     if (!isWeekView) return [startOfDay(new Date(day))];
-    const weekDays: Date[] = [];
+    // Include all 7 days in week view (not just weekdays)
+    const allDays: Date[] = [];
     const weekStart = startOfDay(new Date(day));
-    for (let i = 0; i < 5; i++) {
-      const d = addDays(weekStart, i);
-      if (d.getDay() !== 0 && d.getDay() !== 6) weekDays.push(d);
+    for (let i = 0; i < 7; i++) {
+      allDays.push(addDays(weekStart, i));
     }
-    return weekDays;
+    return allDays;
   };
 
   const daysToCheck = getDaysToCheck();
@@ -90,15 +90,12 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   // Hitung total jam untuk PLAN dan ACTUAL
   let totalPlanHours = 0;
   let totalActualHours = 0;
-  let workingDaysCount = 0;
+  let daysWithScheduleCount = 0; // Count days that have schedule (including weekends)
 
   for (const currentDay of daysToCheck) {
     const dayOfWeek = currentDay.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
 
-    workingDaysCount++;
-
-    // Hitung Plan
+    // Hitung Plan hours untuk hari ini (termasuk weekend)
     const dayPlanHours = assignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
       if (assignment.employeeId !== resource.id) return total;
       const assignStart = startOfDay(new Date(assignment.startDate));
@@ -108,11 +105,9 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
       }
       return total;
     }, 0);
-    totalPlanHours += dayPlanHours;
 
-    // Hitung Actual
+    // Hitung Actual hours untuk hari ini (termasuk weekend)
     const dayActualHours = actualAssignments.filter(a => !a.isTimeOff).reduce((total, assignment) => {
-      // Perhatikan: di ActualAssignment biasanya menggunakan employeeUuid
       if (assignment.employeeUuid && assignment.employeeUuid !== resource.id) return total;
       const assignStart = startOfDay(new Date(assignment.startDate));
       const assignEnd = startOfDay(new Date(assignment.endDate));
@@ -121,11 +116,17 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
       }
       return total;
     }, 0);
-    totalActualHours += dayActualHours;
+
+    // Only count this day if it has schedule (plan or actual) OR it's a weekday
+    if (dayPlanHours > 0 || dayActualHours > 0 || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
+      daysWithScheduleCount++;
+      totalPlanHours += dayPlanHours;
+      totalActualHours += dayActualHours;
+    }
   }
 
-  const dailyPlanHours = workingDaysCount > 0 ? totalPlanHours / workingDaysCount : 0;
-  const dailyActualHours = workingDaysCount > 0 ? totalActualHours / workingDaysCount : 0;
+  const dailyPlanHours = daysWithScheduleCount > 0 ? totalPlanHours / daysWithScheduleCount : 0;
+  const dailyActualHours = daysWithScheduleCount > 0 ? totalActualHours / daysWithScheduleCount : 0;
 
   // Cek Time Off (dari data plan assignment)
   const hasTimeOff = daysToCheck.some(currentDay =>

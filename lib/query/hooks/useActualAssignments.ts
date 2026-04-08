@@ -197,11 +197,7 @@ export function useCreateActualAssignment() {
           );
         }
       );
-      toast({
-        title: "Created successfully",
-        description: "Actual assignment has been created",
-        variant: "success",
-      });
+      // Removed success toast - no longer needed
     },
 
     // Show error toast on failure
@@ -288,11 +284,7 @@ export function useUpdateActualAssignment() {
         if (!old) return [data];
         return old.map((a) => (a.uuid === data.uuid ? data : a));
       });
-      toast({
-        title: "Saved successfully",
-        description: "Actual assignment has been updated",
-        variant: "success",
-      });
+      // Removed success toast - no longer needed
     },
 
     // Invalidate queries to ensure fresh data

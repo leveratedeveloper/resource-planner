@@ -7,7 +7,7 @@ import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays, startOfDay, isToday } from "date-fns";
+import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -94,48 +94,49 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         return eachDayOfInterval({ start: weekStart, end: weekEnd });
       }
       case "month": {
-        // Show full month grid (from 1st to last day of month)
+        // Show weeks in the month (Mondays only)
         const monthStart = startOfMonth(currentDate);
         const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
-        return eachDayOfInterval({ start: monthStart, end: monthEnd });
+        return eachWeekOfInterval(
+          { start: monthStart, end: monthEnd },
+          { weekStartsOn: 1 }
+        );
       }
       case "quarter": {
-        // Show 13 weeks (Mondays only)
-        const endDate = addWeeks(currentDate, 12);
-        return eachWeekOfInterval(
-          { start: currentDate, end: endDate },
-          { weekStartsOn: 1 }
-        );
+        // Show calendar quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
+        const currentMonth = currentDate.getMonth();
+        const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+        const quarterStart = new Date(currentDate.getFullYear(), quarterStartMonth, 1);
+        const quarterEnd = new Date(currentDate.getFullYear(), quarterStartMonth + 2, 1);
+        return eachMonthOfInterval({ start: quarterStart, end: quarterEnd });
       }
       case "halfYear": {
-        // Show 26 weeks (Mondays only)
-        const endDate = addWeeks(currentDate, 25);
-        return eachWeekOfInterval(
-          { start: currentDate, end: endDate },
-          { weekStartsOn: 1 }
-        );
+        // Show calendar half year (H1: Jan-Jun, H2: Jul-Dec)
+        const currentMonth = currentDate.getMonth();
+        const halfYearStartMonth = currentMonth < 6 ? 0 : 6;
+        const halfYearStart = new Date(currentDate.getFullYear(), halfYearStartMonth, 1);
+        const halfYearEnd = new Date(currentDate.getFullYear(), halfYearStartMonth + 5, 1);
+        return eachMonthOfInterval({ start: halfYearStart, end: halfYearEnd });
       }
       case "year": {
-        // Show 52 weeks (Mondays only)
-        const endDate = addWeeks(currentDate, 51);
-        return eachWeekOfInterval(
-          { start: currentDate, end: endDate },
-          { weekStartsOn: 1 }
-        );
+        // Show full calendar year (Jan-Dec)
+        const yearStart = new Date(currentDate.getFullYear(), 0, 1);
+        const yearEnd = new Date(currentDate.getFullYear(), 11, 1);
+        return eachMonthOfInterval({ start: yearStart, end: yearEnd });
       }
       default:
         return [];
     }
   }, [currentDate, viewMode]);
 
-  // Filter out weekends if needed (only for week and month views)
+  // Filter out weekends if needed (only for week view)
   const days = useMemo(() => {
-    // For quarter, halfYear, and year views, we're already showing weeks (Mondays only)
-    if (viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year") {
+    // For month, quarter, halfYear, and year views, we're showing weeks/months - no weekend filtering
+    if (viewMode === "month" || viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year") {
       return allDays;
     }
 
-    // For week and month views, apply weekend filter if needed
+    // For week view, apply weekend filter if needed
     if (showWeekends) return allDays;
     return allDays.filter(day => {
       const dayOfWeek = day.getDay();
@@ -154,8 +155,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     return calculatedWidth;
   }, [days.length, containerWidth]);
 
-  // Determine if we're in week view mode (where each cell = 1 week)
-  const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+  // Determine if we're in week view mode (where each cell = 1 week/month)
+  const isWeekView = viewMode === "month" || viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
   // PERFORMANCE: Calculate date range for assignments API filtering
   // This reduces data transfer by ~80% for timeline views
@@ -399,7 +400,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
             {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+              const isMonthView = viewMode === "month";
+              const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
               const today = isToday(day);
 
               return (
@@ -407,7 +409,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                   key={day.toISOString()}
                   className={cn(
                     "border-r p-2 text-center text-sm shrink-0 relative",
-                    isWeekend && !isWeekView ? "bg-muted/50" : "bg-background",
+                    isWeekend && !isMonthRangeView ? "bg-muted/50" : "bg-background",
                     today && "border-b-2 border-b-primary bg-muted/30"
                   )}
                   style={{ width: `${cellWidth}px` }}
@@ -416,10 +418,13 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                   data-weekend={String(isWeekend)}
                   data-today={String(today)}
                 >
-                  {isWeekView ? (
-                    <div className="flex flex-col">
-                      <div className="font-semibold">{format(day, "MMM")}</div>
-                      <div className="text-muted-foreground">{format(day, "d")}</div>
+                  {isMonthView ? (
+                    <div className="flex flex-col justify-center">
+                      <div className="font-semibold">{format(day, "d MMM")} - {format(endOfWeek(day, { weekStartsOn: 1 }), "d MMM")}</div>
+                    </div>
+                  ) : isMonthRangeView ? (
+                    <div className="flex flex-col justify-center">
+                      <div className="font-semibold">{format(day, "MMMM")}</div>
                     </div>
                   ) : (
                     <div className="flex flex-col">
