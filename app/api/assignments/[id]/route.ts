@@ -15,6 +15,7 @@ function transformMySqlAssignmentToFrontend(mysqlAssignment: any) {
     startDate: mysqlAssignment.start_date,
     endDate: mysqlAssignment.end_date,
     hoursPerDay: mysqlAssignment.hours_per_day,
+    totalHours: mysqlAssignment.total_hours,
     allocationPercentage: mysqlAssignment.allocation_percentage,
     isTimeOff: mysqlAssignment.is_time_off,
     timeOffTypeId: mysqlAssignment.time_off_type_uuid,
@@ -96,6 +97,7 @@ export async function PUT(
       start_date: string;
       end_date: string;
       hours_per_day: string | number;
+      total_hours: number;
       allocation_percentage: number;
       is_time_off: boolean;
       time_off_type_uuid: string;
@@ -108,6 +110,7 @@ export async function PUT(
       ...(body.startDate !== undefined && { start_date: body.startDate }),
       ...(body.endDate !== undefined && { end_date: body.endDate }),
       ...(body.hoursPerDay !== undefined && { hours_per_day: body.hoursPerDay }),
+      ...(body.totalHours !== undefined && { total_hours: body.totalHours }),
       ...(body.allocationPercentage !== undefined && { allocation_percentage: body.allocationPercentage }),
       ...(body.isTimeOff !== undefined && { is_time_off: body.isTimeOff }),
       ...(body.timeOffTypeId !== undefined && { time_off_type_uuid: body.timeOffTypeId }),

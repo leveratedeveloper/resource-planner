@@ -10,6 +10,7 @@ export interface Assignment {
   startDate: string;
   endDate: string;
   hoursPerDay: string;
+  totalHours: number | null;
   allocationPercentage: string | null;
   isTimeOff: boolean;
   timeOffTypeId: string | null;
@@ -54,6 +55,7 @@ export type NewAssignment = Omit<
   | "employee"
   | "project"
   | "createdBy"
+  | "totalHours"
 >;
 
 // API Functions

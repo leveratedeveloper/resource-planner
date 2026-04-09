@@ -12,6 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "migrate:mysql-to-supabase": "tsx scripts/migrate-mysql-to-supabase.ts",
+    "migration:add-total-hours": "tsx scripts/run-migration-add-total-hours.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

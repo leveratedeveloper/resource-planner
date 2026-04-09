@@ -11,6 +11,7 @@ const ALLOWED_UPDATE_COLUMNS = [
   'start_date',
   'end_date',
   'hours_per_day',
+  'total_hours',
   'is_time_off',
   'category',
   'is_billable',
@@ -137,6 +138,7 @@ export async function createAssignment(data: {
   start_date: string;
   end_date: string;
   hours_per_day?: string | number;
+  total_hours?: number | null;
   allocation_percentage?: number | null;
   is_time_off?: boolean;
   time_off_type_uuid?: string | null;
@@ -150,12 +152,20 @@ export async function createAssignment(data: {
   // TODO: Add proper authentication or use mysql-bridge for validation
 
   const uuid = randomUUID();
+
+  // Calculate total_hours if not provided
+  const hoursPerDay = parseFloat(String(data.hours_per_day || '8.00'));
+  const startDate = new Date(data.start_date);
+  const endDate = new Date(data.end_date);
+  const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const calculatedTotalHours = data.total_hours ?? (hoursPerDay * daysDiff);
+
   const query = `
     INSERT INTO assignments (
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
-      hours_per_day, allocation_percentage, is_time_off, time_off_type_uuid,
+      hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
       category, is_billable, status, note, created_by_uuid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   await assignmentsDb.execute(query, [
@@ -166,6 +176,7 @@ export async function createAssignment(data: {
     data.start_date,
     data.end_date,
     data.hours_per_day || '8.00',
+    calculatedTotalHours,
     data.allocation_percentage || null,
     data.is_time_off || false,
     data.time_off_type_uuid || null,
@@ -188,6 +199,7 @@ export async function updateAssignment(
     start_date: string;
     end_date: string;
     hours_per_day: string | number;
+    total_hours: number;
     allocation_percentage: number;
     is_time_off: boolean;
     time_off_type_uuid: string;
@@ -207,6 +219,20 @@ export async function updateAssignment(
       setClause.push(`${key} = ?`);
       params.push(value);
     }
+  }
+
+  // Auto-calculate total_hours if start_date, end_date, or hours_per_day changed
+  if (data.start_date || data.end_date || data.hours_per_day) {
+    // Get current assignment to calculate total_hours
+    const current = await getAssignment(uuid);
+    const startDate = new Date(data.start_date || current.start_date);
+    const endDate = new Date(data.end_date || current.end_date);
+    const hoursPerDay = parseFloat(String(data.hours_per_day || current.hours_per_day));
+    const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const calculatedTotalHours = hoursPerDay * daysDiff;
+
+    setClause.push(`total_hours = ?`);
+    params.push(calculatedTotalHours);
   }
 
   if (setClause.length === 0) {
@@ -275,6 +301,7 @@ const ALLOWED_ACTUAL_UPDATE_COLUMNS = [
   'start_date',
   'end_date',
   'hours_per_day',
+  'total_hours',
   'is_time_off',
   'category',
   'is_billable',
@@ -350,6 +377,7 @@ export async function createActualAssignment(data: {
   start_date: string;
   end_date: string;
   hours_per_day?: string | number;
+  total_hours?: number | null;
   allocation_percentage?: number | null;
   is_time_off?: boolean;
   time_off_type_uuid?: string | null;
@@ -360,12 +388,20 @@ export async function createActualAssignment(data: {
   created_by_uuid?: string | null;
 }) {
   const uuid = randomUUID();
+
+  // Calculate total_hours if not provided
+  const hoursPerDay = parseFloat(String(data.hours_per_day || '8.00'));
+  const startDate = new Date(data.start_date);
+  const endDate = new Date(data.end_date);
+  const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const calculatedTotalHours = data.total_hours ?? (hoursPerDay * daysDiff);
+
   const query = `
     INSERT INTO actual (
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
-      hours_per_day, allocation_percentage, is_time_off, time_off_type_uuid,
+      hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
       category, is_billable, status, note, created_by_uuid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   await assignmentsDb.execute(query, [
@@ -376,6 +412,7 @@ export async function createActualAssignment(data: {
     data.start_date,
     data.end_date,
     data.hours_per_day || '8.00',
+    calculatedTotalHours,
     data.allocation_percentage || null,
     data.is_time_off || false,
     data.time_off_type_uuid || null,
@@ -399,6 +436,7 @@ export async function updateActualAssignment(
     start_date: string;
     end_date: string;
     hours_per_day: string | number;
+    total_hours: number;
     allocation_percentage: number;
     is_time_off: boolean;
     time_off_type_uuid: string;
@@ -419,6 +457,20 @@ export async function updateActualAssignment(
       setClause.push(`${key} = ?`);
       params.push(value);
     }
+  }
+
+  // Auto-calculate total_hours if start_date, end_date, or hours_per_day changed
+  if (data.start_date || data.end_date || data.hours_per_day) {
+    // Get current assignment to calculate total_hours
+    const current = await getActual(uuid);
+    const startDate = new Date(data.start_date || current.start_date);
+    const endDate = new Date(data.end_date || current.end_date);
+    const hoursPerDay = parseFloat(String(data.hours_per_day || current.hours_per_day));
+    const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const calculatedTotalHours = hoursPerDay * daysDiff;
+
+    setClause.push(`total_hours = ?`);
+    params.push(calculatedTotalHours);
   }
 
   if (setClause.length === 0) {

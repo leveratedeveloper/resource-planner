@@ -94,13 +94,28 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         return eachDayOfInterval({ start: weekStart, end: weekEnd });
       }
       case "month": {
-        // Show weeks in the month (Mondays only)
+        // Show weeks in the month with proper week boundaries
         const monthStart = startOfMonth(currentDate);
         const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
-        return eachWeekOfInterval(
-          { start: monthStart, end: monthEnd },
-          { weekStartsOn: 1 }
-        );
+
+        const weeklyRanges: Date[] = [];
+
+        // First week: from day 1 to first Sunday
+        const dayOfWeek = monthStart.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+        weeklyRanges.push(monthStart); // First column starts from day 1
+
+        // Calculate remaining weeks (Monday to Sunday)
+        let currentMonday = addDays(monthStart, daysUntilSunday + 1); // Day after first Sunday
+
+        while (currentMonday <= monthEnd) {
+          weeklyRanges.push(currentMonday);
+
+          // Move to next Monday
+          currentMonday = addDays(currentMonday, 7);
+        }
+
+        return weeklyRanges;
       }
       case "quarter": {
         // Show calendar quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
@@ -160,18 +175,12 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   // PERFORMANCE: Calculate date range for assignments API filtering
   // This reduces data transfer by ~80% for timeline views
+  // NOTE: We fetch ALL assignments for the organization to show all projects in all views
   const assignmentDateRange = useMemo(() => {
-    if (days.length === 0) return undefined;
-
-    // Add buffer before/after visible range for assignments that may extend into view
-    const startDate = startOfDay(days[0]);
-    const endDate = startOfDay(days[days.length - 1]);
-
-    return {
-      startDate: format(startDate, 'yyyy-MM-dd'),
-      endDate: format(endDate, 'yyyy-MM-dd'),
-    };
-  }, [days]);
+    // Return undefined to fetch ALL assignments (no date filter)
+    // This ensures all projects assigned to the organization appear in all views
+    return undefined;
+  }, []);
 
   // Fetch assignments with date filtering for display
   const { data: dateFilteredAssignments = [] } = useAssignments(assignmentDateRange);
@@ -398,19 +407,51 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           aria-label="Timeline day headers"
         >
           <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day) => {
+            {days.map((day, index) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
               const isMonthView = viewMode === "month";
               const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
               const today = isToday(day);
 
+              // For Month view, calculate end date based on position
+              let monthViewEndDate = day;
+              if (isMonthView) {
+                const monthStart = startOfMonth(currentDate);
+                const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
+
+                // First column: from day 1 to first Sunday
+                if (index === 0) {
+                  const dayOfWeek = monthStart.getDay();
+                  const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+                  monthViewEndDate = addDays(day, daysUntilSunday);
+                }
+                // Last column: from last Monday to last day of month
+                else if (index === days.length - 1) {
+                  monthViewEndDate = monthEnd;
+                }
+                // Middle columns: Monday to Sunday (7 days)
+                else {
+                  monthViewEndDate = addDays(day, 6);
+                }
+              }
+
+              // For Month view, check if today is in this week column
+              const isCurrentWeek = isMonthView && (() => {
+                const todayDate = new Date();
+                const todayStart = startOfDay(todayDate);
+                const weekStart = startOfDay(day);
+                const weekEnd = startOfDay(monthViewEndDate);
+                return todayStart >= weekStart && todayStart <= weekEnd;
+              })();
+
               return (
                 <div
                   key={day.toISOString()}
                   className={cn(
-                    "border-r p-2 text-center text-sm shrink-0 relative",
+                    "border-r text-center text-sm shrink-0 relative",
+                    isMonthView || isMonthRangeView ? "p-4" : "p-2",
                     isWeekend && !isMonthRangeView ? "bg-muted/50" : "bg-background",
-                    today && "border-b-2 border-b-primary bg-muted/30"
+                    (today || isCurrentWeek) && "border-b-2 border-b-primary bg-muted/30"
                   )}
                   style={{ width: `${cellWidth}px` }}
                   data-testid="timeline-day-cell"
@@ -420,7 +461,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                 >
                   {isMonthView ? (
                     <div className="flex flex-col justify-center">
-                      <div className="font-semibold">{format(day, "d MMM")} - {format(endOfWeek(day, { weekStartsOn: 1 }), "d MMM")}</div>
+                      <div className="font-semibold">{format(day, "EEE d")} - {format(monthViewEndDate, "EEE d")}</div>
                     </div>
                   ) : isMonthRangeView ? (
                     <div className="flex flex-col justify-center">
@@ -483,6 +524,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
                   assignments={assignmentsByEmployee.get(employee.id) || []}
+                  viewMode={viewMode}
                 />
               ))
           )}

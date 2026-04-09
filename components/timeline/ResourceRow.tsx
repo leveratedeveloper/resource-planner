@@ -4,10 +4,11 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { Resource, AssignmentCategory } from "@/types";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
-import { differenceInDays, isWithinInterval, startOfDay, addDays, format } from "date-fns";
+import { differenceInDays, isWithinInterval, startOfDay, addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useActualAssignments, useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
+import type { Project } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useQueryClient } from "@tanstack/react-query";
 import { AssignmentBlock } from "./AssignmentBlock";
@@ -15,6 +16,8 @@ import { ActualAssignmentBlock } from "./ActualAssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
 import { AssignmentPopover } from "./AssignmentPopover";
 import { ActualAssignmentPopover } from "./ActualAssignmentPopover";
+import { MonthlyAllocationModal } from "./MonthlyAllocationModal";
+import { MonthlyAllocationConfirmation, type MonthlyAllocationData } from "./MonthlyAllocationConfirmation";
 import { Icon } from "@iconify/react";
 
 // Component for grouped actual assignments is no longer needed
@@ -40,6 +43,7 @@ interface ResourceRowProps {
   cellWidth?: number;
   isWeekView?: boolean;
   assignments: Assignment[]; // Pre-filtered assignments for this employee
+  viewMode?: 'week' | 'month' | 'quarter' | 'halfYear' | 'year';
 }
 
 // Props for AllocationCell
@@ -50,6 +54,7 @@ interface AllocationCellProps {
   actualAssignments: ActualAssignment[];
   cellWidth: number;
   isWeekView?: boolean;
+  isMonthRangeView?: boolean; // true for Quarter/HalfYear/Year view (monthly columns)
 }
 
 // Helper function to safely parse hours - returns 0 for invalid values
@@ -70,13 +75,33 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   assignments,
   actualAssignments = [], // Default array kosong
   cellWidth,
-  isWeekView = false
+  isWeekView = false,
+  isMonthRangeView = false
 }) {
   const dailyCapacity = resource.capacity / WORK_DAYS_PER_WEEK;
+  const weeklyCapacity = 40; // 8 hours x 5 days = 40 hours per week
+  // Monthly capacity: ~21-23 working days per month (varies by month)
+  // We'll calculate actual working days per month
 
   const getDaysToCheck = () => {
     if (!isWeekView) return [startOfDay(new Date(day))];
-    // Include all 7 days in week view (not just weekdays)
+
+    if (isMonthRangeView) {
+      // For Quarter/HalfYear/Year view: calculate all days in the month
+      const monthStart = startOfDay(new Date(day));
+      // Get first day of next month, then subtract 1 day to get last day of current month
+      const monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+
+      const allDays: Date[] = [];
+      let checkDate = new Date(monthStart);
+      while (checkDate <= monthEnd) {
+        allDays.push(startOfDay(new Date(checkDate)));
+        checkDate.setDate(checkDate.getDate() + 1);
+      }
+      return allDays;
+    }
+
+    // For Month view: Include all 7 days in week view (not just weekdays)
     const allDays: Date[] = [];
     const weekStart = startOfDay(new Date(day));
     for (let i = 0; i < 7; i++) {
@@ -125,11 +150,23 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     }
   }
 
-  const dailyPlanHours = daysWithScheduleCount > 0 ? totalPlanHours / daysWithScheduleCount : 0;
-  const dailyActualHours = daysWithScheduleCount > 0 ? totalActualHours / daysWithScheduleCount : 0;
+  // Calculate capacity based on view mode
+  // - Week view (Month): use weekly capacity (40 hours for 5 working days)
+  // - MonthRange view (Quarter/HalfYear/Year): calculate monthly capacity based on actual working days
+  // - Day view (Week): use daily capacity
+  const planPct = isMonthRangeView
+    ? (daysWithScheduleCount > 0 ? (totalPlanHours / daysWithScheduleCount) / dailyCapacity : 0)
+    : isWeekView
+    ? (weeklyCapacity > 0 ? totalPlanHours / weeklyCapacity : 0)
+    : ((dailyCapacity > 0 && daysWithScheduleCount > 0) ? (totalPlanHours / daysWithScheduleCount) / dailyCapacity : 0);
+  const actualPct = isMonthRangeView
+    ? (daysWithScheduleCount > 0 ? (totalActualHours / daysWithScheduleCount) / dailyCapacity : 0)
+    : isWeekView
+    ? (weeklyCapacity > 0 ? totalActualHours / weeklyCapacity : 0)
+    : ((dailyCapacity > 0 && daysWithScheduleCount > 0) ? (totalActualHours / daysWithScheduleCount) / dailyCapacity : 0);
 
-  // Cek Time Off (dari data plan assignment)
-  const hasTimeOff = daysToCheck.some(currentDay =>
+  // Cek Time Off (dari data plan assignment) - hanya untuk day view
+  const hasTimeOff = !isWeekView && daysToCheck.some(currentDay =>
     assignments.some(a =>
       a.employeeId === resource.id &&
       a.isTimeOff &&
@@ -140,11 +177,11 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     )
   );
 
-  // Jika sedang Time Off, tampilkan 1 blok abu-abu full
+  // Jika sedang Time Off, tampilkan 1 blok abu-abu full (hanya untuk day view)
   if (hasTimeOff) {
     return (
       <div
-        className="shrink-0 h-[60px] border-r border-white/20 bg-gray-400 flex items-center justify-center text-xs font-bold text-white"
+        className="shrink-0 h-[60px] border-r border-white/20 bg-gray-600 flex items-center justify-center text-xs font-bold text-white"
         style={{ width: `${cellWidth}px` }}
       >
         Time Off
@@ -152,11 +189,16 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     );
   }
 
-  const safePlanHours = isNaN(dailyPlanHours) ? 0 : dailyPlanHours;
-  const safeActualHours = isNaN(dailyActualHours) ? 0 : dailyActualHours;
-
-  const planPct = dailyCapacity > 0 ? safePlanHours / dailyCapacity : 0;
-  const actualPct = dailyCapacity > 0 ? safeActualHours / dailyCapacity : 0;
+  const safePlanHours = isMonthRangeView
+    ? totalPlanHours
+    : isWeekView
+    ? totalPlanHours
+    : (daysWithScheduleCount > 0 ? totalPlanHours / daysWithScheduleCount : 0);
+  const safeActualHours = isMonthRangeView
+    ? totalActualHours
+    : isWeekView
+    ? totalActualHours
+    : (daysWithScheduleCount > 0 ? totalActualHours / daysWithScheduleCount : 0);
 
   // Jika KEDUANYA 0, kembalikan garis putus-putus kosong
   if (planPct <= 0 && actualPct <= 0) {
@@ -169,38 +211,32 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   }
 
   // Fungsi helper untuk mendapatkan warna (Biru untuk plan, Hijau untuk actual)
-  const getStyles = (pct: number, type: 'plan' | 'actual') => {
+  const getStyles = (pct: number, type: 'plan' | 'actual', hours: number) => {
     if (pct <= 0) return { bg: "bg-transparent", text: "text-transparent", border: "", label: "" };
 
     let bg = "";
     let text = "text-white";
     let border = "";
-    const label = `${Math.round(pct * 100)}%`;
+    // For MonthRange view, show hours instead of percentage
+    // For Month/Week view, show percentage
+    const label = isMonthRangeView
+      ? `${Math.round(hours)}h`
+      : `${Math.round(pct * 100)}%`;
 
-    if (pct <= 1) {
-      if (pct <= 0.25) {
-        bg = type === 'plan' ? "bg-blue-200" : "bg-emerald-200";
-        text = type === 'plan' ? "text-blue-900" : "text-emerald-900";
-      } else if (pct <= 0.5) {
-        bg = type === 'plan' ? "bg-blue-300" : "bg-emerald-300";
-        text = type === 'plan' ? "text-blue-900" : "text-emerald-900";
-      } else if (pct <= 0.75) {
-        bg = type === 'plan' ? "bg-blue-400" : "bg-emerald-400";
-        text = "text-white";
-      } else {
-        bg = type === 'plan' ? "bg-blue-500" : "bg-emerald-500";
-        text = "text-white";
-      }
+    // Use solid colors like day view (no shades)
+    if (type === 'plan') {
+      bg = "bg-blue-600"; // #2563eb equivalent
+      border = pct > 1 ? "border-t-2 border-red-500" : "";
     } else {
-      bg = type === 'plan' ? "bg-blue-800" : "bg-emerald-800";
-      text = "text-white";
-      border = "border-t-2 border-red-500";
+      bg = "bg-green-600"; // #16a34a equivalent
+      border = pct > 1 ? "border-t-2 border-red-500" : "";
     }
+
     return { bg, text, border, label };
   };
 
-  const planStyles = getStyles(planPct, 'plan');
-  const actualStyles = getStyles(actualPct, 'actual');
+  const planStyles = getStyles(planPct, 'plan', safePlanHours);
+  const actualStyles = getStyles(actualPct, 'actual', safeActualHours);
 
   return (
     <div
@@ -231,8 +267,294 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   );
 });
 
+// Component for weekly/monthly assignment blocks in Month/Quarter/HalfYear/Year view
+interface WeeklyAssignmentBlockProps {
+  assignment: Assignment;
+  project?: Project;
+  days: Date[];
+  cellWidth: number;
+  isActual?: boolean; // true for actual rows (green), false for plan rows (blue)
+  isMonthRangeView?: boolean; // true for Quarter/HalfYear/Year view (monthly columns)
+  monthlyTotalHours?: number; // Total hours for this month column (aggregated from all assignments)
+  onClick?: (e: React.MouseEvent) => void; // Click handler for monthly allocation edit mode
+}
 
-export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments }) => {
+const WeeklyAssignmentBlock = React.memo<WeeklyAssignmentBlockProps>(function WeeklyAssignmentBlock({
+  assignment,
+  project,
+  days,
+  cellWidth,
+  isActual = false,
+  isMonthRangeView = false,
+  monthlyTotalHours,
+  onClick
+}) {
+  const hoursPerDay = parseFloat(assignment.hoursPerDay) || 0;
+  const assignmentStart = startOfDay(new Date(assignment.startDate));
+  const assignmentEnd = startOfDay(new Date(assignment.endDate));
+
+  // Calculate blocks for each week/month that this assignment covers
+  const weeklyBlocks = useMemo(() => {
+    const blocks: Array<{ startIndex: number; endIndex: number; hours: number }> = [];
+
+    // Check if this is Month view (weekly chunks) or MonthRange view (monthly - Quarter/HalfYear/Year)
+    const isMonthView = !isMonthRangeView; // If not MonthRange, then it's Month view (weekly columns)
+
+    // For Month view, we need to know the month boundaries
+    let monthStart: Date | null = null;
+    let monthEnd: Date | null = null;
+    if (isMonthView && days.length > 0) {
+      monthStart = startOfDay(days[0]);
+      monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+    }
+
+    for (let i = 0; i < days.length; i++) {
+      const rangeStart = startOfDay(days[i]);
+      let rangeEnd: Date;
+
+      if (isMonthView && monthStart && monthEnd) {
+        // First column: from day 1 to first Sunday
+        if (i === 0) {
+          const dayOfWeek = monthStart.getDay();
+          const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+          rangeEnd = addDays(rangeStart, daysUntilSunday);
+        }
+        // Last column: from last Monday to last day of month
+        else if (i === days.length - 1) {
+          rangeEnd = monthEnd;
+        }
+        // Middle columns: Monday to Sunday (7 days)
+        else {
+          rangeEnd = addDays(rangeStart, 6);
+        }
+      } else if (isMonthRangeView) {
+        // Quarter/HalfYear/Year view: 1 month range (from 1st to last day of month)
+        rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0);
+      } else {
+        // Fallback: shouldn't happen
+        rangeEnd = addDays(rangeStart, 6);
+      }
+
+      // Calculate overlap between assignment and this range
+      const overlapStart = assignmentStart > rangeStart ? assignmentStart : rangeStart;
+      const overlapEnd = assignmentEnd < rangeEnd ? assignmentEnd : rangeEnd;
+
+      if (overlapStart <= overlapEnd) {
+        // Calculate working days in overlap period
+        let workingDays = 0;
+        let checkDate = new Date(overlapStart);
+        while (checkDate <= overlapEnd) {
+          const day = checkDate.getDay();
+          if (day !== 0 && day !== 6) workingDays++;
+          checkDate.setDate(checkDate.getDate() + 1);
+        }
+
+        const rangeHours = workingDays * hoursPerDay;
+
+        if (rangeHours > 0) {
+          blocks.push({
+            startIndex: i,
+            endIndex: i,
+            hours: rangeHours
+          });
+        }
+      }
+    }
+
+    return blocks;
+  }, [assignment, assignmentStart, assignmentEnd, days, hoursPerDay, isMonthRangeView]);
+
+  if (weeklyBlocks.length === 0) return null;
+
+  // Use same colors as day view (week view)
+  // Plan: bg-blue-600, Actual: bg-green-600
+  const bgColorClass = isActual ? "bg-green-600" : "bg-blue-600";
+
+  return (
+    <>
+      {weeklyBlocks.map((block, index) => {
+        const cellPercentage = 100 / days.length;
+        const leftOffset = block.startIndex * cellPercentage;
+        const width = cellPercentage; // 1 column wide (1 month)
+
+        // In month range view, use monthlyTotalHours if provided, otherwise use block hours
+        const displayHours = isMonthRangeView && monthlyTotalHours !== undefined
+          ? monthlyTotalHours
+          : block.hours;
+
+        return (
+          <div
+            key={`${assignment.id}-${index}`}
+            className={cn(
+              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex flex-col",
+              bgColorClass,
+              onClick && "cursor-pointer hover:opacity-90"
+            )}
+            style={{
+              left: `${leftOffset}%`,
+              width: `${width}%`,
+              top: 4,
+              height: 36, // Same as AssignmentBlock (40 - 4)
+              zIndex: 10,
+            }}
+            title={`${project?.name || "Unknown Project"}: ${Math.round(displayHours)}h`}
+            onClick={onClick}
+          >
+            <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none flex flex-col justify-center">
+              {isMonthRangeView && monthlyTotalHours !== undefined ? (
+                // Month range view: Show monthly total prominently
+                // Same layout as AssignmentBlock: project name on top, hours below
+                <>
+                  <div className="font-bold truncate text-xs">
+                    {project?.name || "Unknown Project"}
+                  </div>
+                  <div className="truncate opacity-90 text-xs">
+                    {Math.round(displayHours)}h
+                  </div>
+                </>
+              ) : (
+                // Other views: Show project name and block hours
+                <>
+                  <div className="font-bold truncate text-xs">
+                    {project?.name || "Unknown Project"}
+                  </div>
+                  <div className="truncate opacity-90 text-xs">{Math.round(displayHours)}h</div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
+// Component for weekly/monthly time off blocks in Month/Quarter/HalfYear/Year view
+interface WeeklyTimeOffBlockProps {
+  assignment: Assignment;
+  days: Date[];
+  cellWidth: number;
+  isMonthRangeView?: boolean; // true for Quarter/HalfYear/Year view (monthly columns)
+}
+
+const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTimeOffBlock({
+  assignment,
+  days,
+  cellWidth,
+  isMonthRangeView = false
+}) {
+  const hoursPerDay = parseFloat(assignment.hoursPerDay) || 8; // Default 8 hours for time off
+  const assignmentStart = startOfDay(new Date(assignment.startDate));
+  const assignmentEnd = startOfDay(new Date(assignment.endDate));
+
+  // Calculate blocks for each week/month that this time off covers
+  const weeklyBlocks = useMemo(() => {
+    const blocks: Array<{ startIndex: number; endIndex: number; hours: number }> = [];
+
+    // Check if this is Month view (weekly chunks) or MonthRange view (monthly - Quarter/HalfYear/Year)
+    const isMonthView = !isMonthRangeView; // If not MonthRange, then it's Month view (weekly columns)
+
+    // For Month view, we need to know the month boundaries
+    let monthStart: Date | null = null;
+    let monthEnd: Date | null = null;
+    if (isMonthView && days.length > 0) {
+      monthStart = startOfDay(days[0]);
+      monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+    }
+
+    for (let i = 0; i < days.length; i++) {
+      const rangeStart = startOfDay(days[i]);
+      let rangeEnd: Date;
+
+      if (isMonthView && monthStart && monthEnd) {
+        // First column: from day 1 to first Sunday
+        if (i === 0) {
+          const dayOfWeek = monthStart.getDay();
+          const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+          rangeEnd = addDays(rangeStart, daysUntilSunday);
+        }
+        // Last column: from last Monday to last day of month
+        else if (i === days.length - 1) {
+          rangeEnd = monthEnd;
+        }
+        // Middle columns: Monday to Sunday (7 days)
+        else {
+          rangeEnd = addDays(rangeStart, 6);
+        }
+      } else if (isMonthRangeView) {
+        // Quarter/HalfYear/Year view: 1 month range (from 1st to last day of month)
+        rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0);
+      } else {
+        // Fallback: shouldn't happen
+        rangeEnd = addDays(rangeStart, 6);
+      }
+
+      // Calculate overlap between assignment and this range
+      const overlapStart = assignmentStart > rangeStart ? assignmentStart : rangeStart;
+      const overlapEnd = assignmentEnd < rangeEnd ? assignmentEnd : rangeEnd;
+
+      if (overlapStart <= overlapEnd) {
+        // Calculate total days in overlap period (including weekends for time off)
+        let totalDays = 0;
+        let checkDate = new Date(overlapStart);
+        while (checkDate <= overlapEnd) {
+          totalDays++;
+          checkDate.setDate(checkDate.getDate() + 1);
+        }
+
+        const rangeHours = totalDays * hoursPerDay;
+
+        if (rangeHours > 0) {
+          blocks.push({
+            startIndex: i,
+            endIndex: i,
+            hours: rangeHours
+          });
+        }
+      }
+    }
+
+    return blocks;
+  }, [assignment, assignmentStart, assignmentEnd, days, hoursPerDay, isMonthRangeView]);
+
+  if (weeklyBlocks.length === 0) return null;
+
+  return (
+    <>
+      {weeklyBlocks.map((block, index) => {
+        const cellPercentage = 100 / days.length;
+        const leftOffset = block.startIndex * cellPercentage;
+        const width = cellPercentage; // 1 column wide
+
+        return (
+          <div
+            key={`${assignment.id}-${index}`}
+            className="absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center bg-gray-600"
+            style={{
+              left: `${leftOffset}%`,
+              width: `${width}%`,
+              top: 4,
+              height: 36, // Same as AssignmentBlock (40 - 4)
+              zIndex: 10,
+            }}
+            title={`Time Off: ${Math.round(block.hours)}h`}
+          >
+            <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none">
+              <div className="font-bold truncate text-[10px]">Time Off</div>
+              <div className="truncate opacity-90 text-[10px]">{Math.round(block.hours)}h</div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
+
+export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments, viewMode = 'week' }) => {
+  // Determine if this is MonthRange view (Quarter/HalfYear/Year)
+  // These views show monthly columns instead of weekly columns
+  const isMonthRangeView = viewMode === 'quarter' || viewMode === 'halfYear' || viewMode === 'year';
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const { data: brands = [] } = useBrands();
   const { session } = useAuth();
@@ -294,6 +616,22 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     projectId: string;
     startDate: Date;
     endDate: Date;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // Monthly allocation modal state
+  const [monthlyAllocationModal, setMonthlyAllocationModal] = useState<{
+    monthStart: Date;
+    monthEnd: Date;
+    project: Project;
+    existingAssignment?: Assignment; // For edit mode
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // Monthly allocation confirmation state
+  const [monthlyAllocationConfirm, setMonthlyAllocationConfirm] = useState<{
+    data: MonthlyAllocationData;
+    isEditMode: boolean;
     position: { x: number; y: number };
   } | null>(null);
 
@@ -406,6 +744,52 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     resourceAssignments.filter(a => a.isTimeOff),
     [resourceAssignments]
   );
+
+  // Calculate monthly totals for each project (used in MonthRange view)
+  const projectMonthlyTotals = useMemo(() => {
+    if (!isMonthRangeView) return new Map<string, number[]>();
+
+    const totalsMap = new Map<string, number[]>();
+
+    // Initialize totals array for each project
+    for (const project of visibleProjects) {
+      totalsMap.set(project.id, Array(days.length).fill(0));
+    }
+
+    // Calculate totals for each project
+    const planAssignments = resourceAssignments.filter(a => !a.isTimeOff);
+
+    for (const assignment of planAssignments) {
+      if (!assignment.totalHours || !assignment.projectId) continue;
+
+      const projectTotals = totalsMap.get(assignment.projectId);
+      if (!projectTotals) continue;
+
+      const assignStart = startOfDay(new Date(assignment.startDate));
+      const assignEnd = startOfDay(new Date(assignment.endDate));
+
+      // Find which month columns this assignment spans
+      for (let i = 0; i < days.length; i++) {
+        const monthStart = startOfMonth(days[i]);
+        const monthEnd = endOfMonth(monthStart);
+
+        // Check for overlap
+        if (assignEnd >= monthStart && assignStart <= monthEnd) {
+          // Calculate proportion of this assignment that falls in this month
+          const overlapStart = assignStart > monthStart ? assignStart : monthStart;
+          const overlapEnd = assignEnd < monthEnd ? assignEnd : monthEnd;
+          const totalDays = Math.max(1, differenceInDays(assignEnd, assignStart) + 1);
+          const overlapDays = Math.max(1, differenceInDays(overlapEnd, overlapStart) + 1);
+          const proportion = overlapDays / totalDays;
+          const hoursInMonth = assignment.totalHours * proportion;
+
+          projectTotals[i] += hoursInMonth;
+        }
+      }
+    }
+
+    return totalsMap;
+  }, [visibleProjects, days, resourceAssignments, isMonthRangeView]);
 
   // Handle drag complete - open popover
   const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date, position: { x: number; y: number }) => {
@@ -805,6 +1189,174 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     deleteActualAssignment.mutate(uuid);
   }, [deleteActualAssignment]);
 
+  // Handle monthly allocation modal open (click on project row in month range view)
+  const handleProjectRowClick = useCallback((
+    monthStart: Date,
+    monthEnd: Date,
+    project: Project,
+    clientX: number,
+    clientY: number,
+    clickedAssignment?: Assignment // Present if clicked on existing block (edit mode)
+  ) => {
+    // Only allow if row is expanded and in monthly range view
+    if (!isExpanded || !isMonthRangeView) return;
+
+    setMonthlyAllocationModal({
+      monthStart,
+      monthEnd,
+      project,
+      existingAssignment: clickedAssignment, // undefined = create mode
+      position: { x: clientX, y: clientY }
+    });
+  }, [isExpanded, isMonthRangeView]);
+
+  // Handle monthly allocation save from modal
+  const handleSaveMonthlyAllocation = useCallback((data: {
+    projectId: string;
+    totalHours: number;
+    startDate: Date;
+    endDate: Date;
+    distributions: Array<{ date: Date; hours: number }>;
+    category: AssignmentCategory;
+    isBillable: boolean;
+    note?: string;
+  }) => {
+    const { existingAssignment } = monthlyAllocationModal || {};
+    const project = projectMap.get(data.projectId);
+
+    if (!project) return;
+
+    // Show confirmation dialog
+    setMonthlyAllocationConfirm({
+      data: {
+        projectId: data.projectId,
+        projectName: project.name,
+        projectColor: project.color,
+        totalHours: data.totalHours,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        distributions: data.distributions,
+        category: data.category,
+        isBillable: data.isBillable,
+        note: data.note,
+      },
+      isEditMode: !!existingAssignment,
+      position: monthlyAllocationModal?.position || { x: 0, y: 0 },
+    });
+
+    // Store the data for confirmation
+    (window as any).__monthlyAllocationData = {
+      data,
+      existingAssignment,
+    };
+  }, [monthlyAllocationModal, projectMap]);
+
+  // Handle monthly allocation confirmation
+  const handleConfirmMonthlyAllocation = useCallback(() => {
+    const stored = (window as any).__monthlyAllocationData as {
+      data: {
+        projectId: string;
+        totalHours: number;
+        startDate: Date;
+        endDate: Date;
+        distributions: Array<{ date: Date; hours: number }>;
+        category: AssignmentCategory;
+        isBillable: boolean;
+        note?: string;
+      };
+      existingAssignment?: Assignment;
+    } | undefined;
+
+    if (!stored) return;
+
+    const { data, existingAssignment } = stored;
+    const isEditMode = !!existingAssignment;
+
+    // SAFETY CHECK: Filter out any weekend distributions before creating assignments
+    // This is a double-check to ensure absolutely no assignments are created on weekends
+    const weekdayDistributions = data.distributions.filter(({ date }) => {
+      const dayOfWeek = new Date(date).getDay();
+      // 0 = Sunday, 6 = Saturday - exclude both
+      return dayOfWeek !== 0 && dayOfWeek !== 6;
+    });
+
+    console.log('[Monthly Allocation] Filtered distributions:', {
+      original: data.distributions.length,
+      filtered: weekdayDistributions.length,
+      removed: data.distributions.length - weekdayDistributions.length
+    });
+
+    // Close confirmation first
+    setMonthlyAllocationConfirm(null);
+
+    // Find ALL assignments for this project that overlap with the new date range
+    // These need to be deleted before creating new ones
+    const newRangeStart = startOfDay(data.startDate);
+    const newRangeEnd = startOfDay(data.endDate);
+    const overlappingAssignments = resourceAssignments.filter((a) => {
+      // Skip time-off assignments
+      if (a.isTimeOff) return false;
+      // Only check assignments for the same project
+      if (a.projectId !== data.projectId) return false;
+      // Exclude the assignment being edited (if any) - already handled
+      if (isEditMode && existingAssignment && a.id === existingAssignment.id) return false;
+
+      // Check if assignment overlaps with new date range
+      const assignStart = startOfDay(new Date(a.startDate));
+      const assignEnd = startOfDay(new Date(a.endDate));
+      return assignEnd >= newRangeStart && assignStart <= newRangeEnd;
+    });
+
+    console.log('[Monthly Allocation] Deleting overlapping assignments:', {
+      projectId: data.projectId,
+      newRangeStart: newRangeStart.toISOString(),
+      newRangeEnd: newRangeEnd.toISOString(),
+      overlappingCount: overlappingAssignments.length,
+      overlappingIds: overlappingAssignments.map(a => a.id)
+    });
+
+    // Delete all overlapping assignments first
+    const deletePromises = overlappingAssignments.map((a) =>
+      new Promise<void>((resolve) => {
+        deleteAssignmentMutation.mutate(a.id, {
+          onSuccess: () => resolve(),
+          onError: () => resolve(), // Continue even if delete fails
+        });
+      })
+    );
+
+    // Wait for all deletes to complete, then create new assignments
+    Promise.all(deletePromises).then(() => {
+      console.log('[Monthly Allocation] All overlapping assignments deleted, creating new ones');
+      // Create new distributed assignments (only weekdays)
+      weekdayDistributions.forEach(({ date, hours }) => {
+        createAssignment.mutate({
+          employeeId: resource.id,
+          projectId: data.projectId,
+          taskId: null,
+          startDate: toLocalDateString(date),
+          endDate: toLocalDateString(date),
+          hoursPerDay: hours.toString(),
+          totalHours: hours,
+          allocationPercentage: null,
+          isTimeOff: false,
+          timeOffTypeId: null,
+          category: data.category,
+          isBillable: data.isBillable,
+          status: 'draft',
+          note: data.note || null,
+          createdById: null,
+        });
+      });
+    });
+
+    // Close modal
+    setMonthlyAllocationModal(null);
+
+    // Clean up stored data
+    delete (window as any).__monthlyAllocationData;
+  }, [createAssignment, deleteAssignmentMutation, resource.id, resourceAssignments]);
+
   // Collapsed row content
   if (!isExpanded) {
     return (
@@ -839,6 +1391,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               actualAssignments={actualAssignments}
               cellWidth={cellWidth}
               isWeekView={isWeekView}
+              isMonthRangeView={isMonthRangeView}
             />
           ))}
         </div>
@@ -900,7 +1453,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             <span className="text-sm text-gray-600">Time Off</span>
           </div>
           <div ref={timeOffTimelineRef} className="flex relative h-[40px]" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day, dayIndex) => (
+            {!isWeekView && days.map((day, dayIndex) => (
               <DraggableTimelineCell
                 key={day.toISOString()}
                 day={day}
@@ -921,20 +1474,34 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               />
             ))}
             {/* Time Off Assignments */}
-            {resourceAssignments.filter(a => a.isTimeOff).map((assignment) => (
-              <AssignmentBlock
-                key={assignment.id}
-                assignment={assignment}
-                project={undefined}
-                days={days}
-                resourceRowHeight={40}
-                cellWidth={cellWidth}
-                isWeekView={isWeekView}
-                onUpdate={handleUpdateAssignment}
-                onDelete={handleDeleteAssignment}
-                isUpdating={updatingAssignmentId === assignment.id}
-              />
-            ))}
+            {isWeekView ? (
+              // For Month/Quarter/HalfYear/Year view, use WeeklyTimeOffBlock
+              resourceAssignments.filter(a => a.isTimeOff).map((assignment) => (
+                <WeeklyTimeOffBlock
+                  key={assignment.id}
+                  assignment={assignment}
+                  days={days}
+                  cellWidth={cellWidth}
+                  isMonthRangeView={isMonthRangeView}
+                />
+              ))
+            ) : (
+              // For Week view (day view), use regular AssignmentBlock
+              resourceAssignments.filter(a => a.isTimeOff).map((assignment) => (
+                <AssignmentBlock
+                  key={assignment.id}
+                  assignment={assignment}
+                  project={undefined}
+                  days={days}
+                  resourceRowHeight={40}
+                  cellWidth={cellWidth}
+                  isWeekView={isWeekView}
+                  onUpdate={handleUpdateAssignment}
+                  onDelete={handleDeleteAssignment}
+                  isUpdating={updatingAssignmentId === assignment.id}
+                />
+              ))
+            )}
             {/* Drag preview overlay for Time Off */}
             {isDraggingRef.current && dragProjectIdRef.current === "" && dragStartIndex.current !== null && dragEndIndexRef.current !== null && (() => {
               const startIdx = Math.min(dragStartIndex.current, dragEndIndexRef.current);
@@ -1066,7 +1633,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                           className="flex relative"
                           style={{ width: `${days.length * cellWidth}px`, height: 40 }}
                         >
-                          {days.map((day, dayIndex) => (
+                          {!isWeekView && days.map((day, dayIndex) => (
                             <DraggableTimelineCell
                               key={day.toISOString()}
                               day={day}
@@ -1087,21 +1654,146 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             />
                           ))}
                           {/* Plan Assignments */}
-                          {planAssignments.map((assignment) => (
-                            <AssignmentBlock
-                              key={assignment.id}
-                              assignment={assignment}
-                              project={projectMap.get(assignment.projectId ?? '')}
-                              days={days}
-                              resourceRowHeight={40}
-                              cellWidth={cellWidth}
-                              isWeekView={isWeekView}
-                              onUpdate={handleUpdateAssignment}
-                              onDelete={handleDeleteAssignment}
-                              timeOffAssignments={timeOffAssignments}
-                              isUpdating={updatingAssignmentId === assignment.id}
-                            />
-                          ))}
+                          {isWeekView ? (
+                            // For Month/Quarter/HalfYear/Year view, use WeeklyAssignmentBlock
+                            <>
+                              {planAssignments.map((assignment, assignmentIndex) => {
+                                // Find which month indices this assignment covers
+                                const coveredMonthIndices: number[] = [];
+                                const assignStart = startOfDay(new Date(assignment.startDate));
+                                const assignEnd = startOfDay(new Date(assignment.endDate));
+
+                                for (let i = 0; i < days.length; i++) {
+                                  const monthStart = startOfMonth(days[i]);
+                                  const monthEnd = endOfMonth(monthStart);
+
+                                  if (assignEnd >= monthStart && assignStart <= monthEnd) {
+                                    coveredMonthIndices.push(i);
+                                  }
+                                }
+
+                                return coveredMonthIndices.map((monthIndex) => {
+                                  const monthStart = startOfMonth(days[monthIndex]);
+                                  const monthEnd = endOfMonth(monthStart);
+
+                                  // Calculate total for this month by summing hours_per_day for each working day
+                                  const monthlyTotal = (() => {
+                                    let total = 0;
+
+                                    // Iterate through each day in the month
+                                    let currentDay = new Date(monthStart);
+                                    while (currentDay <= monthEnd) {
+                                      const dayOfWeek = currentDay.getDay();
+
+                                      // Skip weekends (0 = Sunday, 6 = Saturday)
+                                      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                                        // For this working day, sum up hours from all assignments for this project
+                                        const dayHours = planAssignments
+                                          .filter(a => a.projectId === project.id && !a.isTimeOff)
+                                          .reduce((sum, a) => {
+                                            const aStart = startOfDay(new Date(a.startDate));
+                                            const aEnd = startOfDay(new Date(a.endDate));
+
+                                            // Check if this assignment covers this day
+                                            if (currentDay >= aStart && currentDay <= aEnd) {
+                                              return sum + (parseFloat(a.hoursPerDay) || 0);
+                                            }
+                                            return sum;
+                                          }, 0);
+
+                                        total += dayHours;
+                                      }
+
+                                      // Move to next day
+                                      currentDay = new Date(currentDay);
+                                      currentDay.setDate(currentDay.getDate() + 1);
+                                    }
+
+                                    return total;
+                                  })();
+
+                                  return (
+                                    <WeeklyAssignmentBlock
+                                      key={`${assignment.id}-month-${monthIndex}`}
+                                      assignment={assignment}
+                                      project={projectMap.get(assignment.projectId ?? '')}
+                                      days={days}
+                                      cellWidth={cellWidth}
+                                      isActual={false}
+                                      isMonthRangeView={isMonthRangeView}
+                                      monthlyTotalHours={Math.round(monthlyTotal * 10) / 10}
+                                      onClick={(e) => {
+                                        // Enable click on assignment blocks for monthly allocation edit mode
+                                        e.stopPropagation();
+                                        const clickedDay = days[monthIndex];
+                                        const monthStart = startOfMonth(clickedDay);
+                                        const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+                                        handleProjectRowClick(
+                                          monthStart,
+                                          monthEnd,
+                                          project,
+                                          e.clientX,
+                                          e.clientY,
+                                          assignment // Pass assignment for edit mode
+                                        );
+                                      }}
+                                    />
+                                  );
+                                });
+                              })}
+                              {/* Invisible overlay for detecting clicks on empty space */}
+                              <div
+                                className="absolute inset-0 z-0"
+                                onClick={(e) => {
+                                  // Only handle in month range view
+                                  if (!isMonthRangeView) return;
+                                  const containerRect = e.currentTarget.getBoundingClientRect();
+                                  const x = e.clientX - containerRect.left;
+                                  const dayIndex = Math.floor(x / cellWidth);
+                                  const clickedDay = days[Math.max(0, Math.min(dayIndex, days.length - 1))];
+
+                                  // Calculate month boundaries
+                                  const monthStart = startOfDay(startOfMonth(clickedDay));
+                                  const monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+
+                                  console.log('[Monthly Allocation Click]', {
+                                    clickedDay: clickedDay.toISOString(),
+                                    monthStart: monthStart.toISOString(),
+                                    monthEnd: monthEnd.toISOString(),
+                                    dayIndex,
+                                    totalDays: days.length
+                                  });
+
+                                  handleProjectRowClick(
+                                    monthStart,
+                                    monthEnd,
+                                    project,
+                                    e.clientX,
+                                    e.clientY
+                                    // No assignment = create mode
+                                  );
+                                }}
+                                style={{ pointerEvents: 'auto', cursor: 'cell' }}
+                              />
+                            </>
+                          ) : (
+                            // For Week view (day view), use regular AssignmentBlock
+                            planAssignments.map((assignment) => (
+                              <AssignmentBlock
+                                key={assignment.id}
+                                assignment={assignment}
+                                project={projectMap.get(assignment.projectId ?? '')}
+                                days={days}
+                                resourceRowHeight={40}
+                                cellWidth={cellWidth}
+                                isWeekView={isWeekView}
+                                onUpdate={handleUpdateAssignment}
+                                onDelete={handleDeleteAssignment}
+                                timeOffAssignments={timeOffAssignments}
+                                isUpdating={updatingAssignmentId === assignment.id}
+                              />
+                            ))
+                          )}
                           {/* Drag preview overlay - PLAN only */}
                           {(() => {
                             // Use refs for synchronous access
@@ -1147,7 +1839,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                         className="flex relative"
                         style={{ width: `${days.length * cellWidth}px`, height: 40 }}
                       >
-                        {days.map((day, dayIndex) => (
+                        {!isWeekView && days.map((day, dayIndex) => (
                           <DraggableTimelineCell
                             key={day.toISOString()}
                             day={day}
@@ -1168,21 +1860,109 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                           />
                         ))}
                         {/* Actual Assignments - Struktur sama dengan plan assignments */}
-                        {projectActualAssignments.map((actualAssignment) => (
-                          <ActualAssignmentBlock
-                            key={actualAssignment.uuid}
-                            assignment={actualAssignment}
-                            project={projectMap.get(actualAssignment.projectUuid ?? '')}
-                            days={days}
-                            resourceRowHeight={40}
-                            cellWidth={cellWidth}
-                            isWeekView={isWeekView}
-                            onUpdate={handleUpdateActualAssignment}
-                            onDelete={handleDeleteActualAssignment}
-                            timeOffAssignments={timeOffAssignments as any}
-                            disabled={actualAssignment.createdByUuid !== session?.employee?.uuid}
-                          />
-                        ))}
+                        {isWeekView ? (
+                          // For Month/Quarter/HalfYear/Year view, use WeeklyAssignmentBlock (convert actual to plan format)
+                          <>
+                            {projectActualAssignments.map((actualAssignment) => {
+                              // Find which month indices this assignment covers
+                              const coveredMonthIndices: number[] = [];
+                              const assignStart = startOfDay(new Date(actualAssignment.startDate));
+                              const assignEnd = startOfDay(new Date(actualAssignment.endDate));
+
+                              for (let i = 0; i < days.length; i++) {
+                                const monthStart = startOfMonth(days[i]);
+                                const monthEnd = endOfMonth(monthStart);
+
+                                if (assignEnd >= monthStart && assignStart <= monthEnd) {
+                                  coveredMonthIndices.push(i);
+                                }
+                              }
+
+                              return coveredMonthIndices.map((monthIndex) => {
+                                const monthStart = startOfMonth(days[monthIndex]);
+                                const monthEnd = endOfMonth(monthStart);
+
+                                // Calculate total for this month by summing hours_per_day for ALL days (including weekends)
+                                const monthlyTotal = (() => {
+                                  let total = 0;
+
+                                  // Iterate through each day in the month (including weekends)
+                                  let currentDay = new Date(monthStart);
+                                  while (currentDay <= monthEnd) {
+                                    // For this day, sum up hours from all actual assignments for this project
+                                    const dayHours = projectActualAssignments
+                                      .filter(a => a.projectUuid === project.id && !a.isTimeOff)
+                                      .reduce((sum, a) => {
+                                        const aStart = startOfDay(new Date(a.startDate));
+                                        const aEnd = startOfDay(new Date(a.endDate));
+
+                                        // Check if this assignment covers this day
+                                        if (currentDay >= aStart && currentDay <= aEnd) {
+                                          return sum + (parseFloat(a.hoursPerDay || '0') || 0);
+                                        }
+                                        return sum;
+                                      }, 0);
+
+                                    total += dayHours;
+
+                                    // Move to next day
+                                    currentDay = new Date(currentDay);
+                                    currentDay.setDate(currentDay.getDate() + 1);
+                                  }
+
+                                  return total;
+                                })();
+
+                                return (
+                                  <WeeklyAssignmentBlock
+                                    key={`${actualAssignment.uuid}-month-${monthIndex}`}
+                                    assignment={{
+                                      id: actualAssignment.uuid,
+                                      employeeId: actualAssignment.employeeUuid || '',
+                                      projectId: actualAssignment.projectUuid || '',
+                                      taskId: actualAssignment.taskUuid || null,
+                                      startDate: actualAssignment.startDate,
+                                      endDate: actualAssignment.endDate,
+                                      hoursPerDay: actualAssignment.hoursPerDay?.toString() ?? '0',
+                                      allocationPercentage: actualAssignment.allocationPercentage?.toString() ?? null,
+                                      isTimeOff: actualAssignment.isTimeOff,
+                                      timeOffTypeId: actualAssignment.timeOffTypeUuid,
+                                      category: actualAssignment.category as any,
+                                      isBillable: actualAssignment.isBillable,
+                                      status: actualAssignment.status as any,
+                                      note: actualAssignment.note,
+                                      createdById: actualAssignment.createdByUuid || null,
+                                      createdAt: actualAssignment.createdAt || new Date().toISOString(),
+                                      updatedAt: actualAssignment.updatedAt || new Date().toISOString(),
+                                    }}
+                                    project={projectMap.get(actualAssignment.projectUuid ?? '')}
+                                    days={days}
+                                    cellWidth={cellWidth}
+                                    isActual={true}
+                                    isMonthRangeView={isMonthRangeView}
+                                    monthlyTotalHours={Math.round(monthlyTotal * 10) / 10}
+                                  />
+                                );
+                              });
+                            })}
+                          </>
+                        ) : (
+                          projectActualAssignments.map((actualAssignment) => (
+                            <ActualAssignmentBlock
+                              key={actualAssignment.uuid}
+                              assignment={actualAssignment}
+                              project={projectMap.get(actualAssignment.projectUuid ?? '')}
+                              days={days}
+                              resourceRowHeight={40}
+                              cellWidth={cellWidth}
+                              isWeekView={isWeekView}
+                              onUpdate={handleUpdateActualAssignment}
+                              onDelete={handleDeleteActualAssignment}
+                              timeOffAssignments={timeOffAssignments as any}
+                              disabled={actualAssignment.createdByUuid !== session?.employee?.uuid}
+                            />
+                          ))
+                        )}
                         {/* Drag preview overlay for actual - ACTUAL only */}
                         {(() => {
                           // Use refs for synchronous access
@@ -1264,8 +2044,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                         return (
                           <label
                             key={p.id}
-                            // Perbesar padding (px-5 py-4) dan jarak antar elemen (gap-4)
-                            className="flex items-start gap-4 px-5 py-4 transition-colors cursor-pointer hover:bg-muted/50 border-b border-border/50 last:border-0"
+                            // Perbesar padding (px-5 py-2) dan jarak antar elemen (gap-3)
+                            className="flex items-start gap-3 px-5 py-2 transition-colors cursor-pointer hover:bg-muted/50 border-b border-border/50 last:border-0"
                           >
                             <input
                               type="checkbox"
@@ -1343,6 +2123,35 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             onClose={() => setActualPopoverData(null)}
             onSave={handleSaveActualAssignment}
             isCreating={createActualAssignment.isPending}
+          />
+        )}
+
+        {/* Monthly Allocation Modal */}
+        {monthlyAllocationModal && (
+          <MonthlyAllocationModal
+            monthStart={monthlyAllocationModal.monthStart}
+            monthEnd={monthlyAllocationModal.monthEnd}
+            resource={resource}
+            project={monthlyAllocationModal.project}
+            existingAssignment={monthlyAllocationModal.existingAssignment}
+            timeOffAssignments={timeOffAssignments}
+            position={monthlyAllocationModal.position}
+            onClose={() => setMonthlyAllocationModal(null)}
+            onSave={handleSaveMonthlyAllocation}
+          />
+        )}
+
+        {/* Monthly Allocation Confirmation */}
+        {monthlyAllocationConfirm && (
+          <MonthlyAllocationConfirmation
+            data={monthlyAllocationConfirm.data}
+            isEditMode={monthlyAllocationConfirm.isEditMode}
+            position={monthlyAllocationConfirm.position}
+            onConfirm={handleConfirmMonthlyAllocation}
+            onCancel={() => {
+              setMonthlyAllocationConfirm(null);
+              delete (window as any).__monthlyAllocationData;
+            }}
           />
         )}
       </div>
