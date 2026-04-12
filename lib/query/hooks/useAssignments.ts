@@ -136,12 +136,17 @@ async function updateAssignment({ id, ...data }: Partial<Assignment> & { id: str
 }
 
 async function deleteAssignment(id: string): Promise<void> {
+  console.log('[deleteAssignment] API call:', id);
   const response = await fetch(`/api/assignments/${id}`, {
     method: "DELETE",
   });
+  console.log('[deleteAssignment] API response:', response.status);
   if (!response.ok) {
-    throw new Error("Failed to delete assignment");
+    const errorText = await response.text();
+    console.error('[deleteAssignment] API error:', errorText);
+    throw new Error(`Failed to delete assignment: ${errorText}`);
   }
+  console.log('[deleteAssignment] Success');
 }
 
 // Hooks
@@ -224,6 +229,9 @@ export function useCreateAssignment() {
 
     // Rollback on error
     onError: (err, newAssignment, context) => {
+      console.error('[useCreateAssignment] Error creating assignment:', err);
+      console.error('[useCreateAssignment] Assignment data:', newAssignment);
+
       if (context?.previousAssignments) {
         queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
       }
@@ -243,8 +251,10 @@ export function useCreateAssignment() {
 
     // Invalidate related queries so brand-filtered views stay in sync
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.brands });
+      // Invalidate all assignments queries (including those with params)
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+      queryClient.invalidateQueries({ queryKey: queryKeys.brands });
     },
   });
 }
@@ -364,19 +374,51 @@ export function useDeleteAssignment() {
 
     // Optimistic delete - remove from cache immediately
     onMutate: async (id: string) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
+      console.log('[useDeleteAssignment] Deleting assignment:', id);
+
+      // Cancel outgoing refetches for ALL assignment queries
+      await queryClient.cancelQueries({ queryKey: ["assignments"] });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
       const previousEmployees = queryClient.getQueryData(queryKeys.employees);
 
-      // Remove from assignments cache immediately
-      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
-        if (!old) return old;
-        return old.filter((a) => a.id !== id);
+      // Get ALL query cache entries and update them individually
+      const queryCache = queryClient.getQueryCache();
+      const queries = queryCache.getAll();
+
+      console.log('[useDeleteAssignment] Found', queries.length, 'queries in cache');
+
+      let updateCount = 0;
+
+      // Update each assignment query individually
+      queries.forEach((query) => {
+        const queryKey = query.queryKey;
+        const keyString = JSON.stringify(queryKey);
+
+        // Check if this is an assignments query (queryKey[0] === 'assignments' or key starts with 'assignments')
+        if (keyString.includes('"assignments"')) {
+          console.log('[useDeleteAssignment] Updating query:', queryKey);
+
+          queryClient.setQueryData(queryKey, (old: Assignment[] | undefined) => {
+            if (!old || !Array.isArray(old)) {
+              console.log('[useDeleteAssignment] Skip - not an array or empty');
+              return old;
+            }
+            const filtered = old.filter((a) => a.id !== id);
+            updateCount++;
+            console.log('[useDeleteAssignment] Filtered:', {
+              queryKey,
+              before: old.length,
+              after: filtered.length
+            });
+            return filtered;
+          });
+        }
       });
+
+      console.log('[useDeleteAssignment] Updated', updateCount, 'assignment queries');
 
       // Remove from employees cache (nested assignments)
       queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
@@ -387,11 +429,28 @@ export function useDeleteAssignment() {
         }));
       });
 
+      // Force immediate UI update by invalidating queries without refetch
+      queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'none' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'none' });
+
       return { previousAssignments, previousEmployees };
     },
 
-    // Rollback on error
+    // Rollback on error (but not if assignment is already deleted - 404)
     onError: (err, id, context) => {
+      console.error('[useDeleteAssignment] Error deleting assignment:', err);
+
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      // If 404 or "not found", the assignment is already deleted, so don't rollback
+      if (errorMessage.includes("404") || errorMessage.toLowerCase().includes("not found")) {
+        console.log('[useDeleteAssignment] Assignment already deleted, keeping optimistic update');
+        // Force invalidate to ensure UI is in sync
+        queryClient.invalidateQueries({ queryKey: ["assignments"] });
+        return;
+      }
+
+      // Otherwise rollback on other errors
       if (context?.previousAssignments) {
         queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
       }
@@ -400,10 +459,17 @@ export function useDeleteAssignment() {
       }
     },
 
+    onSuccess: () => {
+      console.log('[useDeleteAssignment] Successfully deleted assignment');
+    },
+
     // Invalidate related queries so brand-filtered views stay in sync
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.brands });
-      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+    onSettled: async () => {
+      console.log('[useDeleteAssignment] Invalidating queries for refetch');
+      // Invalidate all assignments queries (including those with params)
+      await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
   });
 }

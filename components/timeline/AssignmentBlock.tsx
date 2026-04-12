@@ -84,12 +84,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     };
   }, []);
 
-  const startDate = startOfDay(new Date(assignment.startDate));
-  const endDate = startOfDay(new Date(assignment.endDate));
-  const timelineStart = startOfDay(days[0]);
-  const today = startOfDay(new Date());
-  const timelineEnd = startOfDay(days[days.length - 1]);
-
   const hasTimeOffOnDate = useCallback((date: Date) => {
     return timeOffAssignments.some(a =>
       isWithinInterval(startOfDay(date), {
@@ -145,6 +139,13 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   hasTimeOffInRangeRef.current = hasTimeOffInRange;
   const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
   hasTimeOffOnDateRef.current = hasTimeOffOnDate;
+
+  // Date calculations
+  const startDate = startOfDay(new Date(assignment.startDate));
+  const endDate = startOfDay(new Date(assignment.endDate));
+  const timelineStart = startOfDay(days[0]);
+  const today = startOfDay(new Date());
+  const timelineEnd = startOfDay(days[days.length - 1]);
 
   let startVisibleIdx: number;
   let endVisibleIdx: number;
@@ -583,6 +584,12 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
   }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate]);
+
+  // Check if assignment overlaps with visible timeline range
+  // If no overlap, don't render the block (prevents blocks appearing in wrong columns)
+  if (startDate > timelineEnd || endDate < timelineStart) {
+    return null;
+  }
 
   return (
     <>

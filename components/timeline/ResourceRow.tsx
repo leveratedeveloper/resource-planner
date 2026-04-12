@@ -11,6 +11,7 @@ import { useProjects } from "@/lib/query/hooks/useProjects";
 import type { Project } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/queryKeys";
 import { AssignmentBlock } from "./AssignmentBlock";
 import { ActualAssignmentBlock } from "./ActualAssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
@@ -304,34 +305,41 @@ const WeeklyAssignmentBlock = React.memo<WeeklyAssignmentBlockProps>(function We
     let monthStart: Date | null = null;
     let monthEnd: Date | null = null;
     if (isMonthView && days.length > 0) {
-      monthStart = startOfDay(days[0]);
+      // Use startOfMonth to get the actual first day of the month
+      monthStart = startOfDay(startOfMonth(days[0]));
       monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
     }
 
     for (let i = 0; i < days.length; i++) {
-      const rangeStart = startOfDay(days[i]);
+      let rangeStart: Date;
       let rangeEnd: Date;
 
       if (isMonthView && monthStart && monthEnd) {
-        // First column: from day 1 to first Sunday
+        // Use same logic as Timeline.tsx header for consistency
+        // First column: from day 1 (monthStart) to first Sunday
         if (i === 0) {
+          rangeStart = monthStart;
           const dayOfWeek = monthStart.getDay();
           const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
           rangeEnd = addDays(rangeStart, daysUntilSunday);
         }
         // Last column: from last Monday to last day of month
         else if (i === days.length - 1) {
+          rangeStart = startOfDay(days[i]);
           rangeEnd = monthEnd;
         }
         // Middle columns: Monday to Sunday (7 days)
         else {
+          rangeStart = startOfDay(days[i]);
           rangeEnd = addDays(rangeStart, 6);
         }
       } else if (isMonthRangeView) {
         // Quarter/HalfYear/Year view: 1 month range (from 1st to last day of month)
+        rangeStart = startOfDay(days[i]);
         rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0);
       } else {
         // Fallback: shouldn't happen
+        rangeStart = startOfDay(days[i]);
         rangeEnd = addDays(rangeStart, 6);
       }
 
@@ -458,34 +466,41 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
     let monthStart: Date | null = null;
     let monthEnd: Date | null = null;
     if (isMonthView && days.length > 0) {
-      monthStart = startOfDay(days[0]);
+      // Use startOfMonth to get the actual first day of the month
+      monthStart = startOfDay(startOfMonth(days[0]));
       monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
     }
 
     for (let i = 0; i < days.length; i++) {
-      const rangeStart = startOfDay(days[i]);
+      let rangeStart: Date;
       let rangeEnd: Date;
 
       if (isMonthView && monthStart && monthEnd) {
-        // First column: from day 1 to first Sunday
+        // Use same logic as Timeline.tsx header for consistency
+        // First column: from day 1 (monthStart) to first Sunday
         if (i === 0) {
+          rangeStart = monthStart;
           const dayOfWeek = monthStart.getDay();
           const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
           rangeEnd = addDays(rangeStart, daysUntilSunday);
         }
         // Last column: from last Monday to last day of month
         else if (i === days.length - 1) {
+          rangeStart = startOfDay(days[i]);
           rangeEnd = monthEnd;
         }
         // Middle columns: Monday to Sunday (7 days)
         else {
+          rangeStart = startOfDay(days[i]);
           rangeEnd = addDays(rangeStart, 6);
         }
       } else if (isMonthRangeView) {
         // Quarter/HalfYear/Year view: 1 month range (from 1st to last day of month)
+        rangeStart = startOfDay(days[i]);
         rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0);
       } else {
         // Fallback: shouldn't happen
+        rangeStart = startOfDay(days[i]);
         rangeEnd = addDays(rangeStart, 6);
       }
 
@@ -626,6 +641,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     project: Project;
     existingAssignment?: Assignment; // For edit mode
     position: { x: number; y: number };
+    monthlyTotalHours?: number; // Total hours for this month
   } | null>(null);
 
   // Monthly allocation confirmation state
@@ -1196,17 +1212,29 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     project: Project,
     clientX: number,
     clientY: number,
-    clickedAssignment?: Assignment // Present if clicked on existing block (edit mode)
+    clickedAssignment?: Assignment, // Present if clicked on existing block (edit mode)
+    monthlyTotalHours?: number // Total hours for this month
   ) => {
     // Only allow if row is expanded and in monthly range view
     if (!isExpanded || !isMonthRangeView) return;
+
+    console.log('[handleProjectRowClick] Assignment received:', clickedAssignment ? {
+      id: clickedAssignment.id,
+      projectId: clickedAssignment.projectId,
+      employeeId: clickedAssignment.employeeId,
+      startDate: clickedAssignment.startDate,
+      endDate: clickedAssignment.endDate,
+      hoursPerDay: clickedAssignment.hoursPerDay,
+      totalHours: clickedAssignment.totalHours
+    } : 'No assignment (create mode)');
 
     setMonthlyAllocationModal({
       monthStart,
       monthEnd,
       project,
       existingAssignment: clickedAssignment, // undefined = create mode
-      position: { x: clientX, y: clientY }
+      position: { x: clientX, y: clientY },
+      monthlyTotalHours
     });
   }, [isExpanded, isMonthRangeView]);
 
@@ -1272,18 +1300,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     const { data, existingAssignment } = stored;
     const isEditMode = !!existingAssignment;
 
-    // SAFETY CHECK: Filter out any weekend distributions before creating assignments
-    // This is a double-check to ensure absolutely no assignments are created on weekends
-    const weekdayDistributions = data.distributions.filter(({ date }) => {
-      const dayOfWeek = new Date(date).getDay();
-      // 0 = Sunday, 6 = Saturday - exclude both
-      return dayOfWeek !== 0 && dayOfWeek !== 6;
-    });
+    // Note: No need to filter weekends here - allocation-distributor already does that
+    // using UTC dates to avoid timezone issues
+    const weekdayDistributions = data.distributions;
 
-    console.log('[Monthly Allocation] Filtered distributions:', {
-      original: data.distributions.length,
-      filtered: weekdayDistributions.length,
-      removed: data.distributions.length - weekdayDistributions.length
+    console.log('[Monthly Allocation] Creating distributions:', {
+      count: weekdayDistributions.length
     });
 
     // Close confirmation first
@@ -1315,21 +1337,23 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       overlappingIds: overlappingAssignments.map(a => a.id)
     });
 
-    // Delete all overlapping assignments first
-    const deletePromises = overlappingAssignments.map((a) =>
-      new Promise<void>((resolve) => {
-        deleteAssignmentMutation.mutate(a.id, {
-          onSuccess: () => resolve(),
-          onError: () => resolve(), // Continue even if delete fails
-        });
-      })
-    );
+    // Delete all overlapping assignments first, then create new ones
+    // Use a counter to track when all deletes are complete
+    let completedDeletes = 0;
+    const totalDeletes = overlappingAssignments.length;
 
-    // Wait for all deletes to complete, then create new assignments
-    Promise.all(deletePromises).then(() => {
-      console.log('[Monthly Allocation] All overlapping assignments deleted, creating new ones');
-      // Create new distributed assignments (only weekdays)
-      weekdayDistributions.forEach(({ date, hours }) => {
+    if (totalDeletes === 0) {
+      // No overlapping assignments, create new ones immediately
+      console.log('[Monthly Allocation] No overlapping assignments, creating new ones');
+      let createdCount = 0;
+      let errorCount = 0;
+
+      weekdayDistributions.forEach(({ date, hours }, index) => {
+        console.log(`[Monthly Allocation] Creating assignment ${index + 1}/${weekdayDistributions.length}:`, {
+          date: toLocalDateString(date),
+          hours
+        });
+
         createAssignment.mutate({
           employeeId: resource.id,
           projectId: data.projectId,
@@ -1348,7 +1372,88 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           createdById: null,
         });
       });
-    });
+
+      console.log(`[Monthly Allocation] Initiated creation of ${weekdayDistributions.length} assignments`);
+    } else {
+      // Delete overlapping assignments using direct fetch, then create new ones
+      console.log(`[Monthly Allocation] Starting delete of ${totalDeletes} overlapping assignments...`);
+
+      // Delete all overlapping assignments in parallel using fetch
+      const deletePromises = overlappingAssignments.map(a =>
+        fetch(`/api/assignments/${a.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for auth
+        })
+        .then(response => {
+          console.log(`[Monthly Allocation] Delete response for ${a.id}:`, response.status);
+          if (!response.ok) {
+            return response.text().then(text => {
+              throw new Error(`Failed to delete ${a.id}: ${response.status} - ${text}`);
+            });
+          }
+          return response;
+        })
+        .catch(error => {
+          console.error(`[Monthly Allocation] Delete error for ${a.id}:`, error);
+          throw error;
+        })
+      );
+
+      Promise.allSettled(deletePromises).then((results) => {
+        const successful = results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
+        const failed = results.filter(r => r.status === 'rejected' || !r.value.ok).length;
+
+        console.log(`[Monthly Allocation] Delete completed: ${successful}/${totalDeletes} successful, ${failed} failed`);
+
+        // Log details of failed deletes
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(`[Monthly Allocation] Failed to delete ${overlappingAssignments[index].id}:`, result.reason);
+          } else if (!result.value.ok) {
+            console.error(`[Monthly Allocation] Failed to delete ${overlappingAssignments[index].id}:`, result.value.status, result.value.statusText);
+          }
+        });
+
+        // Force invalidate cache to ensure UI updates
+        console.log('[Monthly Allocation] Invalidating cache after delete...');
+        queryClient.invalidateQueries({ queryKey: ['assignments'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+        queryClient.refetchQueries(['assignments']).then(() => {
+          console.log('[Monthly Allocation] Cache refetch completed');
+        });
+
+        // Always create new assignments, regardless of delete results
+        console.log('[Monthly Allocation] Creating new assignments...');
+        weekdayDistributions.forEach(({ date, hours }, index) => {
+          console.log(`[Monthly Allocation] Creating assignment ${index + 1}/${weekdayDistributions.length}:`, {
+            date: toLocalDateString(date),
+            hours
+          });
+
+          createAssignment.mutate({
+            employeeId: resource.id,
+            projectId: data.projectId,
+            taskId: null,
+            startDate: toLocalDateString(date),
+            endDate: toLocalDateString(date),
+            hoursPerDay: hours.toString(),
+            totalHours: hours,
+            allocationPercentage: null,
+            isTimeOff: false,
+            timeOffTypeId: null,
+            category: data.category,
+            isBillable: data.isBillable,
+            status: 'draft',
+            note: data.note || null,
+            createdById: null,
+          });
+        });
+        console.log(`[Monthly Allocation] Initiated creation of ${weekdayDistributions.length} assignments`);
+      });
+    }
 
     // Close modal
     setMonthlyAllocationModal(null);
@@ -1734,7 +1839,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                                           project,
                                           e.clientX,
                                           e.clientY,
-                                          assignment // Pass assignment for edit mode
+                                          assignment, // Pass assignment for edit mode
+                                          Math.round(monthlyTotal * 10) / 10 // Pass monthly total hours
                                         );
                                       }}
                                     />
@@ -2129,6 +2235,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         {/* Monthly Allocation Modal */}
         {monthlyAllocationModal && (
           <MonthlyAllocationModal
+            key={monthlyAllocationModal.existingAssignment?.id ?? 'create'}
             monthStart={monthlyAllocationModal.monthStart}
             monthEnd={monthlyAllocationModal.monthEnd}
             resource={resource}
@@ -2136,8 +2243,45 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             existingAssignment={monthlyAllocationModal.existingAssignment}
             timeOffAssignments={timeOffAssignments}
             position={monthlyAllocationModal.position}
+            monthlyTotalHours={monthlyAllocationModal.monthlyTotalHours}
             onClose={() => setMonthlyAllocationModal(null)}
             onSave={handleSaveMonthlyAllocation}
+            onDelete={monthlyAllocationModal.existingAssignment ? (() => {
+              const assignmentId = monthlyAllocationModal.existingAssignment!.id;
+              console.log('[ResourceRow] Creating delete handler for assignment:', {
+                id: assignmentId,
+                projectId: monthlyAllocationModal.existingAssignment!.projectId,
+                employeeId: monthlyAllocationModal.existingAssignment!.employeeId,
+                startDate: monthlyAllocationModal.existingAssignment!.startDate,
+                endDate: monthlyAllocationModal.existingAssignment!.endDate
+              });
+
+              return () => {
+                console.log('[ResourceRow] Delete handler called, mutating...');
+                deleteAssignmentMutation.mutate(assignmentId, {
+                  onSuccess: () => {
+                    console.log('[ResourceRow] Delete success, closing modal');
+                    setMonthlyAllocationModal(null);
+                  },
+                  onError: (error) => {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.error('[ResourceRow] Delete failed:', error);
+
+                    // If assignment not found, it's already deleted - close modal
+                    if (errorMessage.toLowerCase().includes("not found")) {
+                      console.log('[ResourceRow] Assignment not found (already deleted), closing modal');
+                      setMonthlyAllocationModal(null);
+                      // Force refetch to ensure UI is in sync
+                      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                    } else {
+                      // For other errors, close modal and refetch
+                      setMonthlyAllocationModal(null);
+                      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                    }
+                  }
+                });
+              };
+            })() : undefined}
           />
         )}
 

@@ -169,9 +169,12 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
     };
   }
 
-  // Calculate hours per day, max 8
+  // Calculate hours per day
+  // Max 8 hours per day, but NO minimum - use exact calculation
   const rawHoursPerDay = totalHours / daysCount;
-  const hoursPerDay = Math.min(8, Math.max(0.5, rawHoursPerDay));
+  const hoursPerDay = Math.min(8, rawHoursPerDay); // Only cap at max 8, no minimum
+
+  // Calculate the ACTUAL total hours that will be distributed
   const totalDistributedHours = hoursPerDay * daysCount;
   const remainingHours = Math.max(0, totalHours - totalDistributedHours);
 
@@ -201,7 +204,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
     totalDays: daysCount,
     totalHours: totalDistributedHours,
     hoursPerDay,
-    skippedDays: blockedDays.existingAssignment + blockedDays.timeOff + blockedDays.weekend,
+    skippedDays: (blockedDays as any).existingAssignment + blockedDays.timeOff + blockedDays.weekend,
     remainingHours,
     blockedDays,
   };

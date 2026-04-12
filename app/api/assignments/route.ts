@@ -134,8 +134,21 @@ export async function POST(request: Request) {
       created_by_uuid: body.createdById || null,
     };
 
+    console.log('[API /assignments] Transformed to MySQL data:', {
+      ...mysqlData,
+      // Log key values
+      hours_per_day: mysqlData.hours_per_day,
+      total_hours_input: body.totalHours,
+    });
+
     // Create assignment in MySQL
     const result = await createAssignment(mysqlData);
+
+    console.log('[API /assignments] Assignment created successfully:', {
+      uuid: result.uuid,
+      hours_per_day: result.hours_per_day,
+      total_hours: result.total_hours
+    });
 
     // Transform back to frontend format
     const transformedAssignment = transformMySqlAssignmentToFrontend(result);

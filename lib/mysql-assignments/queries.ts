@@ -153,6 +153,14 @@ export async function createAssignment(data: {
 
   const uuid = randomUUID();
 
+  console.log('[createAssignment] Input:', {
+    employee_uuid: data.employee_uuid,
+    start_date: data.start_date,
+    end_date: data.end_date,
+    hours_per_day: data.hours_per_day,
+    total_hours_input: data.total_hours
+  });
+
   // Calculate total_hours if not provided
   const hoursPerDay = parseFloat(String(data.hours_per_day || '8.00'));
   const startDate = new Date(data.start_date);
@@ -187,7 +195,18 @@ export async function createAssignment(data: {
     data.created_by_uuid || null,
   ]);
 
-  return getAssignment(uuid);
+  console.log('[createAssignment] Inserted to DB, fetching result...');
+  const result = await getAssignment(uuid);
+
+  console.log('[createAssignment] Result from DB:', {
+    uuid: result.uuid,
+    start_date: result.start_date,
+    end_date: result.end_date,
+    hours_per_day: result.hours_per_day,
+    total_hours: result.total_hours
+  });
+
+  return result;
 }
 
 /**

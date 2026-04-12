@@ -23,6 +23,7 @@ interface MonthlyAllocationModalProps {
   existingAssignment?: Assignment; // If present, we're in EDIT mode
   timeOffAssignments: Assignment[];
   position: { x: number; y: number };
+  monthlyTotalHours?: number; // Total hours for this month (from highlighted block)
   onClose: () => void;
   onSave: (data: {
     projectId: string;
@@ -34,6 +35,7 @@ interface MonthlyAllocationModalProps {
     isBillable: boolean;
     note?: string;
   }) => void;
+  onDelete?: () => void;
 }
 
 export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
@@ -44,10 +46,13 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   existingAssignment,
   timeOffAssignments,
   position,
+  monthlyTotalHours,
   onClose,
   onSave,
+  onDelete,
 }) => {
   const [mounted, setMounted] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [totalHours, setTotalHours] = useState("0");
   const [hoursError, setHoursError] = useState<string | null>(null);
   const today = startOfDay(new Date());
@@ -59,39 +64,68 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
 
+  // Track whether user has manually edited the hours (to prevent auto-overwrite)
+  const [userHasEditedHours, setUserHasEditedHours] = useState(false);
+
   // Determine if we're in edit mode
   const isEditMode = !!existingAssignment;
 
-  // Initialize form values
+  // Log when in edit mode and when props change
   useEffect(() => {
-    if (existingAssignment) {
-      // EDIT mode: use the existing assignment's date range
-      const assignStart = startOfDay(new Date(existingAssignment.startDate));
-      const assignEnd = startOfDay(new Date(existingAssignment.endDate));
-      const hours = parseFloat(existingAssignment.hoursPerDay) || 0;
-      const days = Math.ceil((assignEnd.getTime() - assignStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (isEditMode && existingAssignment) {
+      console.log('[MonthlyAllocationModal] Edit mode opened/props changed:', {
+        id: existingAssignment.id,
+        monthlyTotalHours,
+        monthlyTotalHoursType: typeof monthlyTotalHours,
+        userHasEditedHours
+      });
+    }
+  }, [isEditMode, existingAssignment?.id, monthlyTotalHours, onDelete, userHasEditedHours]);
 
-      setStartDate(assignStart);
-      setEndDate(assignEnd);
-      setTotalHours((hours * days).toString());
+  // Initialize form values - only set if user hasn't manually edited yet
+  useEffect(() => {
+    if (existingAssignment && !userHasEditedHours) {
+      // EDIT mode: default to today until end of month (same as CREATE mode)
+      // But cap today at month end if today is past the month
+      const defaultStart = today > monthEnd ? monthEnd : today;
+      setStartDate(startOfDay(defaultStart));
+      setEndDate(startOfDay(monthEnd));
+
+      // Set total hours from the pre-calculated monthly total (from highlighted block)
+      const hoursValue = monthlyTotalHours?.toString() ?? "0";
+      setTotalHours(hoursValue);
 
       if (existingAssignment.category) {
         setCategory(existingAssignment.category as AssignmentCategory);
       }
       setIsBillable(existingAssignment.isBillable);
-    } else {
+    } else if (!userHasEditedHours && !existingAssignment) {
       // CREATE mode: default to today until end of month
       // But cap today at month end if today is past the month
       const defaultStart = today > monthEnd ? monthEnd : today;
       setStartDate(startOfDay(defaultStart));
       setEndDate(startOfDay(monthEnd));
+      setTotalHours("0"); // Default to 0 in create mode
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingAssignment?.id]); // Only re-run when existingAssignment changes
+  }, [existingAssignment?.id, monthlyTotalHours]);
 
   useEffect(() => {
     setMounted(true);
+    // Reset deleting state on mount
+    setIsDeleting(false);
+    // Reset userHasEditedHours flag when modal first mounts
+    setUserHasEditedHours(false);
+    // Cleanup on unmount
+    return () => {
+      setIsDeleting(false);
+    };
   }, []);
+
+  // Reset userHasEditedHours flag when a new assignment is opened (modal re-opens)
+  useEffect(() => {
+    setUserHasEditedHours(false);
+  }, [existingAssignment?.id, monthlyTotalHours]);
 
   // Calculate distribution in real-time based on SELECTED date range
   const distributionResult = useMemo((): DistributionResult => {
@@ -142,6 +176,12 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
 
   const handleSave = () => {
     const hours = parseFloat(totalHours.replace(",", "."));
+    console.log('[MonthlyAllocationModal] handleSave:', {
+      totalHoursInput: totalHours,
+      parsedHours: hours,
+      distributionTotalHours: distributionResult.totalHours,
+      distributionHoursPerDay: distributionResult.hoursPerDay
+    });
     if (isNaN(hours) || hours <= 0) {
       setHoursError("Please enter a valid number of hours");
       return;
@@ -294,6 +334,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
             onChange={(e) => {
               setTotalHours(e.target.value);
               setHoursError(null);
+              setUserHasEditedHours(true);
             }}
             className={`w-24 text-center${hoursError ? " border-red-500 focus-visible:ring-red-500" : ""}`}
             placeholder="0"
@@ -420,25 +461,42 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       </details>
 
       {/* Actions */}
-      <div className="flex items-center justify-between pt-3 border-t mt-4">
+      <div className="flex items-center justify-end gap-2 pt-3 border-t mt-4">
         <Button
-          variant="link"
+          variant="outline"
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          className="text-sm px-0"
+          className="text-sm"
         >
           Cancel
         </Button>
+        {isEditMode && onDelete && (
+          <Button
+            variant="destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isDeleting) return;
+              console.log('Delete button clicked, calling onDelete');
+              setIsDeleting(true);
+              onDelete();
+            }}
+            disabled={isDeleting}
+            className="text-sm"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        )}
         <Button
           onClick={(e) => {
             e.stopPropagation();
             handleSave();
           }}
           disabled={!hasDistributions || hoursError !== null || dateError !== null}
+          className="text-sm"
         >
-          {isEditMode ? "Update" : "Create"} Allocation
+          Save
         </Button>
       </div>
     </div>,
