@@ -7,7 +7,7 @@ import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday } from "date-fns";
+import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday, getMonth, getYear } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -94,28 +94,10 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         return eachDayOfInterval({ start: weekStart, end: weekEnd });
       }
       case "month": {
-        // Show weeks in the month with proper week boundaries
+        // Show all days in the month (daily view like week view)
         const monthStart = startOfMonth(currentDate);
         const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
-
-        const weeklyRanges: Date[] = [];
-
-        // First week: from day 1 to first Sunday
-        const dayOfWeek = monthStart.getDay(); // 0 = Sunday, 1 = Monday, etc.
-        const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-        weeklyRanges.push(monthStart); // First column starts from day 1
-
-        // Calculate remaining weeks (Monday to Sunday)
-        let currentMonday = addDays(monthStart, daysUntilSunday + 1); // Day after first Sunday
-
-        while (currentMonday <= monthEnd) {
-          weeklyRanges.push(currentMonday);
-
-          // Move to next Monday
-          currentMonday = addDays(currentMonday, 7);
-        }
-
-        return weeklyRanges;
+        return eachDayOfInterval({ start: monthStart, end: monthEnd });
       }
       case "quarter": {
         // Show calendar quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
@@ -144,14 +126,14 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
   }, [currentDate, viewMode]);
 
-  // Filter out weekends if needed (only for week view)
+  // Filter out weekends if needed (for week and month views)
   const days = useMemo(() => {
-    // For month, quarter, halfYear, and year views, we're showing weeks/months - no weekend filtering
-    if (viewMode === "month" || viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year") {
+    // For quarter, halfYear, and year views, we're showing months - no weekend filtering
+    if (viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year") {
       return allDays;
     }
 
-    // For week view, apply weekend filter if needed
+    // For week and month views, apply weekend filter if needed
     if (showWeekends) return allDays;
     return allDays.filter(day => {
       const dayOfWeek = day.getDay();
@@ -170,8 +152,9 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     return calculatedWidth;
   }, [days.length, containerWidth]);
 
-  // Determine if we're in week view mode (where each cell = 1 week/month)
-  const isWeekView = viewMode === "month" || viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+  // Determine if we're in week view mode (where each cell = 1 month)
+  // Month view now shows daily columns like week view, so it's not included here
+  const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
   // PERFORMANCE: Calculate date range for assignments API filtering
   // This reduces data transfer by ~80% for timeline views
@@ -412,46 +395,19 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
               const isMonthView = viewMode === "month";
               const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
               const today = isToday(day);
+              const currentMonth = getMonth(day) === getMonth(new Date()) && getYear(day) === getYear(new Date());
 
-              // For Month view, calculate end date based on position
-              let monthViewEndDate = day;
-              if (isMonthView) {
-                const monthStart = startOfMonth(currentDate);
-                const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
-
-                // First column: from day 1 to first Sunday
-                if (index === 0) {
-                  const dayOfWeek = monthStart.getDay();
-                  const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-                  monthViewEndDate = addDays(day, daysUntilSunday);
-                }
-                // Last column: from last Monday to last day of month
-                else if (index === days.length - 1) {
-                  monthViewEndDate = monthEnd;
-                }
-                // Middle columns: Monday to Sunday (7 days)
-                else {
-                  monthViewEndDate = addDays(day, 6);
-                }
-              }
-
-              // For Month view, check if today is in this week column
-              const isCurrentWeek = isMonthView && (() => {
-                const todayDate = new Date();
-                const todayStart = startOfDay(todayDate);
-                const weekStart = startOfDay(day);
-                const weekEnd = startOfDay(monthViewEndDate);
-                return todayStart >= weekStart && todayStart <= weekEnd;
-              })();
+              // Month view now shows individual days, not weeks - no week range calculation needed
 
               return (
                 <div
                   key={day.toISOString()}
                   className={cn(
                     "border-r text-center text-sm shrink-0 relative",
-                    isMonthView || isMonthRangeView ? "p-4" : "p-2",
+                    isMonthRangeView ? "p-4" : "p-2",
                     isWeekend && !isMonthRangeView ? "bg-muted/50" : "bg-background",
-                    (today || isCurrentWeek) && "border-b-2 border-b-primary bg-muted/30"
+                    today && "border-b-2 border-b-primary bg-muted/30",
+                    isMonthRangeView && currentMonth && "border-b-2 border-b-primary bg-muted/30"
                   )}
                   style={{ width: `${cellWidth}px` }}
                   data-testid="timeline-day-cell"
@@ -459,18 +415,14 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                   data-weekend={String(isWeekend)}
                   data-today={String(today)}
                 >
-                  {isMonthView ? (
-                    <div className="flex flex-col justify-center">
-                      <div className="font-semibold">{format(day, "EEE d")} - {format(monthViewEndDate, "EEE d")}</div>
-                    </div>
-                  ) : isMonthRangeView ? (
+                  {isMonthRangeView ? (
                     <div className="flex flex-col justify-center">
                       <div className="font-semibold">{format(day, "MMMM")}</div>
                     </div>
                   ) : (
                     <div className="flex flex-col">
                       <div className="font-semibold">{format(day, "EEE")}</div>
-                      <div className="text-muted-foreground">{format(day, "d MMM")}</div>
+                      <div className="text-muted-foreground">{format(day, "d")}</div>
                     </div>
                   )}
                 </div>

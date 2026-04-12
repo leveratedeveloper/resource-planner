@@ -56,6 +56,8 @@ interface AllocationCellProps {
   cellWidth: number;
   isWeekView?: boolean;
   isMonthRangeView?: boolean; // true for Quarter/HalfYear/Year view (monthly columns)
+  weekColumnIndex?: number; // Index of this week column (0-based)
+  totalWeekColumns?: number; // Total number of week columns
 }
 
 // Helper function to safely parse hours - returns 0 for invalid values
@@ -77,7 +79,9 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   actualAssignments = [], // Default array kosong
   cellWidth,
   isWeekView = false,
-  isMonthRangeView = false
+  isMonthRangeView = false,
+  weekColumnIndex = 0,
+  totalWeekColumns = 1
 }) {
   const dailyCapacity = resource.capacity / WORK_DAYS_PER_WEEK;
   const weeklyCapacity = 40; // 8 hours x 5 days = 40 hours per week
@@ -102,12 +106,50 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
       return allDays;
     }
 
-    // For Month view: Include all 7 days in week view (not just weekdays)
+    // For legacy Month view with week ranges (no longer used - month view now shows daily columns)
+    // First week: from day 1 of month to first Sunday
+    // Last week: from last Monday to last day of month
+    // Middle weeks: Monday to Sunday (7 days)
     const allDays: Date[] = [];
-    const weekStart = startOfDay(new Date(day));
-    for (let i = 0; i < 7; i++) {
-      allDays.push(addDays(weekStart, i));
+
+    // Determine month boundaries from the first day (day)
+    const monthStart = startOfMonth(day);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+
+    const isFirstColumn = weekColumnIndex === 0;
+    const isLastColumn = weekColumnIndex === totalWeekColumns! - 1;
+    const hasMultipleColumns = totalWeekColumns! > 1;
+
+    let rangeStart: Date;
+    let rangeEnd: Date;
+
+    if (isFirstColumn) {
+      // First column: from day 1 to first Sunday (or month end if single column)
+      rangeStart = monthStart;
+      if (hasMultipleColumns) {
+        const dayOfWeek = monthStart.getDay();
+        const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+        rangeEnd = addDays(rangeStart, daysUntilSunday);
+      } else {
+        rangeEnd = monthEnd;
+      }
+    } else if (isLastColumn) {
+      // Last column: from last Monday to last day of month
+      rangeStart = startOfDay(day);
+      rangeEnd = monthEnd;
+    } else {
+      // Middle columns: Monday to Sunday (7 days)
+      rangeStart = startOfDay(day);
+      rangeEnd = addDays(rangeStart, 6);
     }
+
+    // Add all days in the range
+    let checkDate = new Date(rangeStart);
+    while (checkDate <= rangeEnd) {
+      allDays.push(startOfDay(new Date(checkDate)));
+      checkDate.setDate(checkDate.getDate() + 1);
+    }
+
     return allDays;
   };
 
@@ -152,16 +194,15 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   }
 
   // Calculate capacity based on view mode
-  // - Week view (Month): use weekly capacity (40 hours for 5 working days)
+  // - Week/Month view: use daily capacity (each cell = 1 day)
   // - MonthRange view (Quarter/HalfYear/Year): calculate monthly capacity based on actual working days
-  // - Day view (Week): use daily capacity
   const planPct = isMonthRangeView
-    ? (daysWithScheduleCount > 0 ? (totalPlanHours / daysWithScheduleCount) / dailyCapacity : 0)
+    ? (daysWithScheduleCount > 0 ? totalPlanHours / (daysWithScheduleCount * dailyCapacity) : 0)
     : isWeekView
     ? (weeklyCapacity > 0 ? totalPlanHours / weeklyCapacity : 0)
     : ((dailyCapacity > 0 && daysWithScheduleCount > 0) ? (totalPlanHours / daysWithScheduleCount) / dailyCapacity : 0);
   const actualPct = isMonthRangeView
-    ? (daysWithScheduleCount > 0 ? (totalActualHours / daysWithScheduleCount) / dailyCapacity : 0)
+    ? (daysWithScheduleCount > 0 ? totalActualHours / (daysWithScheduleCount * dailyCapacity) : 0)
     : isWeekView
     ? (weeklyCapacity > 0 ? totalActualHours / weeklyCapacity : 0)
     : ((dailyCapacity > 0 && daysWithScheduleCount > 0) ? (totalActualHours / daysWithScheduleCount) / dailyCapacity : 0);
@@ -268,7 +309,8 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
   );
 });
 
-// Component for weekly/monthly assignment blocks in Month/Quarter/HalfYear/Year view
+// Component for weekly/monthly assignment blocks in Quarter/HalfYear/Year view
+// Note: Month view now shows daily columns like week view, so this component is not used for month view
 interface WeeklyAssignmentBlockProps {
   assignment: Assignment;
   project?: Project;
@@ -298,10 +340,11 @@ const WeeklyAssignmentBlock = React.memo<WeeklyAssignmentBlockProps>(function We
   const weeklyBlocks = useMemo(() => {
     const blocks: Array<{ startIndex: number; endIndex: number; hours: number }> = [];
 
-    // Check if this is Month view (weekly chunks) or MonthRange view (monthly - Quarter/HalfYear/Year)
-    const isMonthView = !isMonthRangeView; // If not MonthRange, then it's Month view (weekly columns)
+    // Check if this is MonthRange view (Quarter/HalfYear/Year with monthly columns)
+    // Note: Month view now shows daily columns, so this component is not used for month view anymore
+    const isMonthView = !isMonthRangeView; // Legacy: this branch is now dead code
 
-    // For Month view, we need to know the month boundaries
+    // For Month view, we need to know the month boundaries (legacy - no longer used)
     let monthStart: Date | null = null;
     let monthEnd: Date | null = null;
     if (isMonthView && days.length > 0) {
@@ -437,7 +480,8 @@ const WeeklyAssignmentBlock = React.memo<WeeklyAssignmentBlockProps>(function We
   );
 });
 
-// Component for weekly/monthly time off blocks in Month/Quarter/HalfYear/Year view
+// Component for weekly/monthly time off blocks in Quarter/HalfYear/Year view
+// Note: Month view now shows daily columns like week view, so this component is not used for month view
 interface WeeklyTimeOffBlockProps {
   assignment: Assignment;
   days: Date[];
@@ -459,10 +503,11 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
   const weeklyBlocks = useMemo(() => {
     const blocks: Array<{ startIndex: number; endIndex: number; hours: number }> = [];
 
-    // Check if this is Month view (weekly chunks) or MonthRange view (monthly - Quarter/HalfYear/Year)
-    const isMonthView = !isMonthRangeView; // If not MonthRange, then it's Month view (weekly columns)
+    // Check if this is MonthRange view (Quarter/HalfYear/Year with monthly columns)
+    // Note: Month view now shows daily columns, so this component is not used for month view anymore
+    const isMonthView = !isMonthRangeView; // Legacy: this branch is now dead code
 
-    // For Month view, we need to know the month boundaries
+    // For Month view, we need to know the month boundaries (legacy - no longer used)
     let monthStart: Date | null = null;
     let monthEnd: Date | null = null;
     if (isMonthView && days.length > 0) {
@@ -555,8 +600,8 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
             title={`Time Off: ${Math.round(block.hours)}h`}
           >
             <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none">
-              <div className="font-bold truncate text-[10px]">Time Off</div>
-              <div className="truncate opacity-90 text-[10px]">{Math.round(block.hours)}h</div>
+              <div className="font-bold truncate text-xs">Time Off</div>
+              <div className="truncate opacity-90 text-xs">{Math.round(block.hours)}h</div>
             </div>
           </div>
         );
@@ -1487,7 +1532,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
         {/* Allocation Bar - Collapsed */}
         <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
-          {days.map((day) => (
+          {days.map((day, weekColumnIndex) => (
             <AllocationCell
               key={day.toISOString()}
               day={day}
@@ -1497,6 +1542,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               cellWidth={cellWidth}
               isWeekView={isWeekView}
               isMonthRangeView={isMonthRangeView}
+              weekColumnIndex={weekColumnIndex}
+              totalWeekColumns={days.length}
             />
           ))}
         </div>
@@ -1537,7 +1584,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
           {/* Allocation Bar - Expanded (Header) */}
           <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day) => (
+            {days.map((day, weekColumnIndex) => (
               <AllocationCell
                 key={day.toISOString()}
                 day={day}
@@ -1546,6 +1593,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 actualAssignments={actualAssignments}
                 cellWidth={cellWidth}
                 isWeekView={isWeekView}
+                isMonthRangeView={isMonthRangeView}
+                weekColumnIndex={weekColumnIndex}
+                totalWeekColumns={days.length}
               />
             ))}
           </div>
@@ -1580,7 +1630,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             ))}
             {/* Time Off Assignments */}
             {isWeekView ? (
-              // For Month/Quarter/HalfYear/Year view, use WeeklyTimeOffBlock
+              // For Quarter/HalfYear/Year view, use WeeklyTimeOffBlock
+              // Note: Month view now shows daily columns like week view
               resourceAssignments.filter(a => a.isTimeOff).map((assignment) => (
                 <WeeklyTimeOffBlock
                   key={assignment.id}
@@ -1760,7 +1811,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                           ))}
                           {/* Plan Assignments */}
                           {isWeekView ? (
-                            // For Month/Quarter/HalfYear/Year view, use WeeklyAssignmentBlock
+                            // For Quarter/HalfYear/Year view, use WeeklyAssignmentBlock
+                            // Note: Month view now shows daily columns like week view
                             <>
                               {planAssignments.map((assignment, assignmentIndex) => {
                                 // Find which month indices this assignment covers
@@ -1967,7 +2019,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                         ))}
                         {/* Actual Assignments - Struktur sama dengan plan assignments */}
                         {isWeekView ? (
-                          // For Month/Quarter/HalfYear/Year view, use WeeklyAssignmentBlock (convert actual to plan format)
+                          // For Quarter/HalfYear/Year view, use WeeklyAssignmentBlock (convert actual to plan format)
+                          // Note: Month view now shows daily columns like week view
                           <>
                             {projectActualAssignments.map((actualAssignment) => {
                               // Find which month indices this assignment covers

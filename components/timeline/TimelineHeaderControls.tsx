@@ -175,8 +175,8 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
           </Button>
         </div>
 
-        {/* Right: Weekend Toggle (only for week view) */}
-        {viewMode === "week" ? (
+        {/* Right: Weekend Toggle (for week and month views) */}
+        {viewMode === "week" || viewMode === "month" ? (
           <div className="flex items-center gap-2">
             <Button
               variant={showWeekends ? "default" : "outline"}
