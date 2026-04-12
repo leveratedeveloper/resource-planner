@@ -30,33 +30,33 @@ export interface DistributeMonthlyHoursParams {
 }
 
 /**
- * Helper: Parse date string to Date object at noon (to avoid DST issues)
+ * Helper: Parse date string to Date object at noon LOCAL time (to avoid DST issues)
  */
 function parseDateNoTZ(dateStr: string | Date): Date {
   if (typeof dateStr === 'string') {
-    // Parse the date string and create at noon UTC to avoid timezone issues
+    // Parse the date string and create at noon LOCAL time to avoid timezone issues
     const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    return new Date(year, month - 1, day, 12, 0, 0);
   }
   return dateStr;
 }
 
 /**
- * Helper: Format date to YYYY-MM-DD string
+ * Helper: Format date to YYYY-MM-DD string (using local time)
  */
 function formatDateStr(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
 /**
- * Helper: Add days to date (returns UTC date)
+ * Helper: Add days to date (using local time)
  */
-function addDaysUTC(date: Date, days: number): Date {
+function addDaysLocal(date: Date, days: number): Date {
   const result = new Date(date);
-  result.setUTCDate(result.getUTCDate() + days);
+  result.setDate(result.getDate() + days);
   return result;
 }
 
@@ -68,7 +68,7 @@ function addDaysUTC(date: Date, days: number): Date {
  *
  * Distribution logic:
  * - Distributes evenly, max 8hr/day
- * - Uses UTC dates to avoid timezone issues
+ * - Uses LOCAL dates to be consistent with toLocalDateString()
  */
 export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): DistributionResult {
   const {
@@ -78,15 +78,15 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
     timeOffAssignments,
   } = params;
 
-  // Convert to UTC date strings at noon to avoid timezone issues
+  // Convert to LOCAL date strings at noon to avoid timezone issues
   const startDate = parseDateNoTZ(monthStart);
   const endDate = parseDateNoTZ(monthEnd);
 
   console.log('[Allocation Distributor] Input params:', {
     monthStart,
     monthEnd,
-    startDateUTC: startDate.toISOString(),
-    endDateUTC: endDate.toISOString(),
+    startDateLocal: startDate.toISOString(),
+    endDateLocal: endDate.toISOString(),
     totalHours
   });
 
@@ -113,7 +113,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
   while (currentDate <= endDate) {
     dayCount++;
     const currentDateStr = formatDateStr(currentDate);
-    const dayOfWeek = currentDate.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday (LOCAL time)
     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
 
     console.log('[Allocation Distributor] Processing day:', {
@@ -121,10 +121,10 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
       currentDateStr,
       dayOfWeek,
       dayName,
-      currentDateUTC: currentDate.toISOString()
+      currentDateLocal: currentDate.toISOString()
     });
 
-    // Check if weekend (0 = Sunday, 6 = Saturday)
+    // Check if weekend (0 = Sunday, 6 = Saturday) - using LOCAL time
     if (dayOfWeek === 0 || dayOfWeek === 6) {
       console.log('[Allocation Distributor] Skipping weekend:', {
         date: currentDateStr,
@@ -146,11 +146,18 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
           dayOfWeek,
           dayName
         });
-        workingDays.push(new Date(currentDate)); // Push a copy
+        // Create LOCAL date at noon to be consistent with toLocalDateString()
+        const localDate = new Date(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate(),
+          12, 0, 0
+        );
+        workingDays.push(localDate);
       }
     }
 
-    currentDate = addDaysUTC(currentDate, 1);
+    currentDate = addDaysLocal(currentDate, 1);
   }
 
   // 3. Calculate distribution
@@ -194,7 +201,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
     timeOffBlocked: blockedDays.timeOff,
     distributions: distributions.map(d => ({
       date: formatDateStr(d.date),
-      dayOfWeek: d.date.getUTCDay(),
+      dayOfWeek: d.date.getDay(), // LOCAL day of week
       hours: d.hours
     }))
   });
