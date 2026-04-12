@@ -4,6 +4,7 @@
  * RBAC Rules:
  * - Brand Management (any position) -> Full access
  * - Business Consulting (any position) -> Full access
+ * - Performance Marketing (any position) -> Full access
  * - Creative + Project Manager -> Full access
  * - Creative (other positions) -> Restricted access
  * - All other departments -> Restricted access
@@ -16,7 +17,7 @@ export function determineAccessLevel(employee: any): 'full' | 'restricted' {
   const position = employee.position?.trim();
 
   // Full access departments (case-insensitive, trimmed)
-  if (dept === 'brand management' || dept === 'business consulting') {
+  if (dept === 'brand management' || dept === 'business consulting' || dept === 'performance marketing') {
     console.log('[Access Level] Full access granted for department:', employee.department_name);
     return 'full';
   }
