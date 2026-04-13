@@ -34,6 +34,7 @@ interface DraggableTimelineCellProps {
   isInDragRange?: boolean;
   containerRef?: HTMLDivElement | null; // Container ref passed directly from parent
   onMouseDown?: (dayIndex: number, containerRef: HTMLDivElement | null, e?: React.MouseEvent) => void;
+  rowType?: 'plan' | 'actual'; // Row type for consistent coloring
 }
 
 export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
@@ -51,6 +52,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   isInDragRange = false,
   containerRef,
   onMouseDown,
+  rowType = 'plan',
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showWeekendConfirm, setShowWeekendConfirm] = useState(false);
@@ -268,8 +270,10 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         >
           <div
             data-plus-button="true"
-            className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm cursor-pointer hover:scale-110 transition-transform"
-            style={{ backgroundColor: projectColor }}
+            className={cn(
+              "w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm cursor-pointer hover:scale-110 transition-transform",
+              rowType === 'actual' ? "bg-emerald-600" : "bg-blue-600"
+            )}
           >
             <Icon icon="lucide:plus" className="h-3 w-3" />
           </div>

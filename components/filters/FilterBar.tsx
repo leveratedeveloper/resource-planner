@@ -285,7 +285,7 @@ export const FilterBar = React.memo<FilterBarProps>(({
         {session?.access.level === 'full' && (
           <Button onClick={onOpenSetup} variant="outline" data-testid="open-setup-button">
             <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
-            Setup / Manage Brands
+            Setup
           </Button>
         )}
 
