@@ -27,22 +27,22 @@ export async function GET(request: NextRequest) {
 
     // Cek assignments di database
     try {
-      const assignments = await assignmentsDb.query(`
+      const [assignments] = await assignmentsDb.execute(`
         SELECT
           COUNT(*) as total,
           COUNT(DISTINCT employee_uuid) as unique_employees,
           COUNT(DISTINCT project_uuid) as unique_projects
         FROM assignments
-      `);
-      debug.assignmentsDb = assignments.rows[0];
+      `) as [any[], any];
+      debug.assignmentsDb = assignments[0];
 
       // Ambil sample 5 assignments untuk lihat struktur
-      const sampleAssignments = await assignmentsDb.query(`
+      const [sampleAssignments] = await assignmentsDb.execute(`
         SELECT uuid, employee_uuid, project_uuid, start_date, end_date, status
         FROM assignments
         LIMIT 5
-      `);
-      debug.assignmentSamples = sampleAssignments.rows;
+      `) as [any[], any];
+      debug.assignmentSamples = sampleAssignments;
     } catch (err) {
       debug.assignmentsDbError = err instanceof Error ? err.message : String(err);
     }
@@ -94,11 +94,11 @@ export async function GET(request: NextRequest) {
 
     // Cek mapping - apakah employee_uuid di assignments ada di employees API
     try {
-      const assignmentEmployees = await assignmentsDb.query(`
+      const [assignmentEmployees] = await assignmentsDb.execute(`
         SELECT DISTINCT employee_uuid FROM assignments LIMIT 10
-      `);
+      `) as [any[], any];
 
-      const employeeUuids = assignmentEmployees.rows.map((a: any) => a.employee_uuid);
+      const employeeUuids = assignmentEmployees.map((a: any) => a.employee_uuid);
 
       // Cek satu per satu apakah UUID ini ada di employees API
       const mappingChecks = [];

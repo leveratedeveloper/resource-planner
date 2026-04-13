@@ -1,7 +1,6 @@
 /**
- * PostgreSQL Assignments Queries (Supabase)
+ * MySQL Assignments Queries
  * CRUD operations for assignments with validation and security
- * Note: Folder name kept as mysql-assignments for backward compatibility
  */
 
 import { assignmentsDb } from './db';
@@ -28,7 +27,7 @@ type AllowedUpdateColumn = typeof ALLOWED_UPDATE_COLUMNS[number];
 const TIMETRACK_API_URL = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 /**
- * Validate employee and project existence in Timetrack API
+ * Validate employee and project existence in MySQL API
  */
 async function validateAssignmentData(data: {
   employee_uuid: string;
@@ -61,15 +60,8 @@ async function validateAssignmentData(data: {
       throw error;
     }
     console.warn('[Assignments] Validation failed, continuing:', error);
-    // Continue even if validation fails - the Timetrack API might be down
+    // Continue even if validation fails - the MySQL API might be down
   }
-}
-
-/**
- * Helper function to build PostgreSQL parameter placeholders
- */
-function buildPlaceholders(count: number): string {
-  return Array.from({ length: count }, (_, i) => `$${i + 1}`).join(', ');
 }
 
 /**
@@ -85,56 +77,55 @@ export async function getAssignments(filters?: {
 }) {
   let query = 'SELECT * FROM assignments WHERE 1=1';
   const params: any[] = [];
-  let paramIndex = 1;
 
   if (filters?.employee_uuid) {
-    query += ` AND employee_uuid = $${paramIndex++}`;
+    query += ' AND employee_uuid = ?';
     params.push(filters.employee_uuid);
   }
   if (filters?.project_uuid) {
-    query += ` AND project_uuid = $${paramIndex++}`;
+    query += ' AND project_uuid = ?';
     params.push(filters.project_uuid);
   }
   if (filters?.project_uuids && filters.project_uuids.length > 0) {
     // Filter by multiple project UUIDs (for brand filtering)
-    const placeholders = buildPlaceholders(filters.project_uuids.length);
+    const placeholders = filters.project_uuids.map(() => '?').join(',');
     query += ` AND project_uuid IN (${placeholders})`;
     params.push(...filters.project_uuids);
-    paramIndex += filters.project_uuids.length;
   }
   if (filters?.start_date) {
-    query += ` AND end_date >= $${paramIndex++}`;
+    query += ' AND end_date >= ?';
     params.push(filters.start_date);
   }
   if (filters?.end_date) {
-    query += ` AND start_date <= $${paramIndex++}`;
+    query += ' AND start_date <= ?';
     params.push(filters.end_date);
   }
   if (filters?.status) {
-    query += ` AND status = $${paramIndex++}`;
+    query += ' AND status = ?';
     params.push(filters.status);
   }
 
   query += ' ORDER BY created_at DESC';
 
-  const result = await assignmentsDb.query(query, params);
-  return result.rows;
+  const [rows] = await assignmentsDb.execute(query, params);
+  return rows;
 }
 
 /**
  * Get a single assignment by UUID
  */
 export async function getAssignment(uuid: string) {
-  const result = await assignmentsDb.query(
-    'SELECT * FROM assignments WHERE uuid = $1',
+  const [rows] = await assignmentsDb.execute(
+    'SELECT * FROM assignments WHERE uuid = ?',
     [uuid]
   );
 
-  if (result.rows.length === 0) {
+  const assignments = rows as any[];
+  if (assignments.length === 0) {
     throw new Error(`Assignment ${uuid} not found`);
   }
 
-  return result.rows[0];
+  return assignments[0];
 }
 
 /**
@@ -157,7 +148,7 @@ export async function createAssignment(data: {
   note?: string | null;
   created_by_uuid?: string | null;
 }) {
-  // Skip validation for now - Timetrack API requires authentication
+  // Skip validation for now - MySQL API requires authentication
   // TODO: Add proper authentication or use mysql-bridge for validation
 
   const uuid = randomUUID();
@@ -182,10 +173,10 @@ export async function createAssignment(data: {
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
       hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
       category, is_billable, status, note, created_by_uuid
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  await assignmentsDb.query(query, [
+  await assignmentsDb.execute(query, [
     uuid,
     data.employee_uuid,
     data.project_uuid || null,
@@ -240,12 +231,11 @@ export async function updateAssignment(
 ) {
   const setClause: string[] = [];
   const params: any[] = [];
-  let paramIndex = 1;
 
   // Whitelist - hanya kolom yang diizinkan yang bisa di-update
   for (const [key, value] of Object.entries(data)) {
     if (ALLOWED_UPDATE_COLUMNS.includes(key as AllowedUpdateColumn) && value !== undefined) {
-      setClause.push(`${key} = $${paramIndex++}`);
+      setClause.push(`${key} = ?`);
       params.push(value);
     }
   }
@@ -260,7 +250,7 @@ export async function updateAssignment(
     const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const calculatedTotalHours = hoursPerDay * daysDiff;
 
-    setClause.push(`total_hours = $${paramIndex++}`);
+    setClause.push(`total_hours = ?`);
     params.push(calculatedTotalHours);
   }
 
@@ -270,8 +260,8 @@ export async function updateAssignment(
 
   params.push(uuid);
 
-  await assignmentsDb.query(
-    `UPDATE assignments SET ${setClause.join(', ')} WHERE uuid = $${paramIndex}`,
+  await assignmentsDb.execute(
+    `UPDATE assignments SET ${setClause.join(', ')} WHERE uuid = ?`,
     params
   );
 
@@ -282,13 +272,13 @@ export async function updateAssignment(
  * Delete an assignment
  */
 export async function deleteAssignment(uuid: string) {
-  const result = await assignmentsDb.query(
-    'DELETE FROM assignments WHERE uuid = $1',
+  const [result] = await assignmentsDb.execute(
+    'DELETE FROM assignments WHERE uuid = ?',
     [uuid]
   );
 
   // Cek apakah ada baris yang dihapus
-  if (result.rowCount === 0) {
+  if ((result as any).affectedRows === 0) {
     throw new Error(`Assignment ${uuid} not found`);
   }
 }
@@ -297,12 +287,13 @@ export async function deleteAssignment(uuid: string) {
  * Get assignments count by employee
  */
 export async function getAssignmentsCountByEmployee(employeeUuid: string): Promise<number> {
-  const result = await assignmentsDb.query(
-    'SELECT COUNT(*) as count FROM assignments WHERE employee_uuid = $1',
+  const [rows] = await assignmentsDb.execute(
+    'SELECT COUNT(*) as count FROM assignments WHERE employee_uuid = ?',
     [employeeUuid]
   );
 
-  return parseInt(result.rows[0]?.count || '0', 10);
+  const result = rows as any[];
+  return result[0]?.count || 0;
 }
 
 /**
@@ -311,12 +302,12 @@ export async function getAssignmentsCountByEmployee(employeeUuid: string): Promi
 export async function getAssignmentsByDateRange(startDate: string, endDate: string) {
   const query = `
     SELECT * FROM assignments
-    WHERE start_date <= $1 AND end_date >= $2
+    WHERE start_date <= ? AND end_date >= ?
     ORDER BY start_date, employee_uuid
   `;
 
-  const result = await assignmentsDb.query(query, [endDate, startDate]);
-  return result.rows;
+  const [rows] = await assignmentsDb.execute(query, [endDate, startDate]);
+  return rows;
 }
 
 // ============================================================================
@@ -354,44 +345,44 @@ export async function getActualAssignments(filters?: {
 }) {
   let query = 'SELECT * FROM actual WHERE 1=1';
   const params: any[] = [];
-  let paramIndex = 1;
 
   if (filters?.employee_uuid) {
-    query += ` AND employee_uuid = $${paramIndex++}`;
+    query += ' AND employee_uuid = ?';
     params.push(filters.employee_uuid);
   }
   if (filters?.project_uuid) {
-    query += ` AND project_uuid = $${paramIndex++}`;
+    query += ' AND project_uuid = ?';
     params.push(filters.project_uuid);
   }
   if (filters?.start_date) {
-    query += ` AND end_date >= $${paramIndex++}`;
+    query += ' AND end_date >= ?';
     params.push(filters.start_date);
   }
   if (filters?.end_date) {
-    query += ` AND start_date <= $${paramIndex++}`;
+    query += ' AND start_date <= ?';
     params.push(filters.end_date);
   }
 
   query += ' ORDER BY start_date DESC';
-  const result = await assignmentsDb.query(query, params);
-  return result.rows;
+  const [rows] = await assignmentsDb.execute(query, params);
+  return rows;
 }
 
 /**
  * Get a single actual assignment by UUID
  */
 export async function getActual(uuid: string) {
-  const result = await assignmentsDb.query(
-    'SELECT * FROM actual WHERE uuid = $1',
+  const [rows] = await assignmentsDb.execute(
+    'SELECT * FROM actual WHERE uuid = ?',
     [uuid]
   );
 
-  if (result.rows.length === 0) {
+  const actuals = rows as any[];
+  if (actuals.length === 0) {
     throw new Error(`Actual ${uuid} not found`);
   }
 
-  return result.rows[0];
+  return actuals[0];
 }
 
 /**
@@ -429,10 +420,10 @@ export async function createActualAssignment(data: {
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
       hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
       category, is_billable, status, note, created_by_uuid
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  await assignmentsDb.query(query, [
+  await assignmentsDb.execute(query, [
     uuid,
     data.employee_uuid,
     data.project_uuid || null,
@@ -478,12 +469,11 @@ export async function updateActualAssignment(
 ) {
   const setClause: string[] = [];
   const params: any[] = [];
-  let paramIndex = 1;
 
   // Whitelist - hanya kolom yang diizinkan yang bisa di-update
   for (const [key, value] of Object.entries(data)) {
     if (ALLOWED_ACTUAL_UPDATE_COLUMNS.includes(key as AllowedActualUpdateColumn) && value !== undefined) {
-      setClause.push(`${key} = $${paramIndex++}`);
+      setClause.push(`${key} = ?`);
       params.push(value);
     }
   }
@@ -498,7 +488,7 @@ export async function updateActualAssignment(
     const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const calculatedTotalHours = hoursPerDay * daysDiff;
 
-    setClause.push(`total_hours = $${paramIndex++}`);
+    setClause.push(`total_hours = ?`);
     params.push(calculatedTotalHours);
   }
 
@@ -508,8 +498,8 @@ export async function updateActualAssignment(
 
   params.push(uuid);
 
-  await assignmentsDb.query(
-    `UPDATE actual SET ${setClause.join(', ')} WHERE uuid = $${paramIndex}`,
+  await assignmentsDb.execute(
+    `UPDATE actual SET ${setClause.join(', ')} WHERE uuid = ?`,
     params
   );
 
@@ -520,12 +510,12 @@ export async function updateActualAssignment(
  * Delete an actual assignment
  */
 export async function deleteActualAssignment(uuid: string) {
-  const result = await assignmentsDb.query(
-    'DELETE FROM actual WHERE uuid = $1',
+  const [result] = await assignmentsDb.execute(
+    'DELETE FROM actual WHERE uuid = ?',
     [uuid]
   );
 
-  if (result.rowCount === 0) {
+  if ((result as any).affectedRows === 0) {
     throw new Error(`Actual ${uuid} not found`);
   }
 }

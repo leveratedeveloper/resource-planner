@@ -18,8 +18,8 @@ export async function GET(request: Request) {
     results.database.connected = await testConnection();
     results.database.config = {
       host: process.env.MYSQL_ASSIGNMENTS_HOST || '127.0.0.1',
-      port: process.env.MYSQL_ASSIGNMENTS_PORT || '5432',
-      database: process.env.MYSQL_ASSIGNMENTS_DATABASE || 'postgres',
+      port: process.env.MYSQL_ASSIGNMENTS_PORT || '3306',
+      database: process.env.MYSQL_ASSIGNMENTS_DATABASE || 'resource_planner_assignments',
     };
 
     if (!results.database.connected) {
@@ -28,33 +28,33 @@ export async function GET(request: Request) {
     }
 
     // 2. Count all assignments
-    const countResult = await assignmentsDb.query(
+    const [countResult] = await assignmentsDb.execute(
       'SELECT COUNT(*) as total FROM assignments'
-    );
-    results.database.totalAssignments = countResult.rows[0]?.total || 0;
+    ) as any[];
+    results.database.totalAssignments = countResult[0]?.total || 0;
 
     // 3. Get all assignments without filters
-    const allAssignments = await assignmentsDb.query(
+    const [allAssignments] = await assignmentsDb.execute(
       'SELECT * FROM assignments ORDER BY created_at DESC LIMIT 10'
-    );
-    results.assignments = allAssignments.rows;
+    ) as any[];
+    results.assignments = allAssignments;
 
     // 4. Check distinct statuses
-    const statusResult = await assignmentsDb.query(
+    const [statusResult] = await assignmentsDb.execute(
       'SELECT DISTINCT status, COUNT(*) as count FROM assignments GROUP BY status'
-    );
-    results.database.statusBreakdown = statusResult.rows;
+    ) as any[];
+    results.database.statusBreakdown = statusResult;
 
     // 5. Check date ranges of assignments
-    const dateRange = await assignmentsDb.query(`
+    const [dateRange] = await assignmentsDb.execute(`
       SELECT
         MIN(start_date) as earliest_start,
         MAX(end_date) as latest_end,
         MIN(created_at) as first_created,
         MAX(created_at) as last_created
       FROM assignments
-    `);
-    results.database.dateRange = dateRange.rows[0];
+    `) as any[];
+    results.database.dateRange = dateRange[0];
 
     // 6. If date params provided, test with those filters
     const { searchParams } = new URL(request.url);

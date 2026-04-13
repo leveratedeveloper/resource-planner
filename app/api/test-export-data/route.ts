@@ -13,20 +13,20 @@ export async function GET() {
 
   // 1. Cek assignments di database
   try {
-    const countResult = await assignmentsDb.query(`
+    const [countResult] = await assignmentsDb.execute(`
       SELECT COUNT(*) as count FROM assignments
     `);
-    result.assignmentsCount = countResult.rows[0]?.count || 0;
+    result.assignmentsCount = countResult[0]?.count || 0;
 
     // Ambil sample assignments
     if (result.assignmentsCount > 0) {
-      const samples = await assignmentsDb.query(`
+      const [samples] = await assignmentsDb.execute(`
         SELECT uuid, employee_uuid, project_uuid, start_date, end_date, status
         FROM assignments
         ORDER BY created_at DESC
         LIMIT 3
       `);
-      result.assignmentSamples = samples.rows;
+      result.assignmentSamples = samples;
     }
   } catch (err) {
     result.assignmentsError = err instanceof Error ? err.message : String(err);
