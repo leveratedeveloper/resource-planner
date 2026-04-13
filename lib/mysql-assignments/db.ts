@@ -1,20 +1,20 @@
 /**
- * MySQL Assignments Database Connection
+ * PostgreSQL Assignments Database Connection (Supabase)
  * Separate connection for assignments storage
+ * Note: Folder name kept as mysql-assignments for backward compatibility
  */
 
-import { createPool } from 'mysql2/promise';
+import { Pool } from 'pg';
 
-export const assignmentsDb = createPool({
+export const assignmentsDb = new Pool({
   host: process.env.MYSQL_ASSIGNMENTS_HOST || '127.0.0.1',
-  port: parseInt(process.env.MYSQL_ASSIGNMENTS_PORT || '3306'),
-  user: process.env.MYSQL_ASSIGNMENTS_USER || 'root',
+  port: parseInt(process.env.MYSQL_ASSIGNMENTS_PORT || '5432'),
+  user: process.env.MYSQL_ASSIGNMENTS_USER || 'postgres',
   password: process.env.MYSQL_ASSIGNMENTS_PASSWORD || '',
-  database: process.env.MYSQL_ASSIGNMENTS_DATABASE || 'resource_planner_assignments',
-  waitForConnections: true,
-  connectionLimit: 10,
-  timezone: '+00:00', // Use UTC to avoid timezone conversion issues
-  dateStrings: true, // Return dates as strings, not Date objects
+  database: process.env.MYSQL_ASSIGNMENTS_DATABASE || 'postgres',
+  max: 10, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
 });
 
 /**
@@ -22,9 +22,9 @@ export const assignmentsDb = createPool({
  */
 export async function testConnection(): Promise<boolean> {
   try {
-    const connection = await assignmentsDb.getConnection();
-    await connection.ping();
-    connection.release();
+    const client = await assignmentsDb.connect();
+    await client.query('SELECT 1');
+    client.release();
     return true;
   } catch (error) {
     console.error('[Assignments DB] Connection test failed:', error);
