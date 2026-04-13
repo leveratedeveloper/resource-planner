@@ -36,17 +36,29 @@ const mysqlPool: MySQLPool = createPool({
 });
 
 // PostgreSQL Pool (for Vercel production)
-const postgresPool = new PostgreSQLPool({
-  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+// Use lazy initialization for serverless compatibility
+let postgresPool: PostgreSQLPool | null = null;
+
+function getPostgresPool(): PostgreSQLPool {
+  if (!postgresPool) {
+    postgresPool = new PostgreSQLPool({
+      connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      max: 1, // Single connection per serverless function
+      idleTimeoutMillis: 30000, // Close idle connections after 30s
+      connectionTimeoutMillis: 10000, // Timeout after 10s
+    });
+  }
+  return postgresPool;
+}
 
 // Unified database interface
 export const assignmentsDb = {
   async query(sql: string, params?: any[]): Promise<any> {
     if (dbClient === 'postgresql') {
+      const pool = getPostgresPool();
       const pgSql = convertMySQLToPostgreSQL(sql);
-      const result = await postgresPool.query(pgSql, params);
+      const result = await pool.query(pgSql, params);
       // Return array format [rows, fields] to match MySQL
       return [
         result.rows,
@@ -59,8 +71,9 @@ export const assignmentsDb = {
 
   async execute(sql: string, params?: any[]): Promise<any> {
     if (dbClient === 'postgresql') {
+      const pool = getPostgresPool();
       const pgSql = convertMySQLToPostgreSQL(sql);
-      const result = await postgresPool.query(pgSql, params);
+      const result = await pool.query(pgSql, params);
       // Return array format [rows, fields] to match MySQL
       return [
         result.rows,
@@ -73,11 +86,12 @@ export const assignmentsDb = {
 
   async getConnection() {
     if (dbClient === 'postgresql') {
+      const pool = getPostgresPool();
       return {
-        query: (sql: string, params?: any[]) => postgresPool.query(convertMySQLToPostgreSQL(sql), params),
-        execute: (sql: string, params?: any[]) => postgresPool.query(convertMySQLToPostgreSQL(sql), params),
+        query: (sql: string, params?: any[]) => pool.query(convertMySQLToPostgreSQL(sql), params),
+        execute: (sql: string, params?: any[]) => pool.query(convertMySQLToPostgreSQL(sql), params),
         release: () => {},
-        ping: async () => postgresPool.query('SELECT 1'),
+        ping: async () => pool.query('SELECT 1'),
       };
     }
     return mysqlPool.getConnection();
@@ -85,7 +99,10 @@ export const assignmentsDb = {
 
   async end() {
     if (dbClient === 'postgresql') {
-      await postgresPool.end();
+      if (postgresPool) {
+        await postgresPool.end();
+        postgresPool = null;
+      }
     } else {
       await mysqlPool.end();
     }
@@ -135,4 +152,4 @@ export async function testConnection(): Promise<boolean> {
 }
 
 // Export for direct access if needed
-export { mysqlPool, postgresPool };
+export { mysqlPool, getPostgresPool };
