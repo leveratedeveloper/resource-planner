@@ -125,10 +125,11 @@ export async function POST(request: Request) {
       hours_per_day: body.hoursPerDay || '8.00',
       total_hours: body.totalHours || null,
       allocation_percentage: body.allocationPercentage || null,
-      is_time_off: body.isTimeOff ?? false,
+      // Convert boolean values properly for PostgreSQL (expects integer 0/1)
+      is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0,
       time_off_type_uuid: body.timeOffTypeId || null,
       category: body.category || null,
-      is_billable: body.isBillable ?? true,
+      is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1,
       status: body.status || 'confirmed',
       note: body.note || null,
       created_by_uuid: body.createdById || null,

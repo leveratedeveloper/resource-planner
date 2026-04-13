@@ -93,16 +93,17 @@ export async function PUT(
     const body = await request.json();
 
     // Transform frontend format (camelCase) to MySQL format (snake_case)
+    // Build update data, converting boolean values properly for PostgreSQL (expects integer 0/1)
     const mysqlData: Partial<{
       start_date: string;
       end_date: string;
       hours_per_day: string | number;
       total_hours: number;
       allocation_percentage: number;
-      is_time_off: boolean;
+      is_time_off: number;
       time_off_type_uuid: string;
       category: string;
-      is_billable: boolean;
+      is_billable: number;
       status: string;
       note: string;
       project_uuid: string;
@@ -112,10 +113,10 @@ export async function PUT(
       ...(body.hoursPerDay !== undefined && { hours_per_day: body.hoursPerDay }),
       ...(body.totalHours !== undefined && { total_hours: body.totalHours }),
       ...(body.allocationPercentage !== undefined && { allocation_percentage: body.allocationPercentage }),
-      ...(body.isTimeOff !== undefined && { is_time_off: body.isTimeOff }),
+      ...(body.isTimeOff !== undefined && { is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0 }),
       ...(body.timeOffTypeId !== undefined && { time_off_type_uuid: body.timeOffTypeId }),
       ...(body.category !== undefined && { category: body.category }),
-      ...(body.isBillable !== undefined && { is_billable: body.isBillable }),
+      ...(body.isBillable !== undefined && { is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1 }),
       ...(body.status !== undefined && { status: body.status }),
       ...(body.note !== undefined && { note: body.note }),
       ...(body.projectId !== undefined && { project_uuid: body.projectId }),

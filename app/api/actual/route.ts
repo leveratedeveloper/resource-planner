@@ -113,10 +113,11 @@ export async function POST(request: NextRequest) {
       end_date: body.endDate,
       hours_per_day: body.hoursPerDay || '8.00',
       allocation_percentage: body.allocationPercentage || null,
-      is_time_off: body.isTimeOff || false,
+      // Convert boolean values properly for PostgreSQL (expects integer 0/1)
+      is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0,
       time_off_type_uuid: body.timeOffTypeUuid || null,
       category: body.category || null,
-      is_billable: body.isBillable !== undefined ? body.isBillable : true,
+      is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1,
       status: body.status || 'completed',
       note: body.note || null,
       created_by_uuid: session.employee?.uuid || null,
