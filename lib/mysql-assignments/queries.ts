@@ -168,12 +168,15 @@ export async function createAssignment(data: {
   const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const calculatedTotalHours = data.total_hours ?? (hoursPerDay * daysDiff);
 
+  // Get current timestamp for created_at and updated_at (required for PostgreSQL)
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
   const query = `
     INSERT INTO assignments (
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
       hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
-      category, is_billable, status, note, created_by_uuid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      category, is_billable, status, note, created_by_uuid, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   await assignmentsDb.execute(query, [
@@ -194,6 +197,8 @@ export async function createAssignment(data: {
     data.status ?? 'confirmed',
     data.note ?? null,
     data.created_by_uuid ?? null,
+    now,  // created_at
+    now,  // updated_at
   ]);
 
   console.log('[createAssignment] Inserted to DB, fetching result...');
@@ -258,6 +263,11 @@ export async function updateAssignment(
   if (setClause.length === 0) {
     throw new Error('No valid columns to update');
   }
+
+  // Add updated_at timestamp
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  setClause.push(`updated_at = ?`);
+  params.push(now);
 
   params.push(uuid);
 
@@ -416,12 +426,15 @@ export async function createActualAssignment(data: {
   const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const calculatedTotalHours = data.total_hours ?? (hoursPerDay * daysDiff);
 
+  // Get current timestamp for created_at and updated_at (required for PostgreSQL)
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
   const query = `
     INSERT INTO actual (
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
       hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
-      category, is_billable, status, note, created_by_uuid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      category, is_billable, status, note, created_by_uuid, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   await assignmentsDb.execute(query, [
@@ -442,6 +455,8 @@ export async function createActualAssignment(data: {
     data.status ?? 'confirmed',
     data.note ?? null,
     data.created_by_uuid ?? null,
+    now,  // created_at
+    now,  // updated_at
   ]);
 
   return getActual(uuid);
@@ -497,6 +512,11 @@ export async function updateActualAssignment(
   if (setClause.length === 0) {
     throw new Error('No valid columns to update');
   }
+
+  // Add updated_at timestamp
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  setClause.push(`updated_at = ?`);
+  params.push(now);
 
   params.push(uuid);
 
