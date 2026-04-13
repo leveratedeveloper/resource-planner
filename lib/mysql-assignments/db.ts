@@ -45,19 +45,14 @@ const postgresPool = new PostgreSQLPool({
 export const assignmentsDb = {
   async query(sql: string, params?: any[]): Promise<any> {
     if (dbClient === 'postgresql') {
-      // PostgreSQL: Convert MySQL syntax to PostgreSQL
       const pgSql = convertMySQLToPostgreSQL(sql);
       const result = await postgresPool.query(pgSql, params);
-      // Convert PostgreSQL result to MySQL-like format
-      return {
-        results: result.rows,
-        rows: result.rows,
-        fields: result.fields,
-        insertId: result.rows[0]?.id || null,
-        affectedRows: result.rowCount || 0,
-      };
+      // Return array format [rows, fields] to match MySQL
+      return [
+        result.rows,
+        result.fields,
+      ];
     } else {
-      // MySQL: Use mysql2 pool directly
       return mysqlPool.query(sql, params);
     }
   },
@@ -66,13 +61,11 @@ export const assignmentsDb = {
     if (dbClient === 'postgresql') {
       const pgSql = convertMySQLToPostgreSQL(sql);
       const result = await postgresPool.query(pgSql, params);
-      return {
-        results: result.rows,
-        rows: result.rows,
-        fields: result.fields,
-        insertId: result.rows[0]?.id || null,
-        affectedRows: result.rowCount || 0,
-      };
+      // Return array format [rows, fields] to match MySQL
+      return [
+        result.rows,
+        result.fields,
+      ];
     } else {
       return mysqlPool.execute(sql, params);
     }
