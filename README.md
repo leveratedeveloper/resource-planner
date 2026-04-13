@@ -6,9 +6,9 @@ A workforce management and resource allocation system for managing employee assi
 
 - **Framework**: Next.js 16.1.1
 - **UI**: React 19, TypeScript, Tailwind CSS v4
-- **Database**: Dual-database setup
-  - PostgreSQL/Supabase for main data (employees, brands, projects, campaigns)
-  - MySQL for assignments and time-off data
+- **Database**: MySQL
+  - Main data via Timetrack API (employees, brands, projects, campaigns)
+  - Assignments database for employee-project allocations
 - **External Integration**: Timetrack API for authentication and employee data
 - **State Management**: Zustand, TanStack Query
 - **Testing**: Vitest
@@ -16,11 +16,11 @@ A workforce management and resource allocation system for managing employee assi
 ## Architecture Overview
 
 ```
-┌─────────────────┐     ┌─────────────────┐
-│  Resource       │────▶│  PostgreSQL/    │
-│  Planner        │     │  Supabase       │
-│  (Next.js)      │     │  (Main Data)    │
-└────────┬────────┘     └─────────────────┘
+┌─────────────────┐
+│  Resource       │
+│  Planner        │
+│  (Next.js)      │
+└────────┬────────┘
          │
          ├─────────────────┐
          │                 │
@@ -28,6 +28,7 @@ A workforce management and resource allocation system for managing employee assi
 ┌─────────────────┐ ┌─────────────────┐
 │  Timetrack API  │ │  MySQL          │
 │  (Auth/Employees)│ │  (Assignments)  │
+│  (Brands/Projects)│ │                 │
 └─────────────────┘ └─────────────────┘
 ```
 
@@ -54,7 +55,6 @@ Before you begin, ensure you have the following installed:
 
 - **Node.js** v20 or higher
 - **MySQL Server** (local instance for assignments database)
-- **PostgreSQL/Supabase** account (for main database)
 - **Timetrack API** running locally on port 8000 (required before starting)
 
 ## Environment Configuration
@@ -154,21 +154,7 @@ This creates:
 - Database: `resource_planner_assignments`
 - Table: `assignments` (for employee-project allocations)
 
-### Step 4: Set Up PostgreSQL/Supabase (Main Database)
-
-1. **Create a Supabase project** at https://supabase.com
-2. **Get your database connection string** from Supabase settings
-3. **Run migrations** to set up the schema:
-
-```bash
-# Push schema changes to database
-npm run db:push
-
-# OR run migration files
-npm run db:migrate
-```
-
-### Step 5: Configure Environment Variables
+### Step 4: Configure Environment Variables
 
 1. **Copy the example environment file**:
    ```bash
@@ -178,13 +164,6 @@ npm run db:migrate
 2. **Edit `.env.local`** with your actual values:
 
    ```bash
-   # ==========================================
-   # PostgreSQL/Supabase Connection (Main Database)
-   # ==========================================
-   # Get this from Supabase project settings -> Database -> Connection String
-   # Format: postgresql://postgres:[password]@[host]:[port]/[database]
-   DATABASE_URL="postgresql://postgres:password@localhost:5432/resource_planner"
-
    # ==========================================
    # Timetrack API Configuration (Required)
    # ==========================================
@@ -241,15 +220,7 @@ npm run db:migrate
    NEXTAUTH_URL=http://localhost:3000
    ```
 
-   **To get your DATABASE_URL from Supabase:**
-   1. Go to your Supabase project dashboard
-   2. Navigate to Settings → Database
-   3. Find the "Connection string" section
-   4. Select "URI" format
-   5. Copy and paste into `.env.local`
-   6. Replace `[password]` with your database password
-
-### Step 6: (Optional) Import Data from Timetrack
+### Step 5: Start Development Server
 
 If you have a Timetrack SQL dump and want to import existing data:
 
@@ -280,13 +251,6 @@ npm run build        # Build for production
 npm run start        # Start production server
 npm run lint         # Run ESLint
 
-# Database Operations
-npm run db:push      # Push schema changes to database
-npm run db:generate  # Generate migration files from schema
-npm run db:migrate   # Run migration files
-npm run db:studio    # Open Drizzle Studio (database GUI)
-npm run migrate:mysql-to-supabase  # Migrate MySQL data to Supabase
-
 # Testing
 npm run test         # Run tests
 npm run test:watch   # Run tests in watch mode
@@ -305,13 +269,12 @@ npm run test:coverage # Run tests with coverage report
 - Check Timetrack logs for errors
 
 ### Database Connection Errors
-**Problem**: Can't connect to MySQL or PostgreSQL
+**Problem**: Can't connect to MySQL
 
 **Solutions**:
 - Verify MySQL is running: `mysql -u root -p -e "SHOW DATABASES;"`
 - Check database credentials in `.env.local`
 - Ensure `resource_planner_assignments` database exists
-- For Supabase, verify your connection string is correct
 
 ### Authentication Not Working
 **Problem**: Login fails or magic links not sending
@@ -332,15 +295,14 @@ npm run test:coverage # Run tests with coverage report
 
 ## Project Architecture
 
-### Dual-Database Setup
+### Data Sources
 
-<!-- **PostgreSQL/Supabase** (Main Data):
-- Employees
-- Brands
-- Projects
-- Campaigns
-- Time off types
-- Other core data -->
+**Timetrack API** (Main Data via REST API):
+- Employees (with department, position for RBAC)
+- Brands (with company info, contacts, industry)
+- Campaigns (with budget tracking: budget, ASF, grand total)
+- Pitches (with status tracking: on_going, win, loss)
+- Authentication (login with email/password)
 
 **MySQL** (Operational Data):
 - Assignments (employee-project allocations)
