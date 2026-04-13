@@ -252,11 +252,11 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
     );
   }
 
-  // Fungsi helper untuk mendapatkan warna (Biru untuk plan, Hijau untuk actual)
+  // Fungsi helper untuk mendapatkan warna (Blue untuk plan, Green untuk actual)
+  // 100% = warna base, <100% = transparan, >100% = lebih gelap
   const getStyles = (pct: number, type: 'plan' | 'actual', hours: number) => {
-    if (pct <= 0) return { bg: "bg-transparent", text: "text-transparent", border: "", label: "" };
+    if (pct <= 0) return { bg: "bg-transparent", text: "text-transparent", border: "", label: "", bgColor: "" };
 
-    let bg = "";
     let text = "text-white";
     let border = "";
     // For MonthRange view, show hours instead of percentage
@@ -265,16 +265,49 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
       ? `${Math.round(hours)}h`
       : `${Math.round(pct * 100)}%`;
 
-    // Use solid colors like day view (no shades)
+    // Clamp percentage untuk opacity/shading
+    // < 100%: opacity 0.3 - 1.0 (semakin besar semakin pekat)
+    // >= 100%: gunakan base color dan opacity penuh, tapi kalau >100% gunakan darker shade
+    let opacity = Math.min(Math.max(pct, 0.3), 1.0);
+
+    // Biru/Hijau dengan shading berdasarkan persentase
+    // 100% = warna base (sama kayak project row)
+    // < 100%: lebih transparan
+    // > 100%: lebih gelap
+    let bgColor = "";
     if (type === 'plan') {
-      bg = "bg-blue-600"; // #2563eb equivalent
+      if (pct >= 1) {
+        // >= 100%: gunakan darker shades untuk >100%
+        if (pct > 1.25) {
+          bgColor = `rgba(30, 58, 138, 1)`; // blue-900 (very dark)
+        } else if (pct > 1.1) {
+          bgColor = `rgba(30, 64, 175, 1)`; // blue-800 (darker)
+        } else {
+          bgColor = `rgba(37, 99, 235, 1)`; // blue-600 (base 100%)
+        }
+      } else {
+        // < 100%: gunakan opacity
+        bgColor = `rgba(37, 99, 235, ${opacity})`; // blue-600 base
+      }
       border = pct > 1 ? "border-t-2 border-red-500" : "";
     } else {
-      bg = "bg-green-600"; // #16a34a equivalent
+      if (pct >= 1) {
+        // >= 100%: gunakan darker shades untuk >100%
+        if (pct > 1.25) {
+          bgColor = `rgba(20, 83, 45, 1)`; // green-900 (very dark)
+        } else if (pct > 1.1) {
+          bgColor = `rgba(22, 101, 52, 1)`; // green-800 (darker)
+        } else {
+          bgColor = `rgba(22, 163, 74, 1)`; // green-600 (base 100%)
+        }
+      } else {
+        // < 100%: gunakan opacity
+        bgColor = `rgba(22, 163, 74, ${opacity})`; // green-600 base
+      }
       border = pct > 1 ? "border-t-2 border-red-500" : "";
     }
 
-    return { bg, text, border, label };
+    return { bg: "", text, border, label, bgColor };
   };
 
   const planStyles = getStyles(planPct, 'plan', safePlanHours);
@@ -285,23 +318,25 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
       className="shrink-0 h-[60px] border-r border-white/20 flex flex-col overflow-hidden"
       style={{ width: `${cellWidth}px` }}
     >
-      {/* KOTAK PLAN (Atas - Warna Biru) */}
+      {/* KOTAK PLAN (Atas - Warna Blue, shading by %) */}
       <div
         className={cn(
-          "flex-1 flex items-center justify-center text-[10px] font-bold transition-all",
-          planStyles.bg, planStyles.text, planStyles.border,
+          "flex-1 flex items-center justify-center text-[11px] font-bold transition-all",
+          planStyles.text, planStyles.border,
           planPct > 0 ? "border-b border-white/20" : "border-b border-dashed"
         )}
+        style={{ backgroundColor: planStyles.bgColor }}
       >
         {planStyles.label}
       </div>
 
-      {/* KOTAK ACTUAL (Bawah - Warna Hijau) */}
+      {/* KOTAK ACTUAL (Bawah - Warna Green, shading by %) */}
       <div
         className={cn(
-          "flex-1 flex items-center justify-center text-[10px] font-bold transition-all",
-          actualStyles.bg, actualStyles.text, actualStyles.border
+          "flex-1 flex items-center justify-center text-[11px] font-bold transition-all",
+          actualStyles.text, actualStyles.border
         )}
+        style={{ backgroundColor: actualStyles.bgColor }}
       >
         {actualStyles.label}
       </div>
@@ -640,6 +675,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const [isExpanded, setIsExpanded] = useState(false);
   const PROJECT_DISPLAY_LIMIT = 5;
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
+
+  // Hover state for month columns in quarter/half-year/year views (for + indicator)
+  const [hoveredMonthIndex, setHoveredMonthIndex] = useState<number | null>(null);
+  const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
+  const [hoveredRowType, setHoveredRowType] = useState<'plan' | 'actual' | null>(null);
 
   // State untuk fitur Select Project
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
@@ -1626,6 +1666,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                 isDragging={isDraggingRef.current && dragProjectIdRef.current === ""}
                 isInDragRange={isInDragRange(dayIndex, null)}
                 onMouseDown={(index, containerRef) => handleDragStart(index, "", "#6b7280", containerRef)}
+                rowType="plan"
               />
             ))}
             {/* Time Off Assignments */}
@@ -1807,6 +1848,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                               isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'plan'}
                               isInDragRange={isInDragRange(dayIndex, 'plan')}
                               onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef, 'plan')}
+                              rowType="plan"
                             />
                           ))}
                           {/* Plan Assignments */}
@@ -1902,6 +1944,21 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                               {/* Invisible overlay for detecting clicks on empty space */}
                               <div
                                 className="absolute inset-0 z-0"
+                                onMouseMove={(e) => {
+                                  // Only handle in month range view
+                                  if (!isMonthRangeView) return;
+                                  const containerRect = e.currentTarget.getBoundingClientRect();
+                                  const x = e.clientX - containerRect.left;
+                                  const dayIndex = Math.floor(x / cellWidth);
+                                  setHoveredMonthIndex(dayIndex);
+                                  setHoveredProjectId(project.id);
+                                  setHoveredRowType('plan');
+                                }}
+                                onMouseLeave={() => {
+                                  setHoveredMonthIndex(null);
+                                  setHoveredProjectId(null);
+                                  setHoveredRowType(null);
+                                }}
                                 onClick={(e) => {
                                   // Only handle in month range view
                                   if (!isMonthRangeView) return;
@@ -1933,6 +1990,33 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                                 }}
                                 style={{ pointerEvents: 'auto', cursor: 'cell' }}
                               />
+                              {/* + indicator for month range views - only show if no assignment exists for this month */}
+                              {isMonthRangeView && hoveredProjectId === project.id && hoveredRowType === 'plan' && hoveredMonthIndex !== null && (() => {
+                                // Check if any assignment covers this month
+                                const monthStart = startOfMonth(days[hoveredMonthIndex]);
+                                const monthEnd = endOfMonth(monthStart);
+                                const hasAssignmentInMonth = planAssignments.some(assignment => {
+                                  const assignStart = startOfDay(new Date(assignment.startDate));
+                                  const assignEnd = startOfDay(new Date(assignment.endDate));
+                                  return assignEnd >= monthStart && assignStart <= monthEnd;
+                                });
+                                return !hasAssignmentInMonth;
+                              })() && (
+                                <div
+                                  className="absolute pointer-events-none z-10"
+                                  style={{
+                                    left: `${hoveredMonthIndex * cellWidth + cellWidth / 2}px`,
+                                    top: '50%',
+                                    transform: 'translate(-50%, -50%)'
+                                  }}
+                                >
+                                  <div
+                                    className="w-7 h-7 rounded-full flex items-center justify-center text-white shadow-md bg-blue-600"
+                                  >
+                                    <Icon icon="lucide:plus" className="h-4 w-4" />
+                                  </div>
+                                </div>
+                              )}
                             </>
                           ) : (
                             // For Week view (day view), use regular AssignmentBlock
@@ -2015,6 +2099,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'actual'}
                             isInDragRange={isInDragRange(dayIndex, 'actual')}
                             onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef, 'actual')}
+                            rowType="actual"
                           />
                         ))}
                         {/* Actual Assignments - Struktur sama dengan plan assignments */}
@@ -2104,6 +2189,32 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                                 );
                               });
                             })}
+                            {/* Invisible overlay for detecting clicks on empty space (actual assignments) - no + indicator for actual in month range views */}
+                            <div
+                              className="absolute inset-0 z-0"
+                              onClick={(e) => {
+                                // Only handle in month range view
+                                if (!isMonthRangeView) return;
+                                const containerRect = e.currentTarget.getBoundingClientRect();
+                                const x = e.clientX - containerRect.left;
+                                const dayIndex = Math.floor(x / cellWidth);
+                                const clickedDay = days[Math.max(0, Math.min(dayIndex, days.length - 1))];
+
+                                // Calculate month boundaries
+                                const monthStart = startOfDay(startOfMonth(clickedDay));
+                                const monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+
+                                handleProjectRowClick(
+                                  monthStart,
+                                  monthEnd,
+                                  project,
+                                  e.clientX,
+                                  e.clientY
+                                  // No assignment = create mode
+                                );
+                              }}
+                              style={{ pointerEvents: 'auto', cursor: 'cell' }}
+                            />
                           </>
                         ) : (
                           projectActualAssignments.map((actualAssignment) => (
@@ -2301,38 +2412,61 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             onSave={handleSaveMonthlyAllocation}
             onDelete={monthlyAllocationModal.existingAssignment ? (() => {
               const assignmentId = monthlyAllocationModal.existingAssignment!.id;
-              console.log('[ResourceRow] Creating delete handler for assignment:', {
+              const projectId = monthlyAllocationModal.existingAssignment!.projectId;
+              const monthStart = monthlyAllocationModal.monthStart;
+              const monthEnd = monthlyAllocationModal.monthEnd;
+
+              console.log('[ResourceRow] Creating delete handler for monthly allocation:', {
                 id: assignmentId,
-                projectId: monthlyAllocationModal.existingAssignment!.projectId,
-                employeeId: monthlyAllocationModal.existingAssignment!.employeeId,
-                startDate: monthlyAllocationModal.existingAssignment!.startDate,
-                endDate: monthlyAllocationModal.existingAssignment!.endDate
+                projectId,
+                monthStart: monthStart.toISOString(),
+                monthEnd: monthEnd.toISOString()
               });
 
               return () => {
-                console.log('[ResourceRow] Delete handler called, mutating...');
-                deleteAssignmentMutation.mutate(assignmentId, {
-                  onSuccess: () => {
-                    console.log('[ResourceRow] Delete success, closing modal');
-                    setMonthlyAllocationModal(null);
-                  },
-                  onError: (error) => {
-                    const errorMessage = error instanceof Error ? error.message : String(error);
-                    console.error('[ResourceRow] Delete failed:', error);
+                console.log('[ResourceRow] Delete handler called, finding all assignments in month range...');
 
-                    // If assignment not found, it's already deleted - close modal
-                    if (errorMessage.toLowerCase().includes("not found")) {
-                      console.log('[ResourceRow] Assignment not found (already deleted), closing modal');
-                      setMonthlyAllocationModal(null);
-                      // Force refetch to ensure UI is in sync
-                      queryClient.invalidateQueries({ queryKey: ["assignments"] });
-                    } else {
-                      // For other errors, close modal and refetch
-                      setMonthlyAllocationModal(null);
-                      queryClient.invalidateQueries({ queryKey: ["assignments"] });
-                    }
-                  }
+                // Find ALL assignments for this project that fall within the month range
+                const assignmentsInMonth = resourceAssignments.filter((a) => {
+                  if (a.isTimeOff) return false;
+                  if (a.projectId !== projectId) return false;
+
+                  const assignStart = startOfDay(new Date(a.startDate));
+                  const assignEnd = startOfDay(new Date(a.endDate));
+
+                  // Check if assignment falls within the month range
+                  return assignEnd >= monthStart && assignStart <= monthEnd;
                 });
+
+                console.log('[ResourceRow] Found assignments to delete:', {
+                  count: assignmentsInMonth.length,
+                  ids: assignmentsInMonth.map(a => a.id)
+                });
+
+                // Delete all assignments in parallel
+                const deletePromises = assignmentsInMonth.map(a =>
+                  fetch(`/api/assignments/${a.id}`, {
+                    method: 'DELETE',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                  })
+                );
+
+                Promise.all(deletePromises)
+                  .then(() => {
+                    console.log('[ResourceRow] All assignments deleted successfully');
+                    setMonthlyAllocationModal(null);
+                    // Invalidate queries to refresh the data
+                    queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                  })
+                  .catch((error) => {
+                    console.error('[ResourceRow] Delete failed:', error);
+                    setMonthlyAllocationModal(null);
+                    // Force refetch to ensure UI is in sync
+                    queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                  });
               };
             })() : undefined}
           />
