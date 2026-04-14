@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { login, getUserWithProfile, getDepartment } from '@/lib/api/timetrack-client';
 import { determineAccessLevel } from '@/lib/auth/access-level';
 import { createSession, SessionData } from '@/lib/auth/session';
+import { getMySqlApiClient } from '@/lib/mysql/api-client';
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,10 +60,47 @@ export async function POST(request: NextRequest) {
 
     console.log('[Login API] Employee data:', {
       id: employee.id,
+      uuid: employee.uuid,
       name: employee.full_name || employee.name,
       department: department_name,
       position: employee.position
     });
+
+    // DEBUG: Check if UUID is missing from timetrack API
+    let employeeUuid = employee.uuid || '';
+    if (!employee.uuid) {
+      console.error('[Login API] WARNING: Employee UUID is missing from timetrack API response!', {
+        employeeId: employee.id,
+        employeeKeys: Object.keys(employee),
+        fullProfile: employee
+      });
+
+      // Try to fetch UUID from MySQL API as fallback
+      try {
+        console.log('[Login API] Attempting to fetch UUID from MySQL API...');
+        const mysqlClient = getMySqlApiClient(async () => access_token);
+        const mysqlResponse = await mysqlClient.getEmployees({
+          search: employee.nik || employee.full_name || '',
+          per_page: 10,
+        });
+
+        if (!mysqlResponse.error && mysqlResponse.data?.data) {
+          const mysqlEmployee = mysqlResponse.data.data.find((emp: any) =>
+            emp.nik === employee.nik || emp.full_name === employee.full_name
+          );
+          if (mysqlEmployee?.uuid) {
+            employeeUuid = mysqlEmployee.uuid;
+            console.log('[Login API] Successfully fetched UUID from MySQL API:', employeeUuid);
+          } else {
+            console.error('[Login API] Could not find matching employee in MySQL API');
+          }
+        } else {
+          console.error('[Login API] MySQL API returned error:', mysqlResponse.error);
+        }
+      } catch (error) {
+        console.error('[Login API] Error fetching from MySQL API:', error);
+      }
+    }
 
     // 4. Determine access level
     const accessLevel = determineAccessLevel({
@@ -77,7 +115,7 @@ export async function POST(request: NextRequest) {
       user,
       employee: {
         id: employee.id,
-        uuid: employee.uuid || '',
+        uuid: employeeUuid,  // Use UUID fetched from either timetrack or MySQL API
         nik: employee.nik || '',
         full_name: employee.full_name || employee.name || '',
         nickname: employee.nickname || employee.name || '',
@@ -92,6 +130,8 @@ export async function POST(request: NextRequest) {
         can_view_own_only: accessLevel === 'restricted'
       }
     };
+
+    console.log('[Login API] Final session employee UUID:', session.employee.uuid);
 
     // 6. Set session cookie
     await createSession(session);
