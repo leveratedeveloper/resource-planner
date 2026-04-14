@@ -35,18 +35,14 @@ const mysqlPool: MySQLPool = createPool({
   dateStrings: true,
 });
 
-// PostgreSQL single client for serverless (created per request)
-let postgresClient: PostgreSQLClient | null = null;
-
+// PostgreSQL client for serverless - ALWAYS create new connection to avoid stale connections
 async function getPostgresClient(): Promise<PostgreSQLClient> {
-  if (!postgresClient) {
-    postgresClient = new PostgreSQLClient({
-      connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    });
-    await postgresClient.connect();
-  }
-  return postgresClient;
+  const client = new PostgreSQLClient({
+    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  });
+  await client.connect();
+  return client;
 }
 
 // Unified database interface
@@ -54,13 +50,17 @@ export const assignmentsDb = {
   async query(sql: string, params?: any[]): Promise<any> {
     if (dbClient === 'postgresql') {
       const client = await getPostgresClient();
-      const pgSql = convertMySQLToPostgreSQL(sql);
-      const result = await client.query(pgSql, params);
-      // Return array format [rows, fields] to match MySQL
-      return [
-        result.rows,
-        result.fields,
-      ];
+      try {
+        const pgSql = convertMySQLToPostgreSQL(sql);
+        const result = await client.query(pgSql, params);
+        // Return array format [rows, fields] to match MySQL
+        return [
+          result.rows,
+          result.fields,
+        ];
+      } finally {
+        await client.end();
+      }
     } else {
       return mysqlPool.query(sql, params);
     }
@@ -69,13 +69,17 @@ export const assignmentsDb = {
   async execute(sql: string, params?: any[]): Promise<any> {
     if (dbClient === 'postgresql') {
       const client = await getPostgresClient();
-      const pgSql = convertMySQLToPostgreSQL(sql);
-      const result = await client.query(pgSql, params);
-      // Return array format [rows, fields] to match MySQL
-      return [
-        result.rows,
-        result.fields,
-      ];
+      try {
+        const pgSql = convertMySQLToPostgreSQL(sql);
+        const result = await client.query(pgSql, params);
+        // Return array format [rows, fields] to match MySQL
+        return [
+          result.rows,
+          result.fields,
+        ];
+      } finally {
+        await client.end();
+      }
     } else {
       return mysqlPool.execute(sql, params);
     }
@@ -85,14 +89,18 @@ export const assignmentsDb = {
     if (dbClient === 'postgresql') {
       const client = await getPostgresClient();
       return {
-        query: (sql: string, params?: any[]) => client.query(convertMySQLToPostgreSQL(sql), params),
-        execute: (sql: string, params?: any[]) => client.query(convertMySQLToPostgreSQL(sql), params),
+        query: async (sql: string, params?: any[]) => {
+          const pgSql = convertMySQLToPostgreSQL(sql);
+          const result = await client.query(pgSql, params);
+          return result;
+        },
+        execute: async (sql: string, params?: any[]) => {
+          const pgSql = convertMySQLToPostgreSQL(sql);
+          const result = await client.query(pgSql, params);
+          return result;
+        },
         release: async () => {
-          // Clean up the client after use
-          if (postgresClient) {
-            await postgresClient.end();
-            postgresClient = null;
-          }
+          await client.end();
         },
         ping: async () => client.query('SELECT 1'),
       };
@@ -101,12 +109,9 @@ export const assignmentsDb = {
   },
 
   async end() {
-    if (dbClient === 'postgresql') {
-      if (postgresClient) {
-        await postgresClient.end();
-        postgresClient = null;
-      }
-    } else {
+    // No-op for PostgreSQL serverless (connections auto-close)
+    // MySQL pool still needs to be closed
+    if (dbClient === 'mysql') {
       await mysqlPool.end();
     }
   },
@@ -154,5 +159,5 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
-// Export for direct access if needed
-export { mysqlPool, getPostgresClient };
+// Export MySQL pool for direct access (PostgreSQL no longer exports client as it's created per-request)
+export { mysqlPool };
