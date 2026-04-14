@@ -2,6 +2,7 @@
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useEmployees, useBrands, useProjects } from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
@@ -25,6 +26,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [] } = useBrands();
   const { data: projects = [] } = useProjects();
+  const { session } = useAuth();
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -298,8 +300,21 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
       });
     }
 
-    return filtered;
-  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);
+    // Sort: current user first, then alphabetically by name
+    const sorted = filtered.sort((a, b) => {
+      // Current user (logged-in employee) always first
+      const aIsCurrentUser = a.id === session?.employee?.uuid;
+      const bIsCurrentUser = b.id === session?.employee?.uuid;
+
+      if (aIsCurrentUser && !bIsCurrentUser) return -1;
+      if (!aIsCurrentUser && bIsCurrentUser) return 1;
+
+      // Otherwise, sort alphabetically by full name
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    return sorted;
+  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects, session]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
