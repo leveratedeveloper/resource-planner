@@ -654,6 +654,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const { data: brands = [] } = useBrands();
   const { session } = useAuth();
   const queryClient = useQueryClient();
+
+  // Debug: Log resource.id vs session.employee.uuid for actual assignment button visibility
+  console.log('[ResourceRow] Permission check for actual assignment:', {
+    resourceName: resource.name,
+    resourceId: resource.id,
+    sessionEmployeeUuid: session?.employee?.uuid,
+    canCreateActual: resource.id === session?.employee?.uuid,
+    areEqual: resource.id === session?.employee?.uuid
+  });
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
   const deleteAssignmentMutation = useDeleteAssignment();
