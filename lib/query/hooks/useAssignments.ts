@@ -250,11 +250,11 @@ export function useCreateAssignment() {
     },
 
     // Invalidate related queries so brand-filtered views stay in sync
-    onSettled: () => {
+    onSettled: async () => {
       // Invalidate all assignments queries (including those with params)
-      queryClient.invalidateQueries({ queryKey: ["assignments"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
-      queryClient.invalidateQueries({ queryKey: queryKeys.brands });
+      await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
   });
 }
