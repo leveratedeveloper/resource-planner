@@ -22,6 +22,7 @@ export interface MonthlyAllocationData {
 interface MonthlyAllocationConfirmationProps {
   data: MonthlyAllocationData;
   isEditMode: boolean;
+  mode?: 'plan' | 'actual';
   position: { x: number; y: number };
   onConfirm: () => void;
   onCancel: () => void;
@@ -30,10 +31,12 @@ interface MonthlyAllocationConfirmationProps {
 export const MonthlyAllocationConfirmation: React.FC<MonthlyAllocationConfirmationProps> = ({
   data,
   isEditMode,
+  mode = 'plan',
   position,
   onConfirm,
   onCancel,
 }) => {
+  const isActual = mode === 'actual';
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -62,7 +65,10 @@ export const MonthlyAllocationConfirmation: React.FC<MonthlyAllocationConfirmati
           style={{ backgroundColor: data.projectColor || "#ccc" }}
         />
         <h3 className="font-semibold text-sm">
-          {isEditMode ? "Update" : "Create"} Monthly Allocation
+          {isActual
+            ? `${isEditMode ? "Update" : "Create"} Monthly Actual Allocation`
+            : `${isEditMode ? "Update" : "Create"} Monthly Allocation`
+          }
         </h3>
       </div>
 
@@ -87,7 +93,7 @@ export const MonthlyAllocationConfirmation: React.FC<MonthlyAllocationConfirmati
 
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Total hours:</span>
-          <span className="font-semibold text-blue-600">{data.totalHours.toFixed(1)}h</span>
+          <span className={`font-semibold ${isActual ? 'text-green-600' : 'text-blue-600'}`}>{data.totalHours.toFixed(1)}h</span>
         </div>
 
         {firstDate && lastDate && (
@@ -123,10 +129,12 @@ export const MonthlyAllocationConfirmation: React.FC<MonthlyAllocationConfirmati
 
       {/* Edit mode warning */}
       {isEditMode && (
-        <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
-          <Icon icon="lucide:info" className="h-4 w-4 text-amber-600 mt-0.5" />
-          <span className="text-xs text-amber-800">
-            The existing assignment will be deleted and replaced with {data.distributions.length} new assignments.
+        <div className={`mb-4 p-2 rounded-md flex items-start gap-2 ${
+          isActual ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'
+        }`}>
+          <Icon icon="lucide:info" className={`h-4 w-4 mt-0.5 ${isActual ? 'text-emerald-600' : 'text-amber-600'}`} />
+          <span className={`text-xs ${isActual ? 'text-emerald-800' : 'text-amber-800'}`}>
+            The existing {isActual ? 'actual ' : ''}assignment will be deleted and replaced with {data.distributions.length} new {isActual ? 'actual ' : ''}assignments.
           </span>
         </div>
       )}
@@ -147,6 +155,7 @@ export const MonthlyAllocationConfirmation: React.FC<MonthlyAllocationConfirmati
             e.stopPropagation();
             onConfirm();
           }}
+          className={isActual ? 'bg-green-600 hover:bg-green-700' : ''}
         >
           Confirm
         </Button>

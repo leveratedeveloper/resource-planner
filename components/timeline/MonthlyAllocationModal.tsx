@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AssignmentCategory } from "@/types";
-import { format, startOfDay, isBefore, isAfter, isEqual } from "date-fns";
+import { format, startOfDay, startOfMonth, isBefore, isAfter, isEqual, isSameMonth } from "date-fns";
 import { distributeMonthlyHours, type DistributionResult } from "@/lib/utils/allocation-distributor";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
+import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Project } from "@/lib/query/hooks/useProjects";
 
 interface MonthlyAllocationModalProps {
@@ -21,6 +22,8 @@ interface MonthlyAllocationModalProps {
   };
   project: Project;
   existingAssignment?: Assignment; // If present, we're in EDIT mode
+  existingActualAssignment?: ActualAssignment; // If present in actual mode, we're in EDIT mode
+  mode?: 'plan' | 'actual'; // Determines if this is for plan or actual allocations
   timeOffAssignments: Assignment[];
   position: { x: number; y: number };
   monthlyTotalHours?: number; // Total hours for this month (from highlighted block)
@@ -44,6 +47,8 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   resource,
   project,
   existingAssignment,
+  existingActualAssignment,
+  mode = 'plan',
   timeOffAssignments,
   position,
   monthlyTotalHours,
@@ -51,6 +56,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   onSave,
   onDelete,
 }) => {
+  const isActual = mode === 'actual';
   const [mounted, setMounted] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [totalHours, setTotalHours] = useState("0");
@@ -68,7 +74,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   const [userHasEditedHours, setUserHasEditedHours] = useState(false);
 
   // Determine if we're in edit mode
-  const isEditMode = !!existingAssignment;
+  const isEditMode = isActual ? !!existingActualAssignment : !!existingAssignment;
 
   // Log when in edit mode and when props change
   useEffect(() => {
@@ -84,11 +90,28 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
 
   // Initialize form values - only set if user hasn't manually edited yet
   useEffect(() => {
-    if (existingAssignment && !userHasEditedHours) {
-      // EDIT mode: default to today until end of month (same as CREATE mode)
+    if (isActual && existingActualAssignment && !userHasEditedHours) {
+      // ACTUAL EDIT mode
+      const editDefaultStart = isSameMonth(today, monthStart)
+        ? (today > monthEnd ? monthEnd : today)
+        : monthStart;
+      setStartDate(startOfDay(editDefaultStart));
+      setEndDate(startOfDay(monthEnd));
+
+      const hoursValue = monthlyTotalHours?.toString() ?? "0";
+      setTotalHours(hoursValue);
+
+      if (existingActualAssignment.category) {
+        setCategory(existingActualAssignment.category as AssignmentCategory);
+      }
+      setIsBillable(existingActualAssignment.isBillable);
+    } else if (!isActual && existingAssignment && !userHasEditedHours) {
+      // PLAN EDIT mode: default to today if same month, otherwise start from 1st of that month
       // But cap today at month end if today is past the month
-      const defaultStart = today > monthEnd ? monthEnd : today;
-      setStartDate(startOfDay(defaultStart));
+      const editDefaultStart = isSameMonth(today, monthStart)
+        ? (today > monthEnd ? monthEnd : today)
+        : monthStart;
+      setStartDate(startOfDay(editDefaultStart));
       setEndDate(startOfDay(monthEnd));
 
       // Set total hours from the pre-calculated monthly total (from highlighted block)
@@ -99,16 +122,18 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
         setCategory(existingAssignment.category as AssignmentCategory);
       }
       setIsBillable(existingAssignment.isBillable);
-    } else if (!userHasEditedHours && !existingAssignment) {
-      // CREATE mode: default to today until end of month
+    } else if (!userHasEditedHours && !existingAssignment && !existingActualAssignment) {
+      // CREATE mode: default to today if same month, otherwise start from 1st of that month
       // But cap today at month end if today is past the month
-      const defaultStart = today > monthEnd ? monthEnd : today;
-      setStartDate(startOfDay(defaultStart));
+      const createDefaultStart = isSameMonth(today, monthStart)
+        ? (today > monthEnd ? monthEnd : today)
+        : monthStart;
+      setStartDate(startOfDay(createDefaultStart));
       setEndDate(startOfDay(monthEnd));
       setTotalHours("0"); // Default to 0 in create mode
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingAssignment?.id, monthlyTotalHours]);
+  }, [existingAssignment?.id, existingActualAssignment?.uuid, monthlyTotalHours]);
 
   useEffect(() => {
     setMounted(true);
@@ -262,11 +287,14 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       {/* Mode indicator */}
       <div className="mb-3">
         <span className={`text-xs font-semibold px-2 py-1 rounded ${
-          isEditMode
-            ? "bg-amber-100 text-amber-800"
-            : "bg-blue-100 text-blue-800"
+          isActual
+            ? (isEditMode ? "bg-emerald-100 text-emerald-800" : "bg-green-100 text-green-800")
+            : (isEditMode ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800")
         }`}>
-          {isEditMode ? "EDIT MODE" : "CREATE MODE"}
+          {isActual
+            ? (isEditMode ? "EDIT MODE ACTUAL" : "CREATE MODE ACTUAL")
+            : (isEditMode ? "EDIT MODE" : "CREATE MODE")
+          }
         </span>
       </div>
 
@@ -296,7 +324,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
                 setDateError(null);
               }}
               className="text-sm"
-              min={format(isEditMode ? monthStart : today, "yyyy-MM-dd")}
+              min={format(isEditMode ? monthStart : (isSameMonth(today, monthStart) ? today : monthStart), "yyyy-MM-dd")}
               max={format(monthEnd, "yyyy-MM-dd")}
             />
           </div>
@@ -374,7 +402,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Total to allocate:</span>
-              <span className="font-semibold text-blue-600">{distributionResult.totalHours.toFixed(1)}h</span>
+              <span className={`font-semibold ${isActual ? 'text-green-600' : 'text-blue-600'}`}>{distributionResult.totalHours.toFixed(1)}h</span>
             </div>
             {distributionResult.remainingHours > 0 && (
               <div className="flex justify-between mt-1 pt-1 border-t border-amber-200">
@@ -494,7 +522,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
             handleSave();
           }}
           disabled={!hasDistributions || hoursError !== null || dateError !== null}
-          className="text-sm"
+          className={`text-sm ${isActual ? 'bg-green-600 hover:bg-green-700' : ''}`}
         >
           Save
         </Button>

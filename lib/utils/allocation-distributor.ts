@@ -182,15 +182,23 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
   const hoursPerDay = Math.min(8, rawHoursPerDay); // Only cap at max 8, no minimum
 
   // Calculate the ACTUAL total hours that will be distributed
-  const totalDistributedHours = hoursPerDay * daysCount;
-  const remainingHours = Math.max(0, totalHours - totalDistributedHours);
+  // Round to 2 decimal places to avoid floating-point drift, then put remainder on last day
+  const truncatedHoursPerDay = Math.floor(hoursPerDay * 100) / 100;
+  const truncatedTotal = Math.round(truncatedHoursPerDay * daysCount * 100) / 100;
+  const remainder = Math.round((totalHours - truncatedTotal) * 100) / 100;
 
   // 4. Create distribution array
-  const distributions: DistributionDay[] = workingDays.map((date) => ({
+  // All days get truncatedHoursPerDay, last day gets the remainder to match exact total
+  const distributions: DistributionDay[] = workingDays.map((date, index) => ({
     date,
-    hours: hoursPerDay,
+    hours: index === daysCount - 1
+      ? Math.round((truncatedHoursPerDay + remainder) * 100) / 100
+      : truncatedHoursPerDay,
     isBlocked: false,
   }));
+
+  const totalDistributedHours = Math.round(distributions.reduce((sum, d) => sum + d.hours, 0) * 100) / 100;
+  const remainingHours = Math.max(0, Math.round((totalHours - totalDistributedHours) * 100) / 100);
 
   console.log('[Allocation Distributor] Final result:', {
     totalDays: daysCount,
