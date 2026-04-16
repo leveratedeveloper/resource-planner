@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   hours_per_day DECIMAL(4,2) DEFAULT 8.00,
   allocation_percentage DECIMAL(5,2),
   is_time_off BOOLEAN DEFAULT FALSE,
+  is_adjustment BOOLEAN DEFAULT FALSE,
   time_off_type_uuid VARCHAR(36),
   category VARCHAR(100),
   is_billable BOOLEAN DEFAULT TRUE,
@@ -29,7 +30,8 @@ CREATE TABLE IF NOT EXISTS assignments (
   INDEX idx_project (project_uuid),
   INDEX idx_dates (start_date, end_date),
   INDEX idx_status (status),
-  INDEX idx_employee_dates (employee_uuid, start_date, end_date)
+  INDEX idx_employee_dates (employee_uuid, start_date, end_date),
+  INDEX idx_adjustment (is_adjustment)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Sample data (optional)

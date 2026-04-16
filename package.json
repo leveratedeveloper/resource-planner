@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "migration:add-total-hours": "tsx scripts/run-migration-add-total-hours.ts",
+    "migration:add-is-adjustment": "tsx scripts/run-migration-add-is-adjustment.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

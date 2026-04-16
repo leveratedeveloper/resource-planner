@@ -13,6 +13,7 @@ export interface Assignment {
   totalHours: number | null;
   allocationPercentage: string | null;
   isTimeOff: boolean;
+  isAdjustment: boolean;
   timeOffTypeId: string | null;
   category: string | null;
   isBillable: boolean;
@@ -56,7 +57,8 @@ export type NewAssignment = Omit<
   | "project"
   | "createdBy"
   | "totalHours"
->;
+  | "isAdjustment"
+> & { isAdjustment?: boolean };
 
 // API Functions
 async function fetchAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }): Promise<Assignment[]> {
@@ -206,8 +208,10 @@ export function useCreateAssignment() {
         startDate: newAssignment.startDate,
         endDate: newAssignment.endDate,
         hoursPerDay: newAssignment.hoursPerDay,
+        totalHours: null,
         allocationPercentage: newAssignment.allocationPercentage,
         isTimeOff: newAssignment.isTimeOff,
+        isAdjustment: newAssignment.isAdjustment ?? false,
         timeOffTypeId: newAssignment.timeOffTypeId,
         category: newAssignment.category,
         isBillable: newAssignment.isBillable,

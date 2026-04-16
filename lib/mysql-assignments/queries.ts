@@ -13,6 +13,7 @@ const ALLOWED_UPDATE_COLUMNS = [
   'hours_per_day',
   'total_hours',
   'is_time_off',
+  'is_adjustment',
   'category',
   'is_billable',
   'status',
@@ -141,6 +142,7 @@ export async function createAssignment(data: {
   total_hours?: number | null;
   allocation_percentage?: number | null;
   is_time_off?: boolean;
+  is_adjustment?: boolean;
   time_off_type_uuid?: string | null;
   category?: string | null;
   is_billable?: boolean;
@@ -174,9 +176,9 @@ export async function createAssignment(data: {
   const query = `
     INSERT INTO assignments (
       uuid, employee_uuid, project_uuid, task_uuid, start_date, end_date,
-      hours_per_day, total_hours, allocation_percentage, is_time_off, time_off_type_uuid,
+      hours_per_day, total_hours, allocation_percentage, is_time_off, is_adjustment, time_off_type_uuid,
       category, is_billable, status, note, created_by_uuid, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   await assignmentsDb.execute(query, [
@@ -191,6 +193,7 @@ export async function createAssignment(data: {
     data.allocation_percentage ?? null,
     // Use explicit nullish check since 0 is a valid value for booleans in PostgreSQL
     data.is_time_off ?? 0,
+    data.is_adjustment ?? 0,
     data.time_off_type_uuid ?? null,
     data.category ?? null,
     data.is_billable ?? 1,

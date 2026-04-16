@@ -1,11 +1,18 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { AssignmentCategory } from "@/types";
 import { format, startOfDay, startOfMonth, isBefore, isAfter, isEqual, isSameMonth } from "date-fns";
 import { distributeMonthlyHours, type DistributionResult } from "@/lib/utils/allocation-distributor";
@@ -25,8 +32,11 @@ interface MonthlyAllocationModalProps {
   existingActualAssignment?: ActualAssignment; // If present in actual mode, we're in EDIT mode
   mode?: 'plan' | 'actual'; // Determines if this is for plan or actual allocations
   timeOffAssignments: Assignment[];
-  position: { x: number; y: number };
+  adjustmentAssignments?: Assignment[]; // adjustment records yang sudah ada
+  isFullAccess?: boolean; // whether user has full access
   monthlyTotalHours?: number; // Total hours for this month (from highlighted block)
+  planTotalHours?: number; // Plan-only hours (excluding adjustments)
+  adjustmentTotalHours?: number; // Adjustment-only hours for this month
   onClose: () => void;
   onSave: (data: {
     projectId: string;
@@ -37,6 +47,12 @@ interface MonthlyAllocationModalProps {
     category: AssignmentCategory;
     isBillable: boolean;
     note?: string;
+    adjustmentHours?: number;
+    adjustmentStartDate?: Date;
+    adjustmentEndDate?: Date;
+    adjustmentDistributions?: Array<{ date: Date; hours: number }>;
+    removeAdjustment?: boolean;
+    planHoursChanged?: boolean; // Whether user changed the plan hours input
   }) => void;
   onDelete?: () => void;
 }
@@ -50,8 +66,11 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   existingActualAssignment,
   mode = 'plan',
   timeOffAssignments,
-  position,
+  adjustmentAssignments,
+  isFullAccess,
   monthlyTotalHours,
+  planTotalHours,
+  adjustmentTotalHours,
   onClose,
   onSave,
   onDelete,
@@ -72,6 +91,13 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
 
   // Track whether user has manually edited the hours (to prevent auto-overwrite)
   const [userHasEditedHours, setUserHasEditedHours] = useState(false);
+
+  // Adjustment state
+  const [adjustmentHours, setAdjustmentHours] = useState("0");
+  const [adjustmentStartDate, setAdjustmentStartDate] = useState(() => startOfDay(monthStart));
+  const [adjustmentEndDate, setAdjustmentEndDate] = useState(() => startOfDay(monthEnd));
+  const [showAdjustment, setShowAdjustment] = useState(false);
+  const [removeAdjustment, setRemoveAdjustment] = useState(false);
 
   // Determine if we're in edit mode
   const isEditMode = isActual ? !!existingActualAssignment : !!existingAssignment;
@@ -114,14 +140,26 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       setStartDate(startOfDay(editDefaultStart));
       setEndDate(startOfDay(monthEnd));
 
-      // Set total hours from the pre-calculated monthly total (from highlighted block)
-      const hoursValue = monthlyTotalHours?.toString() ?? "0";
+      // Set total hours from plan-only hours (excluding adjustments) to avoid double-counting
+      const hoursValue = planTotalHours?.toString() ?? "0";
       setTotalHours(hoursValue);
 
       if (existingAssignment.category) {
         setCategory(existingAssignment.category as AssignmentCategory);
       }
       setIsBillable(existingAssignment.isBillable);
+
+      // Initialize adjustment hours from prop (pre-computed in ResourceRow block renderer)
+      if (adjustmentTotalHours && adjustmentTotalHours > 0) {
+        setAdjustmentHours(adjustmentTotalHours.toString());
+        setAdjustmentStartDate(startOfDay(monthStart));
+        setAdjustmentEndDate(startOfDay(monthEnd));
+        setShowAdjustment(true);
+        setRemoveAdjustment(false);
+      } else {
+        setAdjustmentHours("0");
+        setShowAdjustment(false);
+      }
     } else if (!userHasEditedHours && !existingAssignment && !existingActualAssignment) {
       // CREATE mode: default to today if same month, otherwise start from 1st of that month
       // But cap today at month end if today is past the month
@@ -133,7 +171,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       setTotalHours("0"); // Default to 0 in create mode
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingAssignment?.id, existingActualAssignment?.uuid, monthlyTotalHours]);
+  }, [existingAssignment?.id, existingActualAssignment?.uuid, monthlyTotalHours, planTotalHours, adjustmentTotalHours]);
 
   useEffect(() => {
     setMounted(true);
@@ -193,6 +231,32 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
     });
   }, [totalHours, startDate, endDate, timeOffAssignments]);
 
+  // Calculate adjustment distribution in real-time
+  const adjustmentDistributionResult = useMemo((): DistributionResult => {
+    const hours = parseFloat(adjustmentHours.replace(",", "."));
+
+    if (adjustmentStartDate > adjustmentEndDate || isNaN(hours) || hours <= 0) {
+      return {
+        distributions: [],
+        totalDays: 0,
+        totalHours: 0,
+        hoursPerDay: 0,
+        skippedDays: 0,
+        remainingHours: 0,
+        blockedDays: { timeOff: 0, weekend: 0 },
+      };
+    }
+
+    return distributeMonthlyHours({
+      totalHours: hours,
+      monthStart: adjustmentStartDate,
+      monthEnd: adjustmentEndDate,
+      timeOffAssignments,
+    });
+  }, [adjustmentHours, adjustmentStartDate, adjustmentEndDate, timeOffAssignments]);
+
+  const hasAdjustmentDistributions = adjustmentDistributionResult.distributions.length > 0;
+
   // Check if selected range is in the past
   const isPastRange = endDate < today || endDate.getTime() === today.getTime();
 
@@ -234,6 +298,17 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       category,
       isBillable,
       note: note || undefined,
+      ...(showAdjustment && !removeAdjustment && hasAdjustmentDistributions ? {
+        adjustmentHours: parseFloat(adjustmentHours.replace(",", ".")),
+        adjustmentStartDate,
+        adjustmentEndDate,
+        adjustmentDistributions: adjustmentDistributionResult.distributions.map(d => ({
+          date: d.date,
+          hours: d.hours,
+        })),
+      } : {}),
+      ...(removeAdjustment ? { removeAdjustment: true } : {}),
+      planHoursChanged: userHasEditedHours,
     });
   };
 
@@ -248,286 +323,390 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
 
   if (!mounted) return null;
 
-  return createPortal(
-    <div
-      className="fixed z-[9999] bg-white rounded-lg shadow-xl border p-4 min-w-[450px] max-w-[500px]"
-      style={{
-        left: Math.min(position.x, window.innerWidth - 520),
-        top: Math.min(position.y, window.innerHeight - 500),
-      }}
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: project.color || "#ccc" }}
-          />
-          <div className="flex flex-col">
-            <span className="font-medium text-sm">{project.name}</span>
-            <span className="text-xs text-muted-foreground">
+  return (
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-[500px] max-h-[75vh] flex flex-col p-0">
+        <div className="flex flex-col min-h-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: project.color || "#ccc" }}
+              />
+              <DialogTitle>{project.name}</DialogTitle>
+            </div>
+            <DialogDescription>
               {format(monthStart, "MMMM yyyy")}
-            </span>
-          </div>
-        </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label="Close modal"
-        >
-          <Icon icon="lucide:x" className="h-4 w-4" />
-        </button>
-      </div>
+            </DialogDescription>
+          </DialogHeader>
 
-      {/* Mode indicator */}
-      <div className="mb-3">
-        <span className={`text-xs font-semibold px-2 py-1 rounded ${
-          isActual
-            ? (isEditMode ? "bg-emerald-100 text-emerald-800" : "bg-green-100 text-green-800")
-            : (isEditMode ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800")
-        }`}>
-          {isActual
-            ? (isEditMode ? "EDIT MODE ACTUAL" : "CREATE MODE ACTUAL")
-            : (isEditMode ? "EDIT MODE" : "CREATE MODE")
-          }
-        </span>
-      </div>
-
-      {/* Past date warning */}
-      {isPastRange && (
-        <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
-          <Icon icon="lucide:alert-triangle" className="h-4 w-4 text-amber-600 mt-0.5" />
-          <span className="text-xs text-amber-800">
-            Creating assignments for past dates
-          </span>
-        </div>
-      )}
-
-      {/* Date Range Inputs */}
-      <div className="mb-4">
-        <label className="text-xs text-muted-foreground mb-1 block">
-          Date Range
-        </label>
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <Input
-              type="date"
-              value={format(startDate, "yyyy-MM-dd")}
-              onChange={(e) => {
-                const newDate = new Date(e.target.value);
-                setStartDate(startOfDay(newDate));
-                setDateError(null);
-              }}
-              className="text-sm"
-              min={format(isEditMode ? monthStart : (isSameMonth(today, monthStart) ? today : monthStart), "yyyy-MM-dd")}
-              max={format(monthEnd, "yyyy-MM-dd")}
-            />
-          </div>
-          <span className="text-muted-foreground">to</span>
-          <div className="flex-1">
-            <Input
-              type="date"
-              value={format(endDate, "yyyy-MM-dd")}
-              onChange={(e) => {
-                const newDate = new Date(e.target.value);
-                setEndDate(startOfDay(newDate));
-                setDateError(null);
-              }}
-              className="text-sm"
-              min={format(startDate, "yyyy-MM-dd")}
-              max={format(monthEnd, "yyyy-MM-dd")}
-            />
-          </div>
-        </div>
-        {dateError && (
-          <p className="text-xs text-red-500 mt-1">{dateError}</p>
-        )}
-      </div>
-
-      {/* Total Hours Input */}
-      <div className="mb-4">
-        <label className="text-xs text-muted-foreground mb-1 block">
-          Total Hours
-        </label>
-        <div className="flex items-center gap-2">
-          <Input
-            type="text"
-            inputMode="decimal"
-            value={totalHours}
-            onChange={(e) => {
-              setTotalHours(e.target.value);
-              setHoursError(null);
-              setUserHasEditedHours(true);
-            }}
-            className={`w-24 text-center${hoursError ? " border-red-500 focus-visible:ring-red-500" : ""}`}
-            placeholder="0"
-            min="0.5"
-            max="320"
-            step="0.5"
-          />
-          <span className="text-xs text-muted-foreground">hours</span>
-        </div>
-        {hoursError && (
-          <p className="text-xs text-red-500 mt-1">{hoursError}</p>
-        )}
-      </div>
-
-      {/* Distribution Preview */}
-      <div className="mb-4 p-3 bg-gray-50 rounded-md border">
-        <div className="text-xs font-semibold text-gray-700 mb-2">
-          Distribution: {format(startDate, "MMM d")} - {format(endDate, "MMM d, yyyy")}
-        </div>
-
-        {!hasDistributions ? (
-          <div className="text-xs text-gray-500">
-            {distributionResult.totalDays === 0
-              ? "No working days available in selected date range"
-              : "Enter hours to see distribution"
-            }
-          </div>
-        ) : (
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Working days:</span>
-              <span className="font-semibold">{distributionResult.totalDays} days</span>
+          <div className="min-h-0 overflow-y-auto px-6 space-y-4">
+            {/* Mode indicator */}
+            <div>
+              <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                isActual
+                  ? (isEditMode ? "bg-emerald-100 text-emerald-800" : "bg-green-100 text-green-800")
+                  : (isEditMode ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800")
+              }`}>
+                {isActual
+                  ? (isEditMode ? "EDIT MODE ACTUAL" : "CREATE MODE ACTUAL")
+                  : (isEditMode ? "EDIT MODE" : "CREATE MODE")
+                }
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Hours per day:</span>
-              <span className="font-semibold">{distributionResult.hoursPerDay.toFixed(1)}h</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Total to allocate:</span>
-              <span className={`font-semibold ${isActual ? 'text-green-600' : 'text-blue-600'}`}>{distributionResult.totalHours.toFixed(1)}h</span>
-            </div>
-            {distributionResult.remainingHours > 0 && (
-              <div className="flex justify-between mt-1 pt-1 border-t border-amber-200">
-                <span className="text-amber-700">⚠️ Remaining (not allocated):</span>
-                <span className="font-semibold text-amber-700">{distributionResult.remainingHours.toFixed(1)}h</span>
+
+            {/* Past date warning */}
+            {isPastRange && (
+              <div className="p-2 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
+                <Icon icon="lucide:alert-triangle" className="h-4 w-4 text-amber-600 mt-0.5" />
+                <span className="text-xs text-amber-800">
+                  Creating assignments for past dates
+                </span>
               </div>
             )}
-            {distributionResult.skippedDays > 0 && (
-              <>
-                <div className="my-2 border-t border-gray-200"></div>
-                <div className="text-xs text-gray-500">Skipped days:</div>
-                {distributionResult.blockedDays.weekend > 0 && (
-                  <div className="flex justify-between text-gray-500">
-                    <span>Weekends:</span>
-                    <span>{distributionResult.blockedDays.weekend}</span>
+
+            {/* Date Range Inputs */}
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">
+                Date Range
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Input
+                    type="date"
+                    value={format(startDate, "yyyy-MM-dd")}
+                    onChange={(e) => {
+                      const newDate = new Date(e.target.value);
+                      setStartDate(startOfDay(newDate));
+                      setDateError(null);
+                    }}
+                    className="text-sm"
+                    min={format(isEditMode ? monthStart : (isSameMonth(today, monthStart) ? today : monthStart), "yyyy-MM-dd")}
+                    max={format(monthEnd, "yyyy-MM-dd")}
+                  />
+                </div>
+                <span className="text-muted-foreground">to</span>
+                <div className="flex-1">
+                  <Input
+                    type="date"
+                    value={format(endDate, "yyyy-MM-dd")}
+                    onChange={(e) => {
+                      const newDate = new Date(e.target.value);
+                      setEndDate(startOfDay(newDate));
+                      setDateError(null);
+                    }}
+                    className="text-sm"
+                    min={format(startDate, "yyyy-MM-dd")}
+                    max={format(monthEnd, "yyyy-MM-dd")}
+                  />
+                </div>
+              </div>
+              {dateError && (
+                <p className="text-xs text-red-500 mt-1">{dateError}</p>
+              )}
+            </div>
+
+            {/* Total Hours Input */}
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">
+                Total Hours
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={totalHours}
+                  onChange={(e) => {
+                    setTotalHours(e.target.value);
+                    setHoursError(null);
+                    setUserHasEditedHours(true);
+                  }}
+                  className={`w-24 text-center${hoursError ? " border-red-500 focus-visible:ring-red-500" : ""}`}
+                  placeholder="0"
+                  min="0.5"
+                  max="320"
+                  step="0.5"
+                />
+                <span className="text-xs text-muted-foreground">hours</span>
+              </div>
+              {hoursError && (
+                <p className="text-xs text-red-500 mt-1">{hoursError}</p>
+              )}
+            </div>
+
+            {/* Distribution Preview */}
+            <div className="p-3 bg-gray-50 rounded-md border">
+              <div className="text-xs font-semibold text-gray-700 mb-2">
+                Distribution: {format(startDate, "MMM d")} - {format(endDate, "MMM d, yyyy")}
+              </div>
+
+              {!hasDistributions ? (
+                <div className="text-xs text-gray-500">
+                  {distributionResult.totalDays === 0
+                    ? "No working days available in selected date range"
+                    : "Enter hours to see distribution"
+                  }
+                </div>
+              ) : (
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Working days:</span>
+                    <span className="font-semibold">{distributionResult.totalDays} days</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Hours per day:</span>
+                    <span className="font-semibold">{distributionResult.hoursPerDay.toFixed(1)}h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total to allocate:</span>
+                    <span className={`font-semibold ${isActual ? 'text-green-600' : 'text-blue-600'}`}>{distributionResult.totalHours.toFixed(1)}h</span>
+                  </div>
+                  {distributionResult.remainingHours > 0 && (
+                    <div className="flex justify-between mt-1 pt-1 border-t border-amber-200">
+                      <span className="text-amber-700">Remaining (not allocated):</span>
+                      <span className="font-semibold text-amber-700">{distributionResult.remainingHours.toFixed(1)}h</span>
+                    </div>
+                  )}
+                  {distributionResult.skippedDays > 0 && (
+                    <>
+                      <div className="my-2 border-t border-gray-200"></div>
+                      <div className="text-xs text-gray-500">Skipped days:</div>
+                      {distributionResult.blockedDays.weekend > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Weekends:</span>
+                          <span>{distributionResult.blockedDays.weekend}</span>
+                        </div>
+                      )}
+                      {distributionResult.blockedDays.timeOff > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Time off:</span>
+                          <span>{distributionResult.blockedDays.timeOff}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Adjustment Hours Section - only in plan edit mode for full access users */}
+            {!isActual && isEditMode && isFullAccess && (
+              <div className="border rounded-md overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-700"
+                  onClick={() => {
+                    setShowAdjustment(!showAdjustment);
+                    if (!showAdjustment) setRemoveAdjustment(false);
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Icon
+                      icon={showAdjustment ? "lucide:chevron-down" : "lucide:chevron-right"}
+                      className="h-3 w-3"
+                    />
+                    Adjustment Hours
+                  </span>
+                  {showAdjustment && !removeAdjustment && parseFloat(adjustmentHours.replace(",", ".")) > 0 && (
+                    <span className="text-xs text-blue-600 font-semibold">
+                      +{adjustmentHours}h adj
+                    </span>
+                  )}
+                </button>
+
+                {showAdjustment && (
+                  <div className="p-3 space-y-3">
+                    {/* Date Range for adjustment */}
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Adjustment Date Range
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <Input
+                            type="date"
+                            value={format(adjustmentStartDate, "yyyy-MM-dd")}
+                            onChange={(e) => {
+                              const newDate = new Date(e.target.value);
+                              setAdjustmentStartDate(startOfDay(newDate));
+                            }}
+                            className="text-sm"
+                            min={format(monthStart, "yyyy-MM-dd")}
+                            max={format(monthEnd, "yyyy-MM-dd")}
+                          />
+                        </div>
+                        <span className="text-muted-foreground">to</span>
+                        <div className="flex-1">
+                          <Input
+                            type="date"
+                            value={format(adjustmentEndDate, "yyyy-MM-dd")}
+                            onChange={(e) => {
+                              const newDate = new Date(e.target.value);
+                              setAdjustmentEndDate(startOfDay(newDate));
+                            }}
+                            className="text-sm"
+                            min={format(adjustmentStartDate, "yyyy-MM-dd")}
+                            max={format(monthEnd, "yyyy-MM-dd")}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Adjustment Hours Input */}
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Adjustment Hours
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={adjustmentHours}
+                          onChange={(e) => {
+                            setAdjustmentHours(e.target.value);
+                            setUserHasEditedHours(true);
+                            setRemoveAdjustment(false);
+                          }}
+                          className="w-24 text-center"
+                          placeholder="0"
+                          step="0.5"
+                        />
+                        <span className="text-xs text-muted-foreground">hours</span>
+                      </div>
+                    </div>
+
+                    {/* Adjustment Distribution Preview */}
+                    {hasAdjustmentDistributions && !removeAdjustment && (
+                      <div className="p-2 bg-blue-50 rounded-md border border-blue-100 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Distribution:</span>
+                          <span className="font-semibold text-blue-700">
+                            {adjustmentDistributionResult.hoursPerDay.toFixed(1)}h/day x {adjustmentDistributionResult.totalDays}d
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Total display */}
+                    {!removeAdjustment && hasAdjustmentDistributions && (
+                      <div className="p-2 bg-gray-100 rounded-md text-xs">
+                        <div className="flex justify-between font-semibold">
+                          <span>Total:</span>
+                          <span>
+                            {distributionResult.totalHours.toFixed(1)}h (plan) + {adjustmentDistributionResult.totalHours.toFixed(1)}h (adj) = {(distributionResult.totalHours + adjustmentDistributionResult.totalHours).toFixed(1)}h
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Remove Adjustment button */}
+                    {adjustmentAssignments && adjustmentAssignments.length > 0 && (
+                      <button
+                        type="button"
+                        className={`w-full text-xs px-3 py-1.5 rounded border ${
+                          removeAdjustment
+                            ? 'bg-red-100 border-red-300 text-red-700'
+                            : 'bg-white border-gray-300 text-gray-600 hover:bg-red-50 hover:border-red-200 hover:text-red-600'
+                        }`}
+                        onClick={() => setRemoveAdjustment(!removeAdjustment)}
+                      >
+                        {removeAdjustment ? 'Adjustment will be removed on save' : 'Remove Adjustment'}
+                      </button>
+                    )}
                   </div>
                 )}
-                {distributionResult.blockedDays.timeOff > 0 && (
-                  <div className="flex justify-between text-gray-500">
-                    <span>Time off:</span>
-                    <span>{distributionResult.blockedDays.timeOff}</span>
-                  </div>
-                )}
-              </>
+              </div>
             )}
+
+            {/* Category */}
+            <div>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-4 h-4 rounded-full"
+                  style={{ backgroundColor: project.color || "#ccc" }}
+                />
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as AssignmentCategory)}
+                  className="flex-1 border rounded px-2 py-1.5 text-sm bg-background"
+                >
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Checkboxes */}
+            <div className="flex items-center gap-6">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={!isBillable}
+                  onCheckedChange={(checked) => setIsBillable(!checked)}
+                />
+                Non-Billable
+              </label>
+            </div>
+
+            {/* Note */}
+            <details open={noteOpen}>
+              <summary
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer select-none"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setNoteOpen(!noteOpen);
+                }}
+              >
+                <Icon
+                  icon={noteOpen ? "lucide:chevron-down" : "lucide:chevron-right"}
+                  className="h-3 w-3"
+                />
+                Note
+              </summary>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="w-full border rounded p-2 text-sm resize-none mt-2"
+                rows={2}
+                placeholder="Add a note..."
+              />
+            </details>
           </div>
-        )}
-      </div>
 
-      {/* Category */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-4 h-4 rounded-full"
-            style={{ backgroundColor: project.color || "#ccc" }}
-          />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as AssignmentCategory)}
-            className="flex-1 border rounded px-2 py-1.5 text-sm bg-background"
-          >
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+          <DialogFooter className="px-6 pb-6 pt-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => onClose()}
+              className="text-sm"
+            >
+              Cancel
+            </Button>
+            {isEditMode && onDelete && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (isDeleting) return;
+                  setIsDeleting(true);
+                  onDelete();
+                }}
+                disabled={isDeleting}
+                className="text-sm"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </Button>
+            )}
+            <Button
+              onClick={() => handleSave()}
+              disabled={!hasDistributions || hoursError !== null || dateError !== null}
+              className={`text-sm ${isActual ? 'bg-green-600 hover:bg-green-700' : ''}`}
+            >
+              Save
+            </Button>
+          </DialogFooter>
         </div>
-      </div>
-
-      {/* Checkboxes */}
-      <div className="flex items-center gap-6 mb-3">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <Checkbox
-            checked={!isBillable}
-            onCheckedChange={(checked) => setIsBillable(!checked)}
-          />
-          Non-Billable
-        </label>
-      </div>
-
-      {/* Note */}
-      <details className="mb-3" open={noteOpen}>
-        <summary
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer select-none"
-          onClick={(e) => {
-            e.preventDefault();
-            setNoteOpen(!noteOpen);
-          }}
-        >
-          <Icon
-            icon={noteOpen ? "lucide:chevron-down" : "lucide:chevron-right"}
-            className="h-3 w-3"
-          />
-          Note
-        </summary>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className="w-full border rounded p-2 text-sm resize-none mt-2"
-          rows={2}
-          placeholder="Add a note..."
-        />
-      </details>
-
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-2 pt-3 border-t mt-4">
-        <Button
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="text-sm"
-        >
-          Cancel
-        </Button>
-        {isEditMode && onDelete && (
-          <Button
-            variant="destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isDeleting) return;
-              console.log('Delete button clicked, calling onDelete');
-              setIsDeleting(true);
-              onDelete();
-            }}
-            disabled={isDeleting}
-            className="text-sm"
-          >
-            {isDeleting ? 'Deleting...' : 'Delete'}
-          </Button>
-        )}
-        <Button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSave();
-          }}
-          disabled={!hasDistributions || hoursError !== null || dateError !== null}
-          className={`text-sm ${isActual ? 'bg-green-600 hover:bg-green-700' : ''}`}
-        >
-          Save
-        </Button>
-      </div>
-    </div>,
-    document.body
+      </DialogContent>
+    </Dialog>
   );
 };

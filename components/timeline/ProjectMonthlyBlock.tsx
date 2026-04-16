@@ -46,6 +46,8 @@ export const ProjectMonthlyBlock: React.FC<ProjectMonthlyBlockProps> = ({
 
     // Calculate total hours for this month (proportional)
     let totalHours = 0;
+    let originalHours = 0;
+    let adjustmentHours = 0;
     let totalWorkingDays = 0;
 
     monthAssignments.forEach((assignment) => {
@@ -72,13 +74,23 @@ export const ProjectMonthlyBlock: React.FC<ProjectMonthlyBlockProps> = ({
           checkDate.setDate(checkDate.getDate() + 1);
         }
 
-        totalHours += assignment.totalHours * proportion;
+        const proportionalHours = assignment.totalHours * proportion;
+
+        if (assignment.isAdjustment) {
+          adjustmentHours += proportionalHours;
+        } else {
+          originalHours += proportionalHours;
+        }
+
+        totalHours += proportionalHours;
         totalWorkingDays += workingDays * proportion;
       }
     });
 
     return {
       totalHours: Math.round(totalHours * 10) / 10,
+      originalHours: Math.round(originalHours * 10) / 10,
+      adjustmentHours: Math.round(adjustmentHours * 10) / 10,
       totalWorkingDays: Math.round(totalWorkingDays * 10) / 10,
       monthName: format(monthStart, "MMM yyyy"),
       assignmentCount: monthAssignments.length,
@@ -108,9 +120,23 @@ export const ProjectMonthlyBlock: React.FC<ProjectMonthlyBlockProps> = ({
         onClick(monthStart, monthEnd, e);
       }}
     >
-      <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none text-center">
+      {/* Adjustment overlay bar */}
+      {monthlyData.adjustmentHours > 0 && (
+        <div
+          className="absolute top-0 right-0 rounded-r-md"
+          style={{
+            width: `${(monthlyData.adjustmentHours / monthlyData.totalHours) * 100}%`,
+            height: '100%',
+            backgroundColor: 'rgba(147, 197, 253, 0.4)',
+          }}
+        />
+      )}
+      <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none text-center relative z-10">
         <div className="font-bold text-sm">
-          {monthlyData.totalHours}h
+          {monthlyData.adjustmentHours > 0
+            ? `${monthlyData.originalHours}h + ${monthlyData.adjustmentHours}h adj`
+            : `${monthlyData.totalHours}h`
+          }
         </div>
         <div className="text-xs opacity-80 truncate">
           {project.name}

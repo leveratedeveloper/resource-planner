@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   hours_per_day DECIMAL(4,2) DEFAULT 8.00,
   allocation_percentage DECIMAL(5,2),
   is_time_off BOOLEAN DEFAULT FALSE,
+  is_adjustment BOOLEAN DEFAULT FALSE,
   time_off_type_uuid VARCHAR(36),
   category VARCHAR(100),
   is_billable BOOLEAN DEFAULT TRUE,
@@ -28,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_assignments_project ON assignments(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_assignments_dates ON assignments(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status);
 CREATE INDEX IF NOT EXISTS idx_assignments_employee_dates ON assignments(employee_uuid, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_assignments_adjustment ON assignments(is_adjustment);
 
 -- Function to auto-update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

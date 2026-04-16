@@ -734,15 +734,16 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     monthEnd: Date;
     project: Project;
     existingAssignment?: Assignment; // For edit mode
-    position: { x: number; y: number };
-    monthlyTotalHours?: number; // Total hours for this month
+    adjustmentAssignments?: Assignment[]; // adjustment records yang sudah ada
+    monthlyTotalHours?: number; // Total hours for this month (plan+adj combined)
+    planTotalHours?: number; // Plan-only hours (excluding adjustments)
+    adjustmentTotalHours?: number; // Adjustment-only hours for this month
   } | null>(null);
 
   // Monthly allocation confirmation state
   const [monthlyAllocationConfirm, setMonthlyAllocationConfirm] = useState<{
     data: MonthlyAllocationData;
     isEditMode: boolean;
-    position: { x: number; y: number };
   } | null>(null);
 
   // Monthly actual allocation modal state
@@ -751,7 +752,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     monthEnd: Date;
     project: Project;
     existingActualAssignment?: ActualAssignment;
-    position: { x: number; y: number };
     monthlyTotalHours?: number;
   } | null>(null);
 
@@ -759,7 +759,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const [monthlyActualAllocationConfirm, setMonthlyActualAllocationConfirm] = useState<{
     data: MonthlyAllocationData;
     isEditMode: boolean;
-    position: { x: number; y: number };
   } | null>(null);
 
   // Get projects this resource is assigned to
@@ -1324,7 +1323,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     clientX: number,
     clientY: number,
     clickedAssignment?: Assignment, // Present if clicked on existing block (edit mode)
-    monthlyTotalHours?: number // Total hours for this month
+    monthlyTotalHours?: number, // Total hours for this month (plan+adj combined)
+    planTotalHours?: number, // Plan-only hours (excluding adjustments)
+    adjustmentTotalHours?: number // Adjustment-only hours for this month
   ) => {
     // Only allow if row is expanded and in monthly range view
     if (!isExpanded || !isMonthRangeView) return;
@@ -1339,15 +1340,26 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       totalHours: clickedAssignment.totalHours
     } : 'No assignment (create mode)');
 
+    // Find adjustment assignments for this project+employee in this month range
+    const adjustmentAssignments = resourceAssignments.filter(
+      a => a.projectId === project.id
+        && !a.isTimeOff
+        && a.isAdjustment
+        && startOfDay(new Date(a.endDate)) >= monthStart
+        && startOfDay(new Date(a.startDate)) <= monthEnd
+    );
+
     setMonthlyAllocationModal({
       monthStart,
       monthEnd,
       project,
       existingAssignment: clickedAssignment, // undefined = create mode
-      position: { x: clientX, y: clientY },
-      monthlyTotalHours
+      adjustmentAssignments,
+      monthlyTotalHours,
+      planTotalHours,
+      adjustmentTotalHours
     });
-  }, [isExpanded, isMonthRangeView]);
+  }, [isExpanded, isMonthRangeView, resourceAssignments]);
 
   // Handle monthly actual allocation modal open (click on actual row in month range view)
   const handleActualRowClick = useCallback((
@@ -1375,7 +1387,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       monthEnd,
       project,
       existingActualAssignment: clickedActualAssignment,
-      position: { x: clientX, y: clientY },
       monthlyTotalHours
     });
   }, [isExpanded, isMonthRangeView]);
@@ -1390,6 +1401,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     category: AssignmentCategory;
     isBillable: boolean;
     note?: string;
+    adjustmentHours?: number;
+    adjustmentStartDate?: Date;
+    adjustmentEndDate?: Date;
+    adjustmentDistributions?: Array<{ date: Date; hours: number }>;
+    removeAdjustment?: boolean;
+    planHoursChanged?: boolean;
   }) => {
     const { existingAssignment } = monthlyAllocationModal || {};
     const project = projectMap.get(data.projectId);
@@ -1409,9 +1426,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         category: data.category,
         isBillable: data.isBillable,
         note: data.note,
+        adjustmentHours: data.adjustmentHours,
+        adjustmentStartDate: data.adjustmentStartDate,
+        adjustmentEndDate: data.adjustmentEndDate,
+        removeAdjustment: data.removeAdjustment,
       },
       isEditMode: !!existingAssignment,
-      position: monthlyAllocationModal?.position || { x: 0, y: 0 },
     });
 
     // Store the data for confirmation
@@ -1433,6 +1453,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         category: AssignmentCategory;
         isBillable: boolean;
         note?: string;
+        adjustmentHours?: number;
+        adjustmentStartDate?: Date;
+        adjustmentEndDate?: Date;
+        adjustmentDistributions?: Array<{ date: Date; hours: number }>;
+        removeAdjustment?: boolean;
+        planHoursChanged?: boolean;
       };
       existingAssignment?: Assignment;
     } | undefined;
@@ -1453,13 +1479,22 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     // Close confirmation first
     setMonthlyAllocationConfirm(null);
 
-    // Find ALL assignments for this project that overlap with the new date range
-    // These need to be deleted before creating new ones
+    // Check if only adjustment changed (skip plan recreation to avoid deleting plan unnecessarily)
+    const onlyAdjustmentChanged = isEditMode
+      && !data.planHoursChanged
+      && (data.removeAdjustment || data.adjustmentDistributions);
+
     const newRangeStart = startOfDay(data.startDate);
     const newRangeEnd = startOfDay(data.endDate);
+
+    if (!onlyAdjustmentChanged) {
+    // Find ALL assignments for this project that overlap with the new date range
+    // These need to be deleted before creating new ones
     const overlappingAssignments = resourceAssignments.filter((a) => {
       // Skip time-off assignments
       if (a.isTimeOff) return false;
+      // Skip adjustment assignments (handled separately)
+      if (a.isAdjustment) return false;
       // Only check assignments for the same project
       if (a.projectId !== data.projectId) return false;
       // Check if assignment overlaps with new date range
@@ -1478,6 +1513,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
     // Delete all overlapping assignments first, then create new ones
     // Use a counter to track when all deletes are complete
+
+    // Also filter out adjustment assignments from overlapping if we need to handle them separately
+    const adjustmentOverlapAssignments = overlappingAssignments.filter(a => a.isAdjustment);
+    const planOverlapAssignments = overlappingAssignments.filter(a => !a.isAdjustment);
     let completedDeletes = 0;
     const totalDeletes = overlappingAssignments.length;
 
@@ -1623,9 +1662,74 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         console.log(`[Monthly Allocation] Initiated creation of ${totalCreates} assignments`);
       });
     }
+    } // end if (!onlyAdjustmentChanged)
 
     // Close modal
     setMonthlyAllocationModal(null);
+
+    // Handle adjustment assignments
+    const { adjustmentDistributions, adjustmentHours, adjustmentStartDate, adjustmentEndDate, removeAdjustment } = data;
+
+    // Delete existing adjustment assignments if:
+    // 1. User explicitly requested removal, or
+    // 2. User is replacing with new adjustment distributions
+    if (removeAdjustment || adjustmentDistributions) {
+      // Find adjustment assignments that overlap with the date range
+      const adjustmentAssignmentsToDelete = resourceAssignments.filter(a => {
+        if (!a.isAdjustment || a.isTimeOff) return false;
+        if (a.projectId !== data.projectId) return false;
+        const assignStart = startOfDay(new Date(a.startDate));
+        const assignEnd = startOfDay(new Date(a.endDate));
+        const rangeStart = adjustmentStartDate ? startOfDay(adjustmentStartDate) : newRangeStart;
+        const rangeEnd = adjustmentEndDate ? startOfDay(adjustmentEndDate) : newRangeEnd;
+        return assignEnd >= rangeStart && assignStart <= rangeEnd;
+      });
+
+      if (adjustmentAssignmentsToDelete.length > 0) {
+        console.log('[Monthly Allocation] Deleting adjustment assignments:', adjustmentAssignmentsToDelete.length);
+        adjustmentAssignmentsToDelete.forEach(a => {
+          fetch(`/api/assignments/${a.id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          }).catch(err => console.error('[Monthly Allocation] Failed to delete adjustment:', err));
+        });
+      }
+    }
+
+    // Create new adjustment assignments if provided
+    if (!removeAdjustment && adjustmentDistributions && adjustmentDistributions.length > 0) {
+      console.log(`[Monthly Allocation] Creating ${adjustmentDistributions.length} adjustment assignments`);
+
+      adjustmentDistributions.forEach(({ date, hours }) => {
+        createAssignment.mutate(
+          {
+            employeeId: resource.id,
+            projectId: data.projectId,
+            taskId: null,
+            startDate: toLocalDateString(date),
+            endDate: toLocalDateString(date),
+            hoursPerDay: hours.toString(),
+            totalHours: hours,
+            allocationPercentage: null,
+            isTimeOff: false,
+            isAdjustment: true,
+            timeOffTypeId: null,
+            category: data.category,
+            isBillable: data.isBillable,
+            status: 'draft',
+            note: data.note || null,
+            createdById: null,
+          },
+          {
+            onSettled: () => {
+              queryClient.invalidateQueries({ queryKey: ['assignments'] });
+              queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+            },
+          }
+        );
+      });
+    }
 
     // Clean up stored data
     delete (window as any).__monthlyAllocationData;
@@ -1662,7 +1766,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         note: data.note,
       },
       isEditMode: !!existingActualAssignment,
-      position: monthlyActualAllocationModal?.position || { x: 0, y: 0 },
     });
 
     // Store the data for confirmation
@@ -2106,91 +2209,131 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             // For Quarter/HalfYear/Year view, use WeeklyAssignmentBlock
                             // Note: Month view now shows daily columns like week view
                             <>
-                              {planAssignments.map((assignment, assignmentIndex) => {
-                                // Find which month indices this assignment covers
-                                const coveredMonthIndices: number[] = [];
-                                const assignStart = startOfDay(new Date(assignment.startDate));
-                                const assignEnd = startOfDay(new Date(assignment.endDate));
+                              {(() => {
+                                // Group assignments by month index to render one block per project per month
+                                const monthMap = new Map<number, { planAssignments: Assignment[]; hasAdjustment: boolean }>();
 
-                                for (let i = 0; i < days.length; i++) {
-                                  const monthStart = startOfMonth(days[i]);
-                                  const monthEnd = endOfMonth(monthStart);
+                                for (const assignment of planAssignments) {
+                                  const assignStart = startOfDay(new Date(assignment.startDate));
+                                  const assignEnd = startOfDay(new Date(assignment.endDate));
 
-                                  if (assignEnd >= monthStart && assignStart <= monthEnd) {
-                                    coveredMonthIndices.push(i);
+                                  for (let i = 0; i < days.length; i++) {
+                                    const monthStart = startOfMonth(days[i]);
+                                    const monthEnd = endOfMonth(monthStart);
+
+                                    if (assignEnd >= monthStart && assignStart <= monthEnd) {
+                                      if (!monthMap.has(i)) {
+                                        monthMap.set(i, { planAssignments: [], hasAdjustment: false });
+                                      }
+                                      const entry = monthMap.get(i)!;
+                                      entry.planAssignments.push(assignment);
+                                      if (assignment.isAdjustment) entry.hasAdjustment = true;
+                                    }
                                   }
                                 }
 
-                                return coveredMonthIndices.map((monthIndex) => {
+                                const blocks: React.ReactNode[] = [];
+
+                                monthMap.forEach(({ planAssignments: monthAssignments, hasAdjustment }, monthIndex) => {
                                   const monthStart = startOfMonth(days[monthIndex]);
                                   const monthEnd = endOfMonth(monthStart);
 
                                   // Calculate total for this month by summing hours_per_day for each working day
-                                  const monthlyTotal = (() => {
-                                    let total = 0;
+                                  // Split into original vs adjustment
+                                  let monthlyTotal = 0;
+                                  let originalTotal = 0;
+                                  let adjustmentTotal = 0;
 
-                                    // Iterate through each day in the month
-                                    let currentDay = new Date(monthStart);
-                                    while (currentDay <= monthEnd) {
-                                      const dayOfWeek = currentDay.getDay();
+                                  let currentDay = new Date(monthStart);
+                                  while (currentDay <= monthEnd) {
+                                    const dayOfWeek = currentDay.getDay();
 
-                                      // Skip weekends (0 = Sunday, 6 = Saturday)
-                                      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-                                        // For this working day, sum up hours from all assignments for this project
-                                        const dayHours = planAssignments
-                                          .filter(a => a.projectId === project.id && !a.isTimeOff)
-                                          .reduce((sum, a) => {
-                                            const aStart = startOfDay(new Date(a.startDate));
-                                            const aEnd = startOfDay(new Date(a.endDate));
+                                    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                                      for (const a of monthAssignments) {
+                                        const aStart = startOfDay(new Date(a.startDate));
+                                        const aEnd = startOfDay(new Date(a.endDate));
+                                        const hours = parseFloat(a.hoursPerDay) || 0;
 
-                                            // Check if this assignment covers this day
-                                            if (currentDay >= aStart && currentDay <= aEnd) {
-                                              return sum + (parseFloat(a.hoursPerDay) || 0);
-                                            }
-                                            return sum;
-                                          }, 0);
-
-                                        total += dayHours;
+                                        if (currentDay >= aStart && currentDay <= aEnd) {
+                                          monthlyTotal += hours;
+                                          if (a.isAdjustment) {
+                                            adjustmentTotal += hours;
+                                          } else {
+                                            originalTotal += hours;
+                                          }
+                                        }
                                       }
-
-                                      // Move to next day
-                                      currentDay = new Date(currentDay);
-                                      currentDay.setDate(currentDay.getDate() + 1);
                                     }
 
-                                    return total;
-                                  })();
+                                    currentDay = new Date(currentDay);
+                                    currentDay.setDate(currentDay.getDate() + 1);
+                                  }
 
-                                  return (
-                                    <WeeklyAssignmentBlock
-                                      key={`${assignment.id}-month-${monthIndex}`}
-                                      assignment={assignment}
-                                      project={projectMap.get(assignment.projectId ?? '')}
-                                      days={days}
-                                      cellWidth={cellWidth}
-                                      isActual={false}
-                                      isMonthRangeView={isMonthRangeView}
-                                      monthlyTotalHours={Math.round(monthlyTotal * 10) / 10}
+                                  monthlyTotal = Math.round(monthlyTotal * 10) / 10;
+                                  originalTotal = Math.round(originalTotal * 10) / 10;
+                                  adjustmentTotal = Math.round(adjustmentTotal * 10) / 10;
+
+                                  // Use the first non-adjustment assignment as representative, or first adjustment
+                                  const representative = monthAssignments.find(a => !a.isAdjustment) || monthAssignments[0];
+
+                                  const cellPercentage = 100 / days.length;
+                                  const leftOffset = monthIndex * cellPercentage;
+                                  const width = cellPercentage;
+
+                                  blocks.push(
+                                    <div
+                                      key={`project-${project.id}-month-${monthIndex}`}
+                                      className="absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex flex-col bg-blue-600 hover:bg-blue-700 cursor-pointer"
+                                      style={{
+                                        left: `${leftOffset}%`,
+                                        width: `${width}%`,
+                                        top: 4,
+                                        height: 36,
+                                        zIndex: 10,
+                                      }}
+                                      title={`${project.name}: ${monthlyTotal}h${adjustmentTotal > 0 ? ` (${originalTotal}h plan + ${adjustmentTotal}h adj)` : ''}`}
                                       onClick={(e) => {
-                                        // Enable click on assignment blocks for monthly allocation edit mode
                                         e.stopPropagation();
                                         const clickedDay = days[monthIndex];
-                                        const monthStart = startOfMonth(clickedDay);
-                                        const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+                                        const ms = startOfMonth(clickedDay);
+                                        const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
                                         handleProjectRowClick(
-                                          monthStart,
-                                          monthEnd,
-                                          project,
-                                          e.clientX,
-                                          e.clientY,
-                                          assignment, // Pass assignment for edit mode
-                                          Math.round(monthlyTotal * 10) / 10 // Pass monthly total hours
+                                          ms, me, project,
+                                          e.clientX, e.clientY,
+                                          representative,
+                                          monthlyTotal,
+                                          originalTotal,
+                                          adjustmentTotal
                                         );
                                       }}
-                                    />
+                                    >
+                                      {adjustmentTotal > 0 && (
+                                        <div
+                                          className="absolute top-0 right-0 rounded-r-md"
+                                          style={{
+                                            width: `${(adjustmentTotal / monthlyTotal) * 100}%`,
+                                            height: '100%',
+                                            backgroundColor: 'rgba(147, 197, 253, 0.4)',
+                                          }}
+                                        />
+                                      )}
+                                      <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none flex flex-col justify-center relative z-10">
+                                        <div className="font-bold truncate text-xs">
+                                          {project.name}
+                                        </div>
+                                        <div className="truncate opacity-90 text-xs">
+                                          {adjustmentTotal > 0
+                                            ? `${originalTotal}h + ${adjustmentTotal}h adj`
+                                            : `${monthlyTotal}h`
+                                          }
+                                        </div>
+                                      </div>
+                                    </div>
                                   );
                                 });
-                              })}
+
+                                return blocks;
+                              })()}
                               {/* Invisible overlay for detecting clicks on empty space */}
                               <div
                                 className="absolute inset-0 z-0"
@@ -2418,8 +2561,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                                       startDate: actualAssignment.startDate,
                                       endDate: actualAssignment.endDate,
                                       hoursPerDay: actualAssignment.hoursPerDay?.toString() ?? '0',
+                                      totalHours: null,
                                       allocationPercentage: actualAssignment.allocationPercentage?.toString() ?? null,
                                       isTimeOff: actualAssignment.isTimeOff,
+                                      isAdjustment: false,
                                       timeOffTypeId: actualAssignment.timeOffTypeUuid,
                                       category: actualAssignment.category as any,
                                       isBillable: actualAssignment.isBillable,
@@ -2711,8 +2856,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             project={monthlyAllocationModal.project}
             existingAssignment={monthlyAllocationModal.existingAssignment}
             timeOffAssignments={timeOffAssignments}
-            position={monthlyAllocationModal.position}
+            adjustmentAssignments={monthlyAllocationModal.adjustmentAssignments}
+            isFullAccess={session?.access?.can_view_all}
             monthlyTotalHours={monthlyAllocationModal.monthlyTotalHours}
+            planTotalHours={monthlyAllocationModal.planTotalHours}
+            adjustmentTotalHours={monthlyAllocationModal.adjustmentTotalHours}
             onClose={() => setMonthlyAllocationModal(null)}
             onSave={handleSaveMonthlyAllocation}
             onDelete={monthlyAllocationModal.existingAssignment ? (() => {
@@ -2782,7 +2930,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
           <MonthlyAllocationConfirmation
             data={monthlyAllocationConfirm.data}
             isEditMode={monthlyAllocationConfirm.isEditMode}
-            position={monthlyAllocationConfirm.position}
             onConfirm={handleConfirmMonthlyAllocation}
             onCancel={() => {
               setMonthlyAllocationConfirm(null);
@@ -2802,7 +2949,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             project={monthlyActualAllocationModal.project}
             existingActualAssignment={monthlyActualAllocationModal.existingActualAssignment}
             timeOffAssignments={timeOffAssignments}
-            position={monthlyActualAllocationModal.position}
             monthlyTotalHours={monthlyActualAllocationModal.monthlyTotalHours}
             onClose={() => setMonthlyActualAllocationModal(null)}
             onSave={handleSaveMonthlyActualAllocation}
@@ -2853,7 +2999,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             mode="actual"
             data={monthlyActualAllocationConfirm.data}
             isEditMode={monthlyActualAllocationConfirm.isEditMode}
-            position={monthlyActualAllocationConfirm.position}
             onConfirm={handleConfirmMonthlyActualAllocation}
             onCancel={() => {
               setMonthlyActualAllocationConfirm(null);
