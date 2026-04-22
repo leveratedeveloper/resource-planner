@@ -4,6 +4,7 @@ import type { ActualAssignment } from '@/lib/query/hooks/useActualAssignments';
 import { useProjects } from '@/lib/query/hooks/useProjects';
 import { useEmployees } from '@/lib/query/hooks/useEmployees';
 import { cn } from '@/lib/utils';
+import { validateActualHoursLimit } from '@/lib/utils/actual-hours-validation';
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,8 @@ interface EditActualAssignmentDialogProps {
   onSave: (updates: Partial<ActualAssignment>) => void;
   onDelete: () => void;
   isDeleting?: boolean;
+  plannedHoursLimit?: number;
+  currentActualHours?: number;
 }
 
 const CATEGORIES = [
@@ -62,6 +65,8 @@ export function EditActualAssignmentDialog({
   onSave,
   onDelete,
   isDeleting = false,
+  plannedHoursLimit,
+  currentActualHours,
 }: EditActualAssignmentDialogProps) {
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
@@ -102,6 +107,16 @@ export function EditActualAssignmentDialog({
     if (startDate > endDate) {
       setHoursError('Start date must be before end date');
       return;
+    }
+
+    // Validate against planned hours limit
+    if (plannedHoursLimit !== undefined && currentActualHours !== undefined) {
+      const newTotalHours = durationDays * parsed;
+      const validation = validateActualHoursLimit(plannedHoursLimit, currentActualHours, newTotalHours);
+      if (!validation.isValid) {
+        setHoursError('Cannot add more actual hours. Please contact your supervisor.');
+        return;
+      }
     }
 
     setHoursError(null);
@@ -221,6 +236,27 @@ export function EditActualAssignmentDialog({
               <span className="text-sm text-muted-foreground">Total Effort</span>
               <span className="text-sm font-medium">{totalHours.toFixed(1)}h ({durationDays} days)</span>
             </div>
+
+            {/* Planned Hours Limit Indicator */}
+            {plannedHoursLimit !== undefined && currentActualHours !== undefined && (
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1">
+                <div className="text-xs font-semibold text-gray-700 mb-1">Hours Limit</div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Planned limit:</span>
+                  <span className="font-medium">{plannedHoursLimit.toFixed(1)}h</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Already allocated:</span>
+                  <span className="font-medium">{currentActualHours.toFixed(1)}h</span>
+                </div>
+                <div className="flex justify-between text-xs pt-1 border-t border-gray-200">
+                  <span className="text-gray-500">Available:</span>
+                  <span className={`font-semibold ${(plannedHoursLimit - currentActualHours) <= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {Math.max(0, plannedHoursLimit - currentActualHours).toFixed(1)}h
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div>
               <Label htmlFor="category">Category</Label>

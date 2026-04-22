@@ -7,6 +7,7 @@ import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { differenceInDays, isWithinInterval, startOfDay, addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useActualAssignments, useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
+import { calculatePlannedHoursForMonth, calculateActualHoursForMonth } from "@/lib/utils/actual-hours-validation";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import type { Project } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
@@ -717,7 +718,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     projectId: string;
     startDate: Date;
     endDate: Date;
-    position: { x: number; y: number };
   } | null>(null);
 
   // Popover state for creating actual assignments
@@ -725,7 +725,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     projectId: string;
     startDate: Date;
     endDate: Date;
-    position: { x: number; y: number };
+    plannedHoursLimit: number;
+    currentActualHours: number;
   } | null>(null);
 
   // Monthly allocation modal state
@@ -753,6 +754,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
     project: Project;
     existingActualAssignment?: ActualAssignment;
     monthlyTotalHours?: number;
+    plannedHoursLimit?: number;
+    currentActualHours?: number;
   } | null>(null);
 
   // Monthly actual allocation confirmation state
@@ -918,25 +921,32 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   }, [visibleProjects, days, resourceAssignments, isMonthRangeView]);
 
   // Handle drag complete - open popover
-  const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date, position: { x: number; y: number }) => {
-    setPopoverData({ projectId, startDate: startDay, endDate: endDay, position });
+  const handleDragComplete = useCallback((projectId: string, startDay: Date, endDay: Date) => {
+    setPopoverData({ projectId, startDate: startDay, endDate: endDay });
   }, []);
 
   // Handle actual drag complete - open popover
   const handleActualDragComplete = useCallback((
     projectId: string,
     startDay: Date,
-    endDay: Date,
-    position: { x: number; y: number }
+    endDay: Date
   ) => {
     console.log('[ACTUAL DRAG COMPLETE] startDay:', startDay.toISOString(), 'endDay:', endDay.toISOString(), 'workDays:', Math.ceil((endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+    // Calculate planned/actual hours limit for the month containing the drag start
+    const mStart = startOfMonth(startDay);
+    const mEnd = endOfMonth(startDay);
+    const plannedLimit = calculatePlannedHoursForMonth(resourceAssignments, projectId, mStart, mEnd);
+    const currentActual = calculateActualHoursForMonth(actualAssignments, projectId, mStart, mEnd);
+
     setActualPopoverData({
       projectId,
       startDate: startDay,
       endDate: endDay,
-      position,
+      plannedHoursLimit: plannedLimit,
+      currentActualHours: currentActual,
     });
-  }, []);
+  }, [resourceAssignments, actualAssignments]);
 
   // Handle time-off drag complete - create time-off directly (no popover needed)
   const handleSaveAssignment = useCallback((data: {
@@ -1110,15 +1120,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         if (currentProjectId) {
           // Use actual handler for actual row, plan handler for plan row
           if (currentRowType === 'actual') {
-            handleActualDragComplete(currentProjectId, days[start], days[end], {
-              x: upEvent.clientX,
-              y: upEvent.clientY,
-            });
+            handleActualDragComplete(currentProjectId, days[start], days[end]);
           } else {
-            handleDragComplete(currentProjectId, days[start], days[end], {
-              x: upEvent.clientX,
-              y: upEvent.clientY,
-            });
+            handleDragComplete(currentProjectId, days[start], days[end]);
           }
         } else {
           handleTimeOffDragComplete(days[start], days[end]);
@@ -1382,14 +1386,42 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
       endDate: clickedActualAssignment.endDate,
     } : 'No assignment (create mode)');
 
+    // Calculate planned/actual hours limit
+    const plannedLimit = calculatePlannedHoursForMonth(resourceAssignments, project.id, monthStart, monthEnd);
+
+    // In edit mode, ALL actuals for this project-month will be deleted and recreated,
+    // so exclude ALL of them from the current actual count
+    let excludeUuids: string[] | undefined;
+    if (clickedActualAssignment) {
+      excludeUuids = actualAssignments
+        .filter(a => {
+          if (a.isTimeOff) return false;
+          if (a.projectUuid !== project.id) return false;
+          const aStart = new Date(a.startDate);
+          const aEnd = new Date(a.endDate);
+          return aStart <= monthEnd && aEnd >= monthStart;
+        })
+        .map(a => a.uuid);
+    }
+
+    const currentActual = calculateActualHoursForMonth(
+      actualAssignments,
+      project.id,
+      monthStart,
+      monthEnd,
+      excludeUuids
+    );
+
     setMonthlyActualAllocationModal({
       monthStart,
       monthEnd,
       project,
       existingActualAssignment: clickedActualAssignment,
-      monthlyTotalHours
+      monthlyTotalHours,
+      plannedHoursLimit: plannedLimit,
+      currentActualHours: currentActual,
     });
-  }, [isExpanded, isMonthRangeView]);
+  }, [isExpanded, isMonthRangeView, resourceAssignments, actualAssignments]);
 
   // Handle monthly allocation save from modal
   const handleSaveMonthlyAllocation = useCallback((data: {
@@ -2194,8 +2226,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                               cellHeight={40}
                               timeOffAssignments={timeOffAssignments}
                               containerRef={projectTimelineRefs.current.get(`plan-${project.id}`) || null}
-                              onDragComplete={(startDay, endDay, position) =>
-                                handleDragComplete(project.id, startDay, endDay, position)
+                              onDragComplete={(startDay, endDay) =>
+                                handleDragComplete(project.id, startDay, endDay)
                               }
                               disabled={createAssignment.isPending}
                               isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'plan'}
@@ -2485,8 +2517,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             cellHeight={40}
                             timeOffAssignments={timeOffAssignments}
                             containerRef={projectTimelineRefs.current.get(`actual-${project.id}`)}
-                            onDragComplete={(startDay, endDay, position) =>
-                              handleActualDragComplete(project.id, startDay, endDay, position)
+                            onDragComplete={(startDay, endDay) =>
+                              handleActualDragComplete(project.id, startDay, endDay)
                             }
                             disabled={createActualAssignment.isPending || resource.id !== session?.employee?.uuid}
                             isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'actual'}
@@ -2667,7 +2699,20 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                             )}
                           </>
                         ) : (
-                          projectActualAssignments.map((actualAssignment) => (
+                          projectActualAssignments.map((actualAssignment) => {
+                            // Calculate planned/actual limits for this assignment's month
+                            const aMonthStart = startOfMonth(new Date(actualAssignment.startDate));
+                            const aMonthEnd = endOfMonth(aMonthStart);
+                            const aPlannedLimit = calculatePlannedHoursForMonth(resourceAssignments, actualAssignment.projectUuid || '', aMonthStart, aMonthEnd);
+                            const aCurrentActual = calculateActualHoursForMonth(
+                              actualAssignments,
+                              actualAssignment.projectUuid || '',
+                              aMonthStart,
+                              aMonthEnd,
+                              [actualAssignment.uuid] // Exclude this assignment from actual count (edit mode)
+                            );
+
+                            return (
                             <ActualAssignmentBlock
                               key={actualAssignment.uuid}
                               assignment={actualAssignment}
@@ -2680,8 +2725,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                               onDelete={handleDeleteActualAssignment}
                               timeOffAssignments={timeOffAssignments as any}
                               disabled={actualAssignment.createdByUuid !== session?.employee?.uuid}
+                              plannedHoursLimit={aPlannedLimit}
+                              currentActualHours={aCurrentActual}
                             />
-                          ))
+                            );
+                          })
                         )}
                         {/* Drag preview overlay for actual - ACTUAL only */}
                         {(() => {
@@ -2826,7 +2874,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             projectId={popoverData.projectId}
             startDate={popoverData.startDate}
             endDate={popoverData.endDate}
-            position={popoverData.position}
             onClose={() => setPopoverData(null)}
             onSave={handleSaveAssignment}
             isCreating={createAssignment.isPending}
@@ -2839,10 +2886,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             projectId={actualPopoverData.projectId}
             startDate={actualPopoverData.startDate}
             endDate={actualPopoverData.endDate}
-            position={actualPopoverData.position}
             onClose={() => setActualPopoverData(null)}
             onSave={handleSaveActualAssignment}
             isCreating={createActualAssignment.isPending}
+            plannedHoursLimit={actualPopoverData.plannedHoursLimit}
+            currentActualHours={actualPopoverData.currentActualHours}
           />
         )}
 
@@ -2950,6 +2998,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             existingActualAssignment={monthlyActualAllocationModal.existingActualAssignment}
             timeOffAssignments={timeOffAssignments}
             monthlyTotalHours={monthlyActualAllocationModal.monthlyTotalHours}
+            plannedHoursLimit={monthlyActualAllocationModal.plannedHoursLimit}
+            currentActualHours={monthlyActualAllocationModal.currentActualHours}
             onClose={() => setMonthlyActualAllocationModal(null)}
             onSave={handleSaveMonthlyActualAllocation}
             onDelete={monthlyActualAllocationModal.existingActualAssignment ? (() => {

@@ -22,7 +22,7 @@ interface DraggableTimelineCellProps {
   day: Date;
   projectId: string;
   projectColor: string;
-  onDragComplete: (startDay: Date, endDay: Date, position: { x: number; y: number }) => void;
+  onDragComplete: (startDay: Date, endDay: Date) => void;
   days: Date[];
   cellWidth?: number;
   cellHeight?: number;
@@ -79,14 +79,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   // Handle weekend confirmation
   const handleWeekendConfirm = useCallback(() => {
     setShowWeekendConfirm(false);
-    // Open the popover directly for single-day weekend assignment
-    if (cellRef.current) {
-      const rect = cellRef.current.getBoundingClientRect();
-      onDragComplete(day, day, {
-        x: rect.left + rect.width / 2,
-        y: rect.bottom,
-      });
-    }
+    onDragComplete(day, day);
   }, [day, onDragComplete]);
 
   // Get the appropriate tooltip message for blocked days

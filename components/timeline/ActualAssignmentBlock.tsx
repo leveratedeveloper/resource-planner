@@ -32,6 +32,8 @@ interface ActualAssignmentBlockProps {
   isDeleting?: boolean;
   isUpdating?: boolean;
   disabled?: boolean;
+  plannedHoursLimit?: number;
+  currentActualHours?: number;
 }
 
 export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
@@ -47,6 +49,8 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
   isDeleting = false,
   isUpdating = false,
   disabled = false,
+  plannedHoursLimit,
+  currentActualHours,
 }) => {
   const blockRef = useRef<HTMLDivElement>(null);
 
@@ -687,6 +691,8 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
           onSave={handleSave}
           onDelete={handleDelete}
           isDeleting={isDeleting}
+          plannedHoursLimit={plannedHoursLimit}
+          currentActualHours={currentActualHours}
         />
       )}
 

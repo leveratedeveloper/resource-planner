@@ -16,6 +16,7 @@ import {
 import { AssignmentCategory } from "@/types";
 import { format, startOfDay, startOfMonth, isBefore, isAfter, isEqual, isSameMonth } from "date-fns";
 import { distributeMonthlyHours, type DistributionResult } from "@/lib/utils/allocation-distributor";
+import { validateActualHoursLimit } from "@/lib/utils/actual-hours-validation";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Project } from "@/lib/query/hooks/useProjects";
@@ -37,6 +38,8 @@ interface MonthlyAllocationModalProps {
   monthlyTotalHours?: number; // Total hours for this month (from highlighted block)
   planTotalHours?: number; // Plan-only hours (excluding adjustments)
   adjustmentTotalHours?: number; // Adjustment-only hours for this month
+  plannedHoursLimit?: number; // Total planned hours limit (plan + adj) for actual validation
+  currentActualHours?: number; // Already allocated actual hours for this project-month
   onClose: () => void;
   onSave: (data: {
     projectId: string;
@@ -71,6 +74,8 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   monthlyTotalHours,
   planTotalHours,
   adjustmentTotalHours,
+  plannedHoursLimit,
+  currentActualHours,
   onClose,
   onSave,
   onDelete,
@@ -286,6 +291,15 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       return;
     }
 
+    // Validate actual hours against planned limit
+    if (isActual && plannedHoursLimit !== undefined && currentActualHours !== undefined) {
+      const validation = validateActualHoursLimit(plannedHoursLimit, currentActualHours, hours);
+      if (!validation.isValid) {
+        setHoursError("Cannot add more actual hours. Please contact your supervisor.");
+        return;
+      }
+    }
+
     onSave({
       projectId: project.id,
       totalHours: hours,
@@ -488,6 +502,29 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Actual Hours Limit Indicator */}
+            {isActual && plannedHoursLimit !== undefined && currentActualHours !== undefined && (
+              <div className="p-3 bg-emerald-50 rounded-md border border-emerald-200">
+                <div className="text-xs font-semibold text-emerald-700 mb-2">Hours Limit</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-emerald-600">Planned limit:</span>
+                    <span className="font-semibold">{plannedHoursLimit.toFixed(1)}h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-emerald-600">Already allocated:</span>
+                    <span className="font-semibold">{currentActualHours.toFixed(1)}h</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-emerald-200">
+                    <span className="text-emerald-600">Available:</span>
+                    <span className={`font-semibold ${(plannedHoursLimit - currentActualHours) <= 0 ? 'text-red-600' : 'text-green-700'}`}>
+                      {Math.max(0, plannedHoursLimit - currentActualHours).toFixed(1)}h
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Adjustment Hours Section - only in plan edit mode for full access users */}
             {!isActual && isEditMode && isFullAccess && (
