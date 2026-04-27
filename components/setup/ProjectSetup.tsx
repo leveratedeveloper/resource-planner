@@ -10,6 +10,8 @@ import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
 import { useChannelClassifications } from "@/lib/query/hooks/useChannelClassifications";
 import { useDeliverables } from "@/lib/query/hooks/useDeliverables";
+import { useAssignmentsByProject } from "@/lib/query/hooks/useAssignments";
+import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -99,6 +101,41 @@ export const ProjectSetup = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [viewingProject, setViewingProject] = useState<Project | null>(null);
   const [isAssignEmployeesOpen, setIsAssignEmployeesOpen] = useState(false);
+
+  const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
+  const { data: employees = [] } = useEmployees();
+
+  const employeeMap = useMemo(() => {
+    const map = new Map<string, { fullName: string; position: string; department: { name: string } | null }>();
+    for (const emp of employees) {
+      map.set(emp.id, {
+        fullName: emp.fullName,
+        position: emp.position,
+        department: emp.department ?? null,
+      });
+    }
+    return map;
+  }, [employees]);
+
+  const teamMembers = useMemo(() => {
+    const seen = new Set<string>();
+    return projectAssignments
+      .filter((a) => {
+        if (!a.employeeId || seen.has(a.employeeId)) return false;
+        seen.add(a.employeeId);
+        return true;
+      })
+      .map((a) => {
+        const emp = employeeMap.get(a.employeeId);
+        return {
+          id: a.employeeId,
+          fullName: emp?.fullName ?? "Unknown",
+          position: emp?.position ?? "",
+          department: emp?.department ?? null,
+          allocationPercentage: a.allocationPercentage,
+        };
+      });
+  }, [projectAssignments, employeeMap]);
 
   // Form State - Project Type
   const [projectType, setProjectType] = useState<"pitch" | "campaign">("campaign");
@@ -806,69 +843,82 @@ export const ProjectSetup = () => {
               </div>
             )}
 
-            {/* Additional Information Section (CAMPAIGN ONLY) */}
-            {projectType === 'campaign' && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground border-b pb-2">Additional Information</h3>
+            {/* Manage Team Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground border-b pb-2">Manage Team</h3>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <label htmlFor="description" className="text-sm font-medium">
-                      Description
-                    </label>
-                    <Textarea
-                      id="description"
-                      value={description}
-                      disabled
-                      placeholder="Project description and objectives"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="flag" className="text-sm font-medium">
-                      Flag
-                    </label>
-                    <Input
-                      id="flag"
-                      value={flag}
-                      disabled
-                      placeholder="e.g., High Priority, Internal, etc."
-                    />
-                  </div>
-                </div>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left text-sm font-medium p-3 w-1/3">Name</th>
+                      <th className="text-left text-sm font-medium p-3 w-1/3">Deliverables</th>
+                      <th className="text-left text-sm font-medium p-3 w-1/3">Total % Allocated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamMembers.map((member) => (
+                      <tr key={member.id} className="border-b last:border-b-0">
+                        <td className="p-3">
+                          <div className="font-medium text-sm">{member.fullName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {member.position}{member.department ? ` • ${member.department.name}` : ""}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <Select disabled>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select deliverable" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allDeliverables.map((del) => (
+                                <SelectItem key={del.id} value={del.id}>
+                                  {del.deliverableName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-3 text-sm text-muted-foreground">
+                          {member.allocationPercentage ?? "-"}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-b last:border-b-0">
+                      <td className="p-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsAssignEmployeesOpen(true)}
+                          disabled={!session?.access.can_view_all}
+                        >
+                          <Icon icon="lucide:plus" className="h-4 w-4 mr-1" />
+                          Assign Team
+                        </Button>
+                      </td>
+                      <td className="p-3">
+                        <Select disabled>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select deliverable" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allDeliverables.map((del) => (
+                              <SelectItem key={del.id} value={del.id}>
+                                {del.deliverableName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="p-3 text-sm text-muted-foreground">-</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
           </div>
 
           <DialogFooter>
-            {!session?.access.can_view_all ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="inline-block">
-                    <Button
-                      variant="default"
-                      onClick={() => setIsAssignEmployeesOpen(true)}
-                      disabled
-                    >
-                      <Icon icon="lucide:users" className="h-4 w-4 mr-2" />
-                      Manage Team
-                    </Button>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>You can&apos;t assign projects. Restricted access.</p>
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Button
-                variant="default"
-                onClick={() => setIsAssignEmployeesOpen(true)}
-              >
-                <Icon icon="lucide:users" className="h-4 w-4 mr-2" />
-                Manage Team
-              </Button>
-            )}
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Close
             </Button>
