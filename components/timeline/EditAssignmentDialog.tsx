@@ -147,10 +147,13 @@ export function EditAssignmentDialog({
                 className="w-3 h-3 rounded-full shrink-0"
                 style={{ backgroundColor: project?.color || '#94a3b8' }}
               />
-              {project?.name || 'Time Off'}
+              <div className="flex flex-col">
+                <span>{project?.name || 'Time Off'}</span>
+                <span className="text-sm font-normal text-muted-foreground">{employee?.fullName || 'Unknown'}</span>
+              </div>
             </DialogTitle>
             <DialogDescription>
-              View and edit plan assignment details
+              Edit plan assignment details
             </DialogDescription>
           </DialogHeader>
 
@@ -161,6 +164,7 @@ export function EditAssignmentDialog({
               <div>
                 <Label className="text-xs text-muted-foreground">Employee</Label>
                 <div className="text-sm font-medium">{employee?.fullName || 'Unknown'}</div>
+                <div className="text-xs font-medium">{employee?.position || '—'}</div>
               </div>
               {project && (
                 <div>

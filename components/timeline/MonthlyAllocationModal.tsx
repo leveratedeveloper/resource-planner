@@ -27,6 +27,7 @@ interface MonthlyAllocationModalProps {
   resource: {
     id: string;
     name: string;
+    role: string;
   };
   project: Project;
   existingAssignment?: Assignment; // If present, we're in EDIT mode
@@ -355,7 +356,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
           </DialogHeader>
 
           <div className="min-h-0 overflow-y-auto px-6 space-y-4">
-            {/* Mode indicator */}
+            {/* Mode indicator & employee info */}
             <div>
               <span className={`text-xs font-semibold px-2 py-1 rounded ${
                 isActual
@@ -363,10 +364,14 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
                   : (isEditMode ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800")
               }`}>
                 {isActual
-                  ? (isEditMode ? "EDIT MODE ACTUAL" : "CREATE MODE ACTUAL")
-                  : (isEditMode ? "EDIT MODE" : "CREATE MODE")
+                  ? (isEditMode ? "Edit actual assignment details" : "Create actual assignment")
+                  : (isEditMode ? "Edit plan assignment details" : "Create plan assignment")
                 }
               </span>
+              <div className="mt-2 text-sm text-muted-foreground">
+                <div className="font-medium text-foreground">{resource.name}</div>
+                <div>{resource.role}</div>
+              </div>
             </div>
 
             {/* Past date warning */}

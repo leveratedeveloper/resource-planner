@@ -152,10 +152,13 @@ export function EditActualAssignmentDialog({
                 className="w-3 h-3 rounded-full shrink-0"
                 style={{ backgroundColor: project?.color || '#10b981' }}
               />
-              {project?.name || 'Actual Assignment'}
+              <div className="flex flex-col">
+                <span>{project?.name || 'Actual Assignment'}</span>
+                <span className="text-sm font-normal text-muted-foreground">{employee?.fullName || 'Unknown'}</span>
+              </div>
             </DialogTitle>
             <DialogDescription>
-              View and edit actual assignment details
+              Edit actual assignment details
             </DialogDescription>
           </DialogHeader>
 
@@ -166,6 +169,7 @@ export function EditActualAssignmentDialog({
               <div>
                 <Label className="text-xs text-muted-foreground">Employee</Label>
                 <div className="text-sm font-medium">{employee?.fullName || 'Unknown'}</div>
+                <div className="text-xs font-medium">{employee?.position || '—'}</div>
               </div>
               {project && (
                 <div>

@@ -2883,6 +2883,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
         {/* Actual Assignment Popover */}
         {actualPopoverData && (
           <ActualAssignmentPopover
+            resourceId={resource.id}
             projectId={actualPopoverData.projectId}
             startDate={actualPopoverData.startDate}
             endDate={actualPopoverData.endDate}

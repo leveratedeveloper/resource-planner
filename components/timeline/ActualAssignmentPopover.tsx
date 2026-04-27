@@ -14,11 +14,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useProjects } from "@/lib/query/hooks/useProjects";
+import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { AssignmentCategory } from "@/types";
 import { format, differenceInDays } from "date-fns";
 import { validateActualHoursLimit } from "@/lib/utils/actual-hours-validation";
 
 interface ActualAssignmentPopoverProps {
+  resourceId: string;
   projectId: string;
   startDate: Date;
   endDate: Date;
@@ -46,6 +48,7 @@ const CATEGORIES: AssignmentCategory[] = [
 ];
 
 export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = ({
+  resourceId,
   projectId,
   startDate,
   endDate,
@@ -56,14 +59,15 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
   currentActualHours,
 }) => {
   const { data: projects = [] } = useProjects();
+  const { data: employees = [] } = useEmployees();
+  const resource = employees.find((r) => r.id === resourceId);
+  const project = projects.find((p) => p.id === projectId);
   const [hoursInput, setHoursInput] = useState("8");
   const [hoursError, setHoursError] = useState<string | null>(null);
   const [category, setCategory] = useState<AssignmentCategory>("Development");
   const [isBillable, setIsBillable] = useState(true);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
-
-  const project = projects.find((p) => p.id === projectId);
 
   const isWeekendSchedule = startDate.getDay() === 0 || startDate.getDay() === 6;
   const dayName = format(startDate, "EEEE");
@@ -119,7 +123,9 @@ export const ActualAssignmentPopover: React.FC<ActualAssignmentPopoverProps> = (
             )}
           </DialogTitle>
           <DialogDescription>
-            {format(startDate, "MMM d")} - {format(endDate, "MMM d")} ({durationDays} day{durationDays > 1 ? 's' : ''})
+            <span>Create actual assignment</span>
+            <div className="text-sm font-medium mt-1 text-foreground">{resource?.fullName || 'Unknown'}</div>
+            <div className="text-xs font-medium text-foreground">{resource?.position || '—'}</div>
           </DialogDescription>
         </DialogHeader>
 

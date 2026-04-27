@@ -123,8 +123,9 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
             )}
           </DialogTitle>
           <DialogDescription>
-            {format(startDate, "MMM d")}
-            {differenceInDays(endDate, startDate) > 0 && ` - ${format(endDate, "MMM d")}`}
+            <span>Create plan assignment</span>
+            <div className="text-sm font-medium mt-1 text-foreground">{resource?.fullName || 'Unknown'}</div>
+            <div className="text-xs font-medium text-foreground">{resource?.position || '—'}</div>
           </DialogDescription>
         </DialogHeader>
 
