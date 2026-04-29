@@ -26,19 +26,21 @@ export async function GET(request: Request) {
     const perPage = limit ? parseInt(limit, 10) : 50;
     const page = offset ? Math.floor(parseInt(offset, 10) / perPage) + 1 : 1;
 
-    // Fetch both campaigns and pitches in parallel
+    // Fetch both campaigns and pitches in parallel (include channels for deliverables)
     const [campaignsResponse, pitchesResponse] = await Promise.all([
       client.getCampaigns({
         page,
         per_page: perPage,
         search: search || undefined,
         brand_id: brandId || undefined,
+        include: 'channels',
       }),
       client.getPitches({
         page,
         per_page: perPage,
         search: search || undefined,
         brand_id: brandId || undefined,
+        include: 'channels',
       }),
     ]);
 

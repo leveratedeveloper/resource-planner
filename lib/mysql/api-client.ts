@@ -365,6 +365,13 @@ class MySqlApiClient {
   }
 
   /**
+   * Get deliverables with pagination
+   */
+  getDeliverables(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
+    return this.request<any>('/deliverables', params);
+  }
+
+  /**
    * Get single brand by UUID
    */
   getBrand(uuid: string): Promise<MySqlApiResponse<MySqlBrand>> {
