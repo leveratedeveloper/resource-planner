@@ -260,11 +260,8 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
 
     let text = "text-white";
     let border = "";
-    // For MonthRange view, show hours instead of percentage
-    // For Month/Week view, show percentage
-    const label = isMonthRangeView
-      ? `${Math.round(hours)}h`
-      : `${Math.round(pct * 100)}%`;
+    // For all views, show percentage instead of hours
+    const label = `${Math.round(pct * 100)}%`;
 
     // Clamp percentage untuk opacity/shading
     // < 100%: opacity 0.3 - 1.0 (semakin besar semakin pekat)
