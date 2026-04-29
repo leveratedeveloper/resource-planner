@@ -10,6 +10,10 @@ export interface Deliverable {
   flag: string;
   createdAt: string;
   updatedAt: string;
+  channel?: {
+    id: string;
+    channelName: string;
+  } | null;
 }
 
 // API Functions
@@ -30,5 +34,23 @@ export function useDeliverables(channelId?: string) {
   return useQuery({
     queryKey: channelId ? queryKeys.deliverablesByChannel(channelId) : queryKeys.deliverables,
     queryFn: () => fetchDeliverables(channelId),
+  });
+}
+
+async function fetchProjectDeliverables(projectType: string, projectId: string): Promise<Deliverable[]> {
+  const url = `/api/projects/${projectType}/${projectId}/deliverables`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Failed to fetch project deliverables");
+  }
+  const data = await response.json();
+  return data.data;
+}
+
+export function useProjectDeliverables(projectType: string, projectId: string) {
+  return useQuery({
+    queryKey: queryKeys.deliverablesByProject(projectType, projectId),
+    queryFn: () => fetchProjectDeliverables(projectType, projectId),
+    enabled: !!projectType && !!projectId,
   });
 }

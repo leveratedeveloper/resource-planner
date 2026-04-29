@@ -37,6 +37,7 @@ export const queryKeys = {
   deliverables: ["deliverables"] as const,
   deliverable: (id: string) => ["deliverables", id] as const,
   deliverablesByChannel: (channelId: string) => ["deliverables", "channel", channelId] as const,
+  deliverablesByProject: (type: string, id: string) => ["deliverables", "project", type, id] as const,
 
   // Assignments
   assignments: ["assignments"] as const,
