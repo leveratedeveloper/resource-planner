@@ -64,7 +64,9 @@ Before you begin, ensure you have the following installed:
 - **Timetrack API**: http://127.0.0.1:8000/api/v1
 
 ### Staging
-- **Resource Planner**: https://resource-planner-drab.vercel.app/
+- **Resource Planner**: [https://resource-planner-drab.vercel.app/](https://resource-planner-drab.vercel.app/)
+  - Deployed from: `https://github.com/Sarah27-dotcom/resource-planner.git`
+  - Branch: `develop-sarah`
 - **Timetrack API**: https://demo.timetrack.id/api/v1
 
 ## Step-by-Step Setup Guide
@@ -80,6 +82,7 @@ npm install
 The Timetrack API **must be running BEFORE** starting Resource Planner. It provides:
 - User authentication (login)
 - Employee data (department, position for RBAC)
+- Brand and Project data
 
 #### Setting Up Timetrack API Locally
 
@@ -89,70 +92,47 @@ The Timetrack API **must be running BEFORE** starting Resource Planner. It provi
    cd timetrack
    ```
 
-2. **Configure the `.env` file** in the timetrack directory:
+2. **Import Timetrack Database**:
+   Import the database dump into your local MySQL (using XAMPP, DBeaver, or command line).
+   - Database Name: `timetrack1`
+
+3. **Configure the `.env` file** in the timetrack directory:
    ```bash
    # Timetrack .env configuration
-   APP_NAME=Laravel
-   APP_ENV=local
-   APP_KEY=base64:GsYzXDEQ7uaUwZzAUGpAc4Z0o80m7Vs2DzYAL528EzE=
-   APP_URL=http://localhost
-
    DB_CONNECTION=mysql
    DB_HOST=127.0.0.1
    DB_PORT=3306
    DB_DATABASE=timetrack1
    DB_USERNAME=root
    DB_PASSWORD=
-
-   BROADCAST_DRIVER=log
-   CACHE_DRIVER=file
-   QUEUE_CONNECTION=sync
-   SESSION_DRIVER=file
-   SESSION_LIFETIME=120
-
-   REDIS_HOST=127.0.0.1
-   REDIS_PASSWORD=null
-   REDIS_PORT=6379
-
-   # Mailhog for email testing (local)
-   MAIL_MAILER=smtp
-   MAIL_HOST=mailhog
-   MAIL_PORT=1025
-   MAIL_USERNAME=null
-   MAIL_PASSWORD=null
-   MAIL_ENCRYPTION=null
    ```
 
-3. **Install dependencies and run migrations**:
+4. **Install dependencies and start the server**:
    ```bash
    composer install
-   php artisan migrate
-   ```
-
-4. **Start the Timetrack server**:
-   ```bash
+   php artisan key:generate
    php artisan serve
    ```
 
 5. **Verify Timetrack is running**:
-   ```bash
-   curl http://127.0.0.1:8000/api/v1
-   ```
-
-   You should see a response from the API. Keep this server running in the background.
+   Resource Planner will call `http://127.0.0.1:8000/api/v1`. Ensure this is accessible.
 
 ### Step 3: Set Up MySQL Database (Assignments)
 
-Create the MySQL database for assignments:
+Resource Planner uses a local MySQL database for storing assignments.
 
-```bash
-# Create the assignments database
-mysql -u root -p < lib/mysql-assignments/schema.sql
-```
+1. **Create/Import Database**:
+   Import the `resource_planner_assignments` database dump into your local MySQL (XAMPP/DBeaver).
+   - Database Name: `resource_planner_assignments`
 
-This creates:
-- Database: `resource_planner_assignments`
-- Table: `assignments` (for employee-project allocations)
+2. **Manual Schema Setup (If no dump available)**:
+   ```bash
+   mysql -u root -p < lib/mysql-assignments/schema.sql
+   ```
+
+This database stores:
+- Table: `assignments` (for employee-project allocations/plan)
+- Table: `actual` (for actual time spent/allocation)
 
 ### Step 4: Configure Environment Variables
 
@@ -239,8 +219,21 @@ npm run dev
 ```
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser
-2. Login with your Timetrack credentials
-3. Start managing resources!
+2. Login with the credentials provided below.
+
+## Credentials & Login
+
+### Local Development
+| Environment | Email | Password |
+|-------------|-------|----------|
+| **Resource Planner (Local)** | `test.brand@leverategroup.asia` | `password` |
+| **Timetrack API (Local)** | `super@timetrack.id` | `SEMOGABERKAH2023!#` |
+
+### Staging / Demo
+| Environment | URL | Email | Password |
+|-------------|-----|-------|----------|
+| **Resource Planner (Vercel)** | [resource-planner-drab.vercel.app](https://resource-planner-drab.vercel.app/) | `super@timetrack.id` | `SEMOGABERKAH2023!#` |
+| **Timetrack Demo** | [demo.timetrack.id](https://demo.timetrack.id/) | `super@timetrack.id` | `SEMOGABERKAH2023!#` |
 
 ## Available NPM Scripts
 
@@ -444,8 +437,9 @@ We welcome contributions to the Resource Planner project! Please follow these gu
 
 1. **Fork and Clone**
    ```bash
-   git clone https://github.com/your-username/resource-planner.git
+   git clone https://github.com/hfebri/resource-planner.git
    cd resource-planner
+   git checkout develop-sarah
    ```
 
 2. **Create a Feature Branch**
