@@ -6,7 +6,7 @@ A workforce management and resource allocation system for managing employee assi
 
 - **Framework**: Next.js 16.1.1
 - **UI**: React 19, TypeScript, Tailwind CSS v4
-- **Database**: MySQL
+- **Database**: PostgreSQL (Primary) / MySQL
   - Main data via Timetrack API (employees, brands, projects, campaigns)
   - Assignments database for employee-project allocations
 - **External Integration**: Timetrack API for authentication and employee data
@@ -26,7 +26,7 @@ A workforce management and resource allocation system for managing employee assi
          │                 │
          ▼                 ▼
 ┌─────────────────┐ ┌─────────────────┐
-│  Timetrack API  │ │  MySQL          │
+│  Timetrack API  │ │  PostgreSQL     │
 │  (Auth/Employees)│ │  (Assignments)  │
 │  (Brands/Projects)│ │                 │
 └─────────────────┘ └─────────────────┘
@@ -54,7 +54,7 @@ A workforce management and resource allocation system for managing employee assi
 Before you begin, ensure you have the following installed:
 
 - **Node.js** v20 or higher
-- **MySQL Server** (local instance for assignments database)
+- **PostgreSQL** (local instance or Vercel Postgres / Supabase)
 - **Timetrack API** running locally on port 8000 (required before starting)
 
 ## Environment Configuration
@@ -67,6 +67,7 @@ Before you begin, ensure you have the following installed:
 - **Resource Planner**: [https://resource-planner-drab.vercel.app/](https://resource-planner-drab.vercel.app/)
   - Deployed from: `https://github.com/Sarah27-dotcom/resource-planner.git`
   - Branch: `develop-sarah`
+  - Database: Vercel Postgres / Supabase
 - **Timetrack API**: https://demo.timetrack.id/api/v1
 
 ## Step-by-Step Setup Guide
@@ -117,17 +118,16 @@ The Timetrack API **must be running BEFORE** starting Resource Planner. It provi
 5. **Verify Timetrack is running**:
    Resource Planner will call `http://127.0.0.1:8000/api/v1`. Ensure this is accessible.
 
-### Step 3: Set Up MySQL Database (Assignments)
+### Step 3: Set Up PostgreSQL Database (Assignments)
 
-Resource Planner uses a local MySQL database for storing assignments.
+Resource Planner uses a PostgreSQL database for storing assignments.
 
 1. **Create/Import Database**:
-   Import the `resource_planner_assignments` database dump into your local MySQL (XAMPP/DBeaver).
-   - Database Name: `resource_planner_assignments`
+   Import the `resource_planner_assignments` database dump into your PostgreSQL instance.
 
 2. **Manual Schema Setup (If no dump available)**:
    ```bash
-   mysql -u root -p < lib/mysql-assignments/schema.sql
+   psql your_database_url < lib/mysql-assignments/schema.postgres.sql
    ```
 
 This database stores:
@@ -158,7 +158,14 @@ This database stores:
    MYSQL_API_TOKEN_EXPIRY_MS=3600000
 
    # ==========================================
-   # MySQL Assignments Database Connection
+   # PostgreSQL Assignments Database Connection (Primary)
+   # ==========================================
+   DATABASE_URL=postgres://user:password@localhost:5432/resource_planner_assignments
+   # Alternatively:
+   # POSTGRES_URL=postgres://user:password@localhost:5432/resource_planner_assignments
+
+   # ==========================================
+   # MySQL Assignments Database Connection (Fallback)
    # ==========================================
    MYSQL_ASSIGNMENTS_HOST=127.0.0.1
    MYSQL_ASSIGNMENTS_PORT=3306
