@@ -55,13 +55,13 @@ Before you begin, ensure you have the following installed:
 
 - **Node.js** v20 or higher
 - **PostgreSQL** (local instance or Vercel Postgres / Supabase)
-- **Timetrack API** running locally on port 8000 (required before starting)
+- **Timetrack API** connectivity to `https://demo.timetrack.id/api/v1` (required before starting)
 
 ## Environment Configuration
 
 ### Local Development
 - **Resource Planner**: http://localhost:3000
-- **Timetrack API**: http://127.0.0.1:8000/api/v1
+- **Timetrack API**: https://demo.timetrack.id/api/v1
 
 ### Staging
 - **Resource Planner**: [https://resource-planner-drab.vercel.app/](https://resource-planner-drab.vercel.app/)
@@ -78,45 +78,17 @@ Before you begin, ensure you have the following installed:
 npm install
 ```
 
-### Step 2: Ensure Timetrack API is Running ⚠️ **IMPORTANT**
+### Step 2: Verify Timetrack API Connectivity
 
-The Timetrack API **must be running BEFORE** starting Resource Planner. It provides:
+Resource Planner connects directly to the Timetrack API at `https://demo.timetrack.id/api/v1`. It provides:
 - User authentication (login)
 - Employee data (department, position for RBAC)
 - Brand and Project data
 
-#### Setting Up Timetrack API Locally
-
-1. **Clone the timetrack repository** (if you haven't already):
-   ```bash
-   git clone https://gitlab.com/developerleverate/timetrack.git
-   cd timetrack
-   ```
-
-2. **Import Timetrack Database**:
-   Import the database dump into your local MySQL (using XAMPP, DBeaver, or command line).
-   - Database Name: `timetrack1`
-
-3. **Configure the `.env` file** in the timetrack directory:
-   ```bash
-   # Timetrack .env configuration
-   DB_CONNECTION=mysql
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_DATABASE=timetrack1
-   DB_USERNAME=root
-   DB_PASSWORD=
-   ```
-
-4. **Install dependencies and start the server**:
-   ```bash
-   composer install
-   php artisan key:generate
-   php artisan serve
-   ```
-
-5. **Verify Timetrack is running**:
-   Resource Planner will call `http://127.0.0.1:8000/api/v1`. Ensure this is accessible.
+Verify connectivity:
+```bash
+curl https://demo.timetrack.id/api/v1
+```
 
 ### Step 3: Set Up PostgreSQL Database (Assignments)
 
@@ -147,12 +119,12 @@ This database stores:
    # ==========================================
    # Timetrack API Configuration (Required)
    # ==========================================
-   TIMETRACK_API_URL=http://127.0.0.1:8000/api/v1
+   TIMETRACK_API_URL=https://demo.timetrack.id/api/v1
 
    # ==========================================
    # MySQL REST API Configuration
    # ==========================================
-   MYSQL_API_BASE_URL=http://127.0.0.1:8000/api/v1
+   MYSQL_API_BASE_URL=https://demo.timetrack.id/api/v1
    MYSQL_API_USERNAME=super@timetrack.id
    MYSQL_API_PASSWORD=your-mysql-api-password
    MYSQL_API_TOKEN_EXPIRY_MS=3600000
@@ -263,10 +235,9 @@ npm run test:coverage # Run tests with coverage report
 **Problem**: Resource Planner can't connect to Timetrack API
 
 **Solutions**:
-- Ensure Timetrack is running: `curl http://127.0.0.1:8000/api/v1`
-- Check that `TIMETRACK_API_URL` in `.env.local` points to `http://127.0.0.1:8000/api/v1`
-- Verify Timetrack server is running on port 8000
-- Check Timetrack logs for errors
+- Verify connectivity: `curl https://demo.timetrack.id/api/v1`
+- Check that `TIMETRACK_API_URL` in `.env.local` is set to `https://demo.timetrack.id/api/v1`
+- Check network/firewall settings
 
 ### Database Connection Errors
 **Problem**: Can't connect to MySQL
@@ -327,7 +298,7 @@ The Resource Planner fetches the following data from the Timetrack API:
 
 Environment variables (`.env.local`):
 ```bash
-TIMETRACK_API_URL=http://127.0.0.1:8000/api/v1
+TIMETRACK_API_URL=https://demo.timetrack.id/api/v1
 MYSQL_API_USERNAME=super@timetrack.id
 MYSQL_API_PASSWORD=your-password-here
 MYSQL_API_TOKEN_EXPIRY_MS=3600000
