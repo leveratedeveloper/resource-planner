@@ -159,6 +159,8 @@ export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: fetchProjects,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -193,6 +195,8 @@ export function useInfiniteProjects(search?: string) {
       if (!lastPage.hasMore) return undefined;
       return allPages.length * PAGE_SIZE;
     },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

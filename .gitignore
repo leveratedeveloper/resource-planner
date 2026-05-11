@@ -51,3 +51,6 @@ cookies.txt
 # debug scripts
 debug_*.js
 test-db-koneksi.ts
+
+# local planning notes
+view_plan.md

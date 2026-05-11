@@ -85,23 +85,13 @@ export type NewEmployee = {
 
 // API Functions
 async function fetchEmployees(): Promise<Employee[]> {
-  const allEmployees: Employee[] = [];
-  let offset = 0;
-  const limit = 100; // Fetch 100 at a time for efficiency
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await fetch(`/api/employees?limit=${limit}&offset=${offset}`);
-    if (!response.ok) {
-      throw new Error("Failed to fetch employees");
-    }
-    const data = await response.json();
-    allEmployees.push(...data.data);
-    hasMore = data.hasMore;
-    offset += limit;
+  const response = await fetch("/api/employees");
+  if (!response.ok) {
+    throw new Error("Failed to fetch employees");
   }
 
-  return allEmployees;
+  const data = await response.json();
+  return data.data || [];
 }
 
 async function fetchEmployee(id: string): Promise<Employee> {
@@ -149,14 +139,17 @@ async function deleteEmployee(id: string): Promise<void> {
 }
 
 // Hooks
-export function useEmployees() {
+export function useEmployees(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.employees,
     queryFn: fetchEmployees,
+    enabled: options?.enabled ?? true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 60;
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -187,6 +180,8 @@ export function useInfiniteEmployees(search?: string) {
       if (!lastPage.hasMore) return undefined;
       return allPages.reduce((acc, page) => acc + page.data.length, 0);
     },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

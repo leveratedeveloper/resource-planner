@@ -69,7 +69,7 @@ const generateClientCode = (brandName: string, existingCodes: string[] = []): st
 
   // Create base code from first 3-4 letters of brand name
   const cleanName = brandName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  let baseCode = cleanName.substring(0, 4);
+  const baseCode = cleanName.substring(0, 4);
 
   // If code exists, append a number
   let code = baseCode;
@@ -100,14 +100,7 @@ export const BrandSetup = () => {
   const brands = useMemo(() => {
     if (!brandsData?.pages) return [];
 
-    console.log('[BrandSetup] Processing brands data:', {
-      pageCount: brandsData.pages.length,
-      pages: brandsData.pages.map(p => ({ dataLength: p.data?.length, total: p.total, hasMore: p.hasMore })),
-    });
-
     const allBrands = brandsData.pages.flatMap((page) => page.data || []);
-
-    console.log('[BrandSetup] Flattened brands:', { count: allBrands.length, brands: allBrands.slice(0, 3) });
 
     // Deduplicate by id to handle cases where the API returns duplicate brands
     const uniqueBrandsMap = new Map<string, Brand>();
@@ -117,10 +110,7 @@ export const BrandSetup = () => {
       }
     }
 
-    const result = Array.from(uniqueBrandsMap.values());
-    console.log('[BrandSetup] Final brands after deduplication:', { count: result.length });
-
-    return result;
+    return Array.from(uniqueBrandsMap.values());
   }, [brandsData]);
 
   const handleLoadMore = useCallback(() => {

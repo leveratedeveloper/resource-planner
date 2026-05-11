@@ -2,6 +2,57 @@ import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
 
+type RawProjectChannel = Record<string, unknown>;
+
+type RawCampaign = {
+  uuid?: string;
+  io_number?: string | null;
+  campaign_name?: string;
+  brand_id?: string | number | null;
+  company_id?: string | number | null;
+  currency?: string;
+  budget?: string | number | null;
+  asf?: string | number | null;
+  grand_total?: string | number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  notes?: string | null;
+  io_file?: string | null;
+  state?: string | null;
+  flag?: string | null;
+  quotation_reference?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  brand?: {
+    brand_name?: string;
+  };
+  company?: unknown;
+  channels?: RawProjectChannel[];
+};
+
+type RawPitch = {
+  uuid?: string;
+  pitch_number?: string | null;
+  pitch_name?: string;
+  brand_id?: string | number | null;
+  currency?: string;
+  budget?: string | number | null;
+  value_total?: string | number | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  author?: {
+    uuid?: string;
+  };
+  region?: string | null;
+  date_submit?: string | null;
+  status?: string | null;
+  brand?: {
+    brand_name?: string;
+  };
+  channels?: RawProjectChannel[];
+};
+
 export async function GET(request: Request) {
   try {
     // Get session for authentication
@@ -44,10 +95,6 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    // Debug logging - show full response to diagnose issues
-    console.log('[Projects API] Campaigns FULL response:', JSON.stringify(campaignsResponse, null, 2));
-    console.log('[Projects API] Pitches FULL response:', JSON.stringify(pitchesResponse, null, 2));
-
     // Check for error responses - return early if both failed
     if (campaignsResponse?.error && pitchesResponse?.error) {
       console.error('[Projects API] Both campaigns and pitches failed');
@@ -65,14 +112,20 @@ export async function GET(request: Request) {
 
     // Get actual data from responses - handle various possible response structures
     // MySQL API might return: { success: true, data: [...] } or { success: true, data: { data: [...], meta: {...} } }
-    const campaignsData = campaignsResponse?.data?.data || campaignsResponse?.data || [];
-    const pitchesData = pitchesResponse?.data?.data || pitchesResponse?.data || [];
+    const campaignsData = ((campaignsResponse?.data?.data || campaignsResponse?.data || []) as RawCampaign[]);
+    const pitchesData = ((pitchesResponse?.data?.data || pitchesResponse?.data || []) as RawPitch[]);
 
-    console.log('[Projects API] Campaigns count:', campaignsData.length);
-    console.log('[Projects API] Pitches count:', pitchesData.length);
+    console.log('[Projects API] Fetched projects:', {
+      campaigns: campaignsData.length,
+      pitches: pitchesData.length,
+      page,
+      perPage,
+      search: Boolean(search),
+      brandId: brandId || null,
+    });
 
     // Transform campaigns to projects
-    const campaignProjects = campaignsData.map((campaign: any) => ({
+    const campaignProjects = campaignsData.map((campaign) => ({
       id: campaign.uuid,
       projectNumber: campaign.io_number,
       name: campaign.campaign_name,
@@ -115,7 +168,7 @@ export async function GET(request: Request) {
     }));
 
     // Transform pitches to projects
-    const pitchProjects = pitchesData.map((pitch: any) => ({
+    const pitchProjects = pitchesData.map((pitch) => ({
       id: pitch.uuid,
       projectNumber: pitch.pitch_number,
       name: pitch.pitch_name,

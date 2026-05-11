@@ -2,9 +2,57 @@ import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
 
+type RawBrand = {
+  brand_id?: string | number | null;
+  id?: string | number | null;
+  uuid?: string | number | null;
+  brand_name?: string | null;
+  company_name?: string | null;
+  brand_address?: string | null;
+  client_code?: string | number | null;
+  logo?: string | null;
+  brand_website?: string | null;
+  pic_brand_name?: string | null;
+  pic_title?: string | null;
+  pic_email?: string | null;
+  pic_brand_phone?: string | null;
+  pic_finance_name?: string | null;
+  pic_finance_phone?: string | null;
+  industry_category?: string | null;
+  description?: string | null;
+  flag?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type BrandResponse = {
+  id: string;
+  name: string | null | undefined;
+  businessUnitId: null;
+  companyName: string | null | undefined;
+  brandAddress: string | null | undefined;
+  clientCode: string;
+  color: string;
+  logo: string | null;
+  website: string | null | undefined;
+  contactName: string | null | undefined;
+  contactTitle: string | null | undefined;
+  contactEmail: string | null | undefined;
+  contactPhone: string | null | undefined;
+  picFinanceName: string | null | undefined;
+  picFinancePhone: string | null | undefined;
+  industryCategory: string | null | undefined;
+  description: string | null | undefined;
+  status: "active" | "inactive" | "prospect";
+  createdAt: string | null | undefined;
+  updatedAt: string | null | undefined;
+  _partialData: boolean;
+  _originalBrandId: string | number | null;
+};
+
 // Simple in-memory cache for brands data
 let brandsCache: {
-  data: any[];
+  data: BrandResponse[];
   timestamp: number;
 } | null = null;
 
@@ -26,8 +74,9 @@ export async function GET(request: Request) {
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
 
-    // Only use cache for first page without search
-    const useCache = !search && (searchParams.get("offset") || "0") === "0";
+    // Only use cache for the unpaginated first-page request. Paginated callers
+    // such as Setup and timeline all-brand loading must not share a partial page.
+    const useCache = !search && !limit && !offset;
 
     // Check cache
     if (useCache && brandsCache && (Date.now() - brandsCache.timestamp) < CACHE_TTL) {
@@ -56,8 +105,6 @@ export async function GET(request: Request) {
       include: 'all', // Add this to bypass filtering and ensure all brands appear
     });
 
-    console.log('[Brands API] MySQL response:', JSON.stringify(response, null, 2));
-
     // Check for API errors from the client
     if (response.error) {
       console.error('[Brands API] MySQL API returned an error:', response.error);
@@ -74,10 +121,10 @@ export async function GET(request: Request) {
 
     // Handle nested response structure: response.data.data contains the actual brands array
     // The MySQL API returns: { data: { data: [...brands...], meta: {...} }, meta: {...}, links: {...} }
-    let actualData = response?.data?.data || response?.data || [];
+    const actualData = response?.data?.data || response?.data || [];
 
     // Use the actual data from the API
-    let mergedBrands = actualData;
+    const mergedBrands = (Array.isArray(actualData) ? actualData : []) as RawBrand[];
 
     // Extract meta data from either response.data.meta or response.meta
     const dataMeta = response?.data?.meta;
@@ -104,7 +151,7 @@ export async function GET(request: Request) {
 
     // Transform MySQL response to match expected format
     // Note: Use brand_id (numeric) to match with campaigns/pitches
-    const transformedBrands = mergedBrands.map((brand: any) => {
+    const transformedBrands: BrandResponse[] = mergedBrands.map((brand) => {
       // IMPORTANT: Prioritize brand_id over id to match with campaigns/pitches
       // campaigns API uses campaign.brand_id, pitches API uses pitch.brand_id
       const brandId = String(brand.brand_id || brand.id || brand.uuid);
@@ -139,7 +186,7 @@ export async function GET(request: Request) {
       };
     });
 
-    console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map((b: any) => ({ id: b.id, name: b.name, original: mergedBrands.find((mb: any) => mb.brand_name === b.name)?.id || mergedBrands.find((mb: any) => mb.brand_name === b.name)?.brand_id })));
+    console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map((b) => ({ id: b.id, name: b.name })));
 
     // Store in cache (only first page, no search)
     if (useCache) {

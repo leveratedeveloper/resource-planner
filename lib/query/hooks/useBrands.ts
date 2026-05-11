@@ -76,8 +76,9 @@ async function fetchBrands(): Promise<Brand[]> {
   if (!response.ok) {
     throw new Error("Failed to fetch brands");
   }
-  const data = await response.json();
-  return data.data;
+
+  const result = await response.json();
+  return result.data || [];
 }
 
 async function fetchBrand(id: string): Promise<Brand> {
@@ -94,10 +95,12 @@ export function useBrands() {
   return useQuery({
     queryKey: queryKeys.brands,
     queryFn: fetchBrands,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 60;
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -109,8 +112,6 @@ async function fetchBrandsPaginated({ pageParam = 0, search }: { pageParam?: num
   const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
   const url = `/api/brands?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`;
 
-  console.log('[fetchBrandsPaginated] Fetching:', { pageParam, search, url });
-
   const response = await fetch(url);
   if (!response.ok) {
     console.error('[fetchBrandsPaginated] Response not OK:', { status: response.status, statusText: response.statusText });
@@ -118,13 +119,6 @@ async function fetchBrandsPaginated({ pageParam = 0, search }: { pageParam?: num
   }
 
   const result = await response.json();
-  console.log('[fetchBrandsPaginated] Result:', {
-    success: result.success,
-    dataLength: result.data?.length,
-    total: result.total,
-    hasMore: result.hasMore,
-    error: result.error,
-  });
 
   return {
     data: result.data || [],
@@ -142,6 +136,8 @@ export function useInfiniteBrands(search?: string) {
       if (!lastPage.hasMore) return undefined;
       return allPages.reduce((acc, page) => acc + page.data.length, 0);
     },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

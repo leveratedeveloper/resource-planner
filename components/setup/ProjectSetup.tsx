@@ -12,7 +12,7 @@ import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
 import { useChannelClassifications } from "@/lib/query/hooks/useChannelClassifications";
 import { useDeliverables } from "@/lib/query/hooks/useDeliverables";
-import { useAssignments, useAssignmentsByProject, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignments, useAssignmentsByProject, useDeleteAssignment, type Assignment } from "@/lib/query/hooks/useAssignments";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,22 @@ const CURRENCIES = [
   { code: "GBP", symbol: "£", name: "British Pound" },
   { code: "SGD", symbol: "S$", name: "Singapore Dollar" },
 ];
+
+type ProjectChannelFormValue = {
+  channelId?: string;
+  channel_id?: string;
+  deliverableId?: string;
+  deliverable_id?: string;
+  quantity?: string;
+  channelBudget?: string;
+  channel_budget?: string;
+  manHours?: string;
+  man_hours?: string;
+};
+
+type ProjectWithChannels = Project & {
+  channels?: ProjectChannelFormValue[];
+};
 
 // Generate project number from project name
 const generateProjectNumber = (projectName: string, existingNumbers: string[] = []): string => {
@@ -127,12 +143,13 @@ export const ProjectSetup = () => {
   const [initialDateRange, setInitialDateRange] = useState<DateRange | undefined>(undefined);
 
   const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
-  const { data: allAssignments = [] } = useAssignments();
-  const { data: employees = [] } = useEmployees();
+  const shouldLoadTeamContext = !!viewingProject;
+  const { data: allAssignments = [] } = useAssignments(undefined, { enabled: shouldLoadTeamContext });
+  const { data: employees = [] } = useEmployees({ enabled: shouldLoadTeamContext });
   const deleteAssignment = useDeleteAssignment();
 
   const employeeMap = useMemo(() => {
-    const map = new Map<string, { fullName: string; position: string; department: { name: string } | null; allAssignments: any[] }>();
+    const map = new Map<string, { fullName: string; position: string; department: { name: string } | null; allAssignments: Assignment[] }>();
     for (const emp of employees) {
       map.set(emp.id, {
         fullName: emp.fullName,
@@ -269,7 +286,7 @@ export const ProjectSetup = () => {
           const mEnd = endOfMonth(mStart);
 
           let workDays = 0;
-          let currentDay = new Date(mStart);
+          const currentDay = new Date(mStart);
           while (currentDay <= mEnd) {
             const dayOfWeek = currentDay.getDay();
             if (dayOfWeek !== 0 && dayOfWeek !== 6) workDays++;
@@ -393,14 +410,18 @@ export const ProjectSetup = () => {
     setPitchStatus(project.pitchStatus || "introduction");
     setValueTotalEstimate(project.valueTotalEstimate || "");
     setHsDealId(project.hsDealId || "");
-    const channelsData = (project as any).channels || project.projectChannels || [];
-    setProjectChannels(channelsData.map((pc: any) => ({
-      channelId: pc.channelId || pc.channel_id || "",
-      deliverableId: pc.deliverableId || pc.deliverable_id || "",
-      quantity: pc.quantity || "",
-      channelBudget: pc.channelBudget || pc.channel_budget || "",
-      manHours: pc.manHours || pc.man_hours || "",
-    })));
+    const channelsData = (project as ProjectWithChannels).channels || project.projectChannels || [];
+    setProjectChannels(channelsData.map((pc) => {
+      const snakeCaseChannel = pc as ProjectChannelFormValue;
+
+      return {
+        channelId: pc.channelId || snakeCaseChannel.channel_id || "",
+        deliverableId: pc.deliverableId || snakeCaseChannel.deliverable_id || "",
+        quantity: pc.quantity || "",
+        channelBudget: pc.channelBudget || snakeCaseChannel.channel_budget || "",
+        manHours: pc.manHours || snakeCaseChannel.man_hours || "",
+      };
+    }));
     if (project.startDate && project.endDate) {
       const range = {
         from: startOfDay(new Date(project.startDate)),
@@ -1119,7 +1140,7 @@ export const ProjectSetup = () => {
 
                   {projectChannels.length === 0 ? (
                     <div className="text-sm text-muted-foreground text-center py-8 border rounded-lg border-dashed">
-                      No channels added yet. Click "Add Channel" to get started.
+                      No channels added yet. Click &quot;Add Channel&quot; to get started.
                     </div>
                   ) : (
                     <div className="space-y-4">

@@ -152,10 +152,16 @@ async function deleteAssignment(id: string): Promise<void> {
 }
 
 // Hooks
-export function useAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }) {
+export function useAssignments(
+  params?: { startDate?: string; endDate?: string; projectIds?: string[] },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: [...queryKeys.assignments, params],
     queryFn: () => fetchAssignments(params),
+    enabled: options?.enabled ?? true,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
