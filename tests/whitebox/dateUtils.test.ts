@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { skipWeekend, isWeekend, createDateSet, isDateInSet } from "@/lib/utils/dateUtils";
+import { skipWeekend, isWeekend, createDateSet, isDateInSet, calculateTargetWorkday } from "@/lib/utils/dateUtils";
 
 describe("skipWeekend", () => {
   it("moves Saturday backward to Friday", () => {
@@ -86,5 +86,50 @@ describe("isDateInSet", () => {
     const set = createDateSet([{ startDate: "2026-02-18", endDate: "2026-02-20" }]);
     const date = new Date(2026, 1, 21);
     expect(isDateInSet(date, set)).toBe(false);
+  });
+});
+
+describe("calculateTargetWorkday", () => {
+  it("Wednesday + 4 workdays = Monday (skips weekend)", () => {
+    // Scenario A from plan: Wednesday (Rabu) + 4 workdays = Monday (Senin)
+    // Day 1: Wed, Day 2: Thu, Day 3: Fri, Skip: Sat/Sun, Day 4: Mon
+    const wednesday = new Date(2026, 1, 18); // Wednesday Feb 18, 2026
+    const result = calculateTargetWorkday(wednesday, 4);
+    expect(result.getDay()).toBe(1); // Monday
+    expect(result.getDate()).toBe(23); // Feb 23, 2026
+  });
+
+  it("Wednesday + 5 workdays = Tuesday", () => {
+    // Scenario B from plan: Wednesday + 5 workdays = Tuesday
+    const wednesday = new Date(2026, 1, 18); // Wednesday Feb 18, 2026
+    const result = calculateTargetWorkday(wednesday, 5);
+    expect(result.getDay()).toBe(2); // Tuesday
+    expect(result.getDate()).toBe(24); // Feb 24, 2026
+  });
+
+  it("Friday + 2 workdays = Monday (skips weekend)", () => {
+    // Scenario C from plan: Friday (Jumat) + 2 workdays = Monday (Senin)
+    // Day 1: Fri, Skip: Sat/Sun, Day 2: Mon
+    const friday = new Date(2026, 1, 20); // Friday Feb 20, 2026
+    const result = calculateTargetWorkday(friday, 2);
+    expect(result.getDay()).toBe(1); // Monday
+    expect(result.getDate()).toBe(23); // Feb 23, 2026
+  });
+
+  it("handles single workday correctly", () => {
+    const monday = new Date(2026, 1, 16); // Monday Feb 16, 2026
+    const result = calculateTargetWorkday(monday, 1);
+    // With 1-indexed counting, day 1 is the start day itself
+    expect(result.getDay()).toBe(1); // Monday
+    expect(result.getDate()).toBe(16); // Feb 16, 2026 (same day - start day counts as day 1)
+  });
+
+  it("handles crossing multiple weekends", () => {
+    // Monday + 10 workdays should span two weeks
+    const monday = new Date(2026, 1, 16); // Monday Feb 16, 2026
+    const result = calculateTargetWorkday(monday, 10);
+    // Mon(16) + 10 workdays = Fri(27) accounting for one weekend
+    expect(result.getDay()).toBe(5); // Friday
+    expect(result.getDate()).toBe(27); // Feb 27, 2026
   });
 });

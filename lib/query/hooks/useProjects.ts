@@ -162,7 +162,7 @@ export function useProjects() {
   });
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 100;
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -191,7 +191,7 @@ export function useInfiniteProjects(search?: string) {
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (!lastPage.hasMore) return undefined;
-      return allPages.reduce((acc, page) => acc + page.data.length, 0);
+      return allPages.length * PAGE_SIZE;
     },
   });
 }

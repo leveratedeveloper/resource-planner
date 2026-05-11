@@ -20,6 +20,11 @@ export default function Home() {
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
 
+  // Assignment filters
+  const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+
   const { analysisResult, isAnalyzing, refreshAnalysis } = useApp();
   const { data: employees = [] } = useEmployees();
   const { data: assignments = [] } = useAssignments();
@@ -65,13 +70,22 @@ export default function Home() {
         onSearchChange={setSearchQuery}
         onOpenSetup={() => setIsSetupOpen(true)}
         onOpenInsights={() => setIsInsightsOpen(true)}
+        projectId={filterProjectId}
+        onProjectChange={setFilterProjectId}
+        category={filterCategory}
+        onCategoryChange={setFilterCategory}
+        status={filterStatus}
+        onStatusChange={setFilterStatus}
       />
 
       <main className="flex-1 overflow-hidden">
-        <Timeline 
-          brandId={selectedBrandId} 
+        <Timeline
+          brandId={selectedBrandId}
           department={selectedDepartment}
           searchQuery={debouncedSearch}
+          projectId={filterProjectId}
+          category={filterCategory}
+          status={filterStatus}
         />
       </main>
 

@@ -140,6 +140,7 @@ export type Assignment = {
   hoursPerDay: number;
   allocationPercentage: number | null;
   isTimeOff: boolean;
+  isAdjustment: boolean;
   timeOffTypeId: string | null;
   category: AssignmentCategory | null;
   isBillable: boolean;

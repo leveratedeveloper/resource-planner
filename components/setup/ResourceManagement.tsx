@@ -105,13 +105,10 @@ export const ResourceManagement = () => {
                         {employees.map((employee) => {
                             const dept = departments.find(d => d.id === employee.departmentId);
                             return (
-                                <Card key={employee.id} className="hover:shadow-md transition-shadow">
+                                <Card key={employee.id} onClick={() => handleViewEmployee(employee)} className="hover:shadow-md transition-shadow cursor-pointer hover:bg-accent/50">
                                     <CardHeader className="pb-2">
                                         <div className="flex justify-between items-start">
                                             <CardTitle className="text-lg">{employee.fullName}</CardTitle>
-                                            <Button variant="ghost" size="icon" onClick={() => handleViewEmployee(employee)}>
-                                                <Icon icon="lucide:eye" className="h-4 w-4 text-muted-foreground" />
-                                            </Button>
                                         </div>
                                         <CardDescription>{employee.position} • {dept?.name || 'No Department'}</CardDescription>
                                     </CardHeader>

@@ -41,4 +41,13 @@ yarn-error.log*
 next-env.d.ts
 
 docs/
-drizzle/
+
+# claude code local settings
+.claude/settings.local.json
+
+# cookies / sensitive files
+cookies.txt
+
+# debug scripts
+debug_*.js
+test-db-koneksi.ts

@@ -2,6 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useBrands, useInfiniteBrands, type Brand } from "@/lib/query/hooks/useBrands";
+
+// Extended brand type with metadata for partial data
+interface BrandWithMetadata extends Brand {
+  _partialData?: boolean;
+  _originalBrandId?: string;
+}
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,10 +96,31 @@ export const BrandSetup = () => {
   const { data: businessUnits = [] } = useBusinessUnits();
   const { sentinelRef, isStuck } = useIsStuck(40);
 
-  // Flatten all pages into a single array of brands
+  // Flatten all pages into a single array of brands and deduplicate by id
   const brands = useMemo(() => {
     if (!brandsData?.pages) return [];
-    return brandsData.pages.flatMap((page) => page.data);
+
+    console.log('[BrandSetup] Processing brands data:', {
+      pageCount: brandsData.pages.length,
+      pages: brandsData.pages.map(p => ({ dataLength: p.data?.length, total: p.total, hasMore: p.hasMore })),
+    });
+
+    const allBrands = brandsData.pages.flatMap((page) => page.data || []);
+
+    console.log('[BrandSetup] Flattened brands:', { count: allBrands.length, brands: allBrands.slice(0, 3) });
+
+    // Deduplicate by id to handle cases where the API returns duplicate brands
+    const uniqueBrandsMap = new Map<string, Brand>();
+    for (const brand of allBrands) {
+      if (brand.id && !uniqueBrandsMap.has(brand.id)) {
+        uniqueBrandsMap.set(brand.id, brand);
+      }
+    }
+
+    const result = Array.from(uniqueBrandsMap.values());
+    console.log('[BrandSetup] Final brands after deduplication:', { count: result.length });
+
+    return result;
   }, [brandsData]);
 
   const handleLoadMore = useCallback(() => {
@@ -104,6 +131,7 @@ export const BrandSetup = () => {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
+  const [isLoadingBrandDetails, setIsLoadingBrandDetails] = useState(false);
 
   // Form State - Basic Information
   const [companyName, setCompanyName] = useState("");
@@ -130,26 +158,109 @@ export const BrandSetup = () => {
   const [businessUnitId, setBusinessUnitId] = useState<string>("");
   const [description, setDescription] = useState("");
 
-  const handleOpenView = (brand: Brand) => {
-    setEditingBrand(brand);
-    setCompanyName(brand.companyName || "");
-    setName(brand.name);
-    setBrandAddress(brand.brandAddress || "");
-    setClientCode(brand.clientCode || "");
-    setIndustryCategory(brand.industryCategory || "");
-    setLogo(brand.logo || "");
-    setWebsite(brand.website || "");
-    setColor(brand.color);
-    setStatus(brand.status);
-    setContactName(brand.contactName || "");
-    setContactTitle(brand.contactTitle || "");
-    setContactEmail(brand.contactEmail || "");
-    setContactPhone(brand.contactPhone || "");
-    setPicFinanceName(brand.picFinanceName || "");
-    setPicFinancePhone(brand.picFinancePhone || "");
-    setBusinessUnitId(brand.businessUnitId || "");
-    setDescription(brand.description || "");
-    setIsDialogOpen(true);
+  const handleOpenView = async (brand: BrandWithMetadata) => {
+    // Check if brand has partial data (from campaigns/pitches without nested brand object)
+    if (brand._partialData) {
+      setIsLoadingBrandDetails(true);
+      setEditingBrand(brand);
+      setIsDialogOpen(true);
+
+      try {
+        console.log('[BrandSetup] Fetching complete brand data for:', brand.name);
+        // Fetch complete brand data by name
+        const response = await fetch(`/api/brands/lookup?brandName=${encodeURIComponent(brand.name)}`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+          const completeBrand = result.data;
+          console.log('[BrandSetup] Got complete brand data:', completeBrand);
+          brand = { ...brand, ...completeBrand } as BrandWithMetadata;
+
+          // Update form with complete data
+          setCompanyName(completeBrand.companyName || "");
+          setName(completeBrand.name);
+          setBrandAddress(completeBrand.brandAddress || "");
+          setClientCode(completeBrand.clientCode || "");
+          setIndustryCategory(completeBrand.industryCategory || "");
+          setLogo(completeBrand.logo || "");
+          setWebsite(completeBrand.website || "");
+          setColor(completeBrand.color);
+          setStatus(completeBrand.status);
+          setContactName(completeBrand.contactName || "");
+          setContactTitle(completeBrand.contactTitle || "");
+          setContactEmail(completeBrand.contactEmail || "");
+          setContactPhone(completeBrand.contactPhone || "");
+          setPicFinanceName(completeBrand.picFinanceName || "");
+          setPicFinancePhone(completeBrand.picFinancePhone || "");
+          setBusinessUnitId(completeBrand.businessUnitId || "");
+          setDescription(completeBrand.description || "");
+          setEditingBrand(brand);
+        } else {
+          console.log('[BrandSetup] No complete brand data found, using partial data');
+          // Set partial data
+          setCompanyName(brand.companyName || "");
+          setName(brand.name);
+          setBrandAddress(brand.brandAddress || "");
+          setClientCode(brand.clientCode || "");
+          setIndustryCategory(brand.industryCategory || "");
+          setLogo(brand.logo || "");
+          setWebsite(brand.website || "");
+          setColor(brand.color);
+          setStatus(brand.status);
+          setContactName(brand.contactName || "");
+          setContactTitle(brand.contactTitle || "");
+          setContactEmail(brand.contactEmail || "");
+          setContactPhone(brand.contactPhone || "");
+          setPicFinanceName(brand.picFinanceName || "");
+          setPicFinancePhone(brand.picFinancePhone || "");
+          setBusinessUnitId(brand.businessUnitId || "");
+          setDescription(brand.description || "");
+        }
+      } catch (error) {
+        console.error('[BrandSetup] Failed to fetch complete brand data:', error);
+        // Set partial data
+        setCompanyName(brand.companyName || "");
+        setName(brand.name);
+        setBrandAddress(brand.brandAddress || "");
+        setClientCode(brand.clientCode || "");
+        setIndustryCategory(brand.industryCategory || "");
+        setLogo(brand.logo || "");
+        setWebsite(brand.website || "");
+        setColor(brand.color);
+        setStatus(brand.status);
+        setContactName(brand.contactName || "");
+        setContactTitle(brand.contactTitle || "");
+        setContactEmail(brand.contactEmail || "");
+        setContactPhone(brand.contactPhone || "");
+        setPicFinanceName(brand.picFinanceName || "");
+        setPicFinancePhone(brand.picFinancePhone || "");
+        setBusinessUnitId(brand.businessUnitId || "");
+        setDescription(brand.description || "");
+      } finally {
+        setIsLoadingBrandDetails(false);
+      }
+    } else {
+      // Brand has complete data, just show it
+      setCompanyName(brand.companyName || "");
+      setName(brand.name);
+      setBrandAddress(brand.brandAddress || "");
+      setClientCode(brand.clientCode || "");
+      setIndustryCategory(brand.industryCategory || "");
+      setLogo(brand.logo || "");
+      setWebsite(brand.website || "");
+      setColor(brand.color);
+      setStatus(brand.status);
+      setContactName(brand.contactName || "");
+      setContactTitle(brand.contactTitle || "");
+      setContactEmail(brand.contactEmail || "");
+      setContactPhone(brand.contactPhone || "");
+      setPicFinanceName(brand.picFinanceName || "");
+      setPicFinancePhone(brand.picFinancePhone || "");
+      setBusinessUnitId(brand.businessUnitId || "");
+      setDescription(brand.description || "");
+      setEditingBrand(brand);
+      setIsDialogOpen(true);
+    }
   };
 
   return (
@@ -192,19 +303,34 @@ export const BrandSetup = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {brands.map((brand) => {
+          {brands.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <Icon icon="lucide:package" className="h-16 w-16 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Brands Found</h3>
+              <p className="text-muted-foreground max-w-md">
+                {searchQuery ? "No brands match your search criteria. Try a different search term." : "No brands are available in the system yet."}
+              </p>
+              {searchQuery && (
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setSearchQuery("")}
+                >
+                  Clear Search
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {brands.map((brand) => {
               return (
-                <Card key={brand.id} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden">
+                <Card key={brand.id} onClick={() => handleOpenView(brand)} className="hover:shadow-lg transition-all border rounded-xl overflow-hidden cursor-pointer hover:bg-accent/50">
                   <CardHeader className="pb-2 pt-6 px-6">
                     <div className="flex justify-between items-start mb-1">
                       <div className="flex items-center gap-3">
                          <div className="w-3 h-8 rounded-full" style={{ backgroundColor: brand.color, width: '8px', height: '24px', borderRadius: '999px' }} />
                          <CardTitle className="text-lg font-bold flex items-center gap-2">
                            {brand.name}
-                           <button onClick={() => handleOpenView(brand)} className="text-muted-foreground hover:text-foreground transition-colors ml-1" aria-label={`View ${brand.name} details`}>
-                              <Icon icon="lucide:eye" className="h-4 w-4" />
-                           </button>
                          </CardTitle>
                       </div>
                     </div>
@@ -237,7 +363,8 @@ export const BrandSetup = () => {
                 </Card>
               );
             })}
-          </div>
+            </div>
+          )}
           <InfiniteScrollTrigger
             onLoadMore={handleLoadMore}
             hasMore={!!hasNextPage}
@@ -270,7 +397,14 @@ export const BrandSetup = () => {
           <DialogHeader>
             <DialogTitle>Brand Details</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-6 py-4">
+
+          {isLoadingBrandDetails ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Icon icon="lucide:loader-2" className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+              <p className="text-sm text-muted-foreground">Loading brand details...</p>
+            </div>
+          ) : (
+            <div className="grid gap-6 py-4">
             {/* Basic Information Section */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-foreground border-b pb-2">Basic Information</h3>
@@ -562,6 +696,7 @@ export const BrandSetup = () => {
               </div>
             </div>
           </div>
+          )}
           <DialogFooter>
             <Button
               onClick={() => setIsDialogOpen(false)}

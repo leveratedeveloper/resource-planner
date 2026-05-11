@@ -4,14 +4,19 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Project } from "@/lib/query/hooks/useProjects";
 import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
-import { cn } from "@/lib/utils";
-import { MoreVertical } from "lucide-react";
+import { cn, toLocalDateString } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverAnchor,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { EditAssignmentDialog } from "./EditAssignmentDialog";
 
 interface AssignmentBlockProps {
@@ -26,6 +31,8 @@ interface AssignmentBlockProps {
   timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
   isDeleting?: boolean; // Show deleting state
   isUpdating?: boolean; // Show updating state (during drag/resize)
+  showProjectName?: boolean; // Show project name in block (default: true, set false when already shown in row header)
+  disabled?: boolean; // Disable all interactive features (click, resize, drag)
 }
 
 export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
@@ -40,72 +47,125 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   timeOffAssignments = [],
   isDeleting = false,
   isUpdating = false,
+  disabled = false,
 }) => {
   const blockRef = useRef<HTMLDivElement>(null);
 
-  // Resize state
   const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
-  const [tempOffset, setTempOffset] = useState(0); // Days to adjust
+  const [tempOffset, setTempOffset] = useState(0);
+
+  // Weekend confirmation state
+  const [showWeekendConfirm, setShowWeekendConfirm] = useState(false);
+  const [pendingResize, setPendingResize] = useState<{
+    edge: 'left' | 'right' | 'drag';
+    newStartDate?: Date;
+    newEndDate?: Date;
+  } | null>(null);
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0); // Days to move
+  const [dragOffset, setDragOffset] = useState(0);
 
   // Edit dialog state
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  // Processing state for showing loading indicator after operation
+  const hasDraggedRef = useRef(false);
+  const hasResizedRef = useRef(false);
+  const mouseDownPosRef = useRef({ x: 0, y: 0 });
+
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Use ref to avoid stale closure in event handlers
   const offsetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
 
-  // Cleanup animation frame on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
-  // Calculate Position and Width
+  const hasTimeOffOnDate = useCallback((date: Date) => {
+    return timeOffAssignments.some(a =>
+      isWithinInterval(startOfDay(date), {
+        start: startOfDay(new Date(a.startDate)),
+        end: startOfDay(new Date(a.endDate))
+      })
+    );
+  }, [timeOffAssignments]);
+
+  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
+    return timeOffAssignments.some(a => {
+      if (a.id === assignment.id) return false;
+      const timeOffStart = startOfDay(new Date(a.startDate));
+      const timeOffEnd = startOfDay(new Date(a.endDate));
+      const checkStart = startOfDay(rangeStart);
+      const checkEnd = startOfDay(rangeEnd);
+      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
+    });
+  }, [timeOffAssignments, assignment.id]);
+
+  const isWeekendDate = useCallback((date: Date) => {
+    const day = date.getDay();
+    return day === 0 || day === 6;
+  }, []);
+
+  const findVisibleIndex = useCallback((date: Date) => {
+    const dateMs = startOfDay(date).getTime();
+    return days.findIndex(d => startOfDay(d).getTime() === dateMs);
+  }, [days]);
+
+  const findCorrectVisibleIndex = useCallback((date: Date) => {
+    if (isWeekView) {
+      const dateWeek = startOfWeek(date, { weekStartsOn: 1 });
+      const exactIdx = days.findIndex(d => startOfDay(d).getTime() === dateWeek.getTime());
+      if (exactIdx >= 0) return exactIdx;
+      const dateWeekTime = dateWeek.getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= dateWeekTime) return i;
+      }
+      return -1;
+    } else {
+      const exactIdx = findVisibleIndex(date);
+      if (exactIdx >= 0) return exactIdx;
+      const dateTime = startOfDay(date).getTime();
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (startOfDay(days[i]).getTime() <= dateTime) return i;
+      }
+      return -1;
+    }
+  }, [days, findVisibleIndex, isWeekView]);
+
+  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
+  hasTimeOffInRangeRef.current = hasTimeOffInRange;
+  const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
+  hasTimeOffOnDateRef.current = hasTimeOffOnDate;
+
+  // Date calculations
   const startDate = startOfDay(new Date(assignment.startDate));
   const endDate = startOfDay(new Date(assignment.endDate));
   const timelineStart = startOfDay(days[0]);
   const today = startOfDay(new Date());
+  const timelineEnd = startOfDay(days[days.length - 1]);
 
-  let offsetDays: number;
-  let durationDays: number;
   let startVisibleIdx: number;
   let endVisibleIdx: number;
   let visibleDuration: number;
-  let useVisibleIndices: boolean;
-
-  // Get the timeline end date for clipping
-  const timelineEnd = startOfDay(days[days.length - 1]);
+  const durationDays = differenceInDays(startDate, endDate) + 1;
 
   if (isWeekView) {
-    // In week view, each cell represents a week (Monday)
-    // Find which week column the start/end dates fall into
     const assignmentStartWeek = startOfWeek(startDate, { weekStartsOn: 1 });
     const assignmentEndWeek = startOfWeek(endDate, { weekStartsOn: 1 });
 
-    // Find the indices in the days array (which contains Mondays)
     startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentStartWeek.getTime());
     endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentEndWeek.getTime());
 
-    // If start not found, check if assignment starts before visible range
     if (startVisibleIdx === -1) {
       const assignmentStartWeekTime = assignmentStartWeek.getTime();
       const timelineStartTime = timelineStart.getTime();
-      
+
       if (assignmentStartWeekTime < timelineStartTime) {
-        // Assignment starts before visible range, clip to start
         startVisibleIdx = 0;
       } else {
-        // Find the closest week
         for (let i = 0; i < days.length; i++) {
           if (startOfDay(days[i]).getTime() >= assignmentStartWeekTime) {
             startVisibleIdx = i;
@@ -116,13 +176,11 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       }
     }
 
-    // If end not found, check if assignment ends after visible range
     if (endVisibleIdx === -1) {
       const assignmentEndWeekTime = assignmentEndWeek.getTime();
       const timelineEndTime = timelineEnd.getTime();
-      
+
       if (assignmentEndWeekTime > timelineEndTime) {
-        // Assignment ends after visible range, clip to end
         endVisibleIdx = days.length - 1;
       } else {
         for (let i = days.length - 1; i >= 0; i--) {
@@ -135,65 +193,38 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       }
     }
 
-    // Clamp indices to valid range
     startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
     endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
-
     visibleDuration = endVisibleIdx - startVisibleIdx + 1;
-    useVisibleIndices = true;
-    offsetDays = startVisibleIdx;
-    durationDays = visibleDuration;
   } else {
-    // Day view - original logic
-    offsetDays = differenceInDays(startDate, timelineStart);
-    durationDays = differenceInDays(endDate, startDate) + 1;
-
-    // Find positions in visible days array - inline calculation
     startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
-
-    // If start is before visible range, clip to start
-    if (startVisibleIdx === -1 && startDate < timelineStart) {
-      startVisibleIdx = 0;
-    }
-
-    // Find correct end index even if it falls on a hidden weekend or beyond visible range
     endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
-    
-    // If end is after visible range, clip to end
+
+    if (startVisibleIdx === -1) {
+      const startDateStr = toLocalDateString(startDate);
+      startVisibleIdx = days.findIndex(d => toLocalDateString(startOfDay(d)) === startDateStr);
+    }
     if (endVisibleIdx === -1) {
-      if (endDate > timelineEnd) {
-        endVisibleIdx = days.length - 1;
-      } else if (startVisibleIdx >= 0) {
-        const endDateTime = endDate.getTime();
-        for (let i = days.length - 1; i >= 0; i--) {
-          if (startOfDay(days[i]).getTime() <= endDateTime) {
-            endVisibleIdx = i;
-            break;
-          }
-        }
-      }
+      const endDateStr = toLocalDateString(endDate);
+      endVisibleIdx = days.findIndex(d => toLocalDateString(startOfDay(d)) === endDateStr);
     }
 
-    // Clamp indices to valid range
-    if (startVisibleIdx >= 0) {
-      startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
+    if (startVisibleIdx === -1) {
+      startVisibleIdx = Math.max(0, Math.min(days.length - 1, differenceInDays(startDate, timelineStart)));
     }
-    if (endVisibleIdx >= 0) {
-      endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
+    if (endVisibleIdx === -1) {
+      endVisibleIdx = Math.max(0, Math.min(days.length - 1, differenceInDays(endDate, timelineStart)));
     }
 
-    // Calculate duration in visible days (how many columns it spans)
-    visibleDuration = startVisibleIdx >= 0 && endVisibleIdx >= 0
-      ? endVisibleIdx - startVisibleIdx + 1
-      : durationDays;
-
-    // Determine if we should use visible column indices (when weekends are hidden)
-    useVisibleIndices = startVisibleIdx >= 0;
+    startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
+    endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
+    visibleDuration = endVisibleIdx - startVisibleIdx + 1;
   }
 
-  // Apply temp offset during resize or drag
-  let displayOffset = useVisibleIndices ? startVisibleIdx : offsetDays;
-  let displayDuration = useVisibleIndices ? visibleDuration : durationDays;
+  let displayOffset = startVisibleIdx >= 0 ? startVisibleIdx : 0;
+  let displayDuration = endVisibleIdx >= 0 && startVisibleIdx >= 0
+    ? (endVisibleIdx - startVisibleIdx + 1)
+    : 1;
 
   if (isResizing === 'left') {
     displayOffset = displayOffset + tempOffset;
@@ -204,21 +235,16 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
     displayOffset = displayOffset + dragOffset;
   }
 
-  // Clamp to valid values
   displayDuration = Math.max(1, displayDuration);
 
-  const LEFT_OFFSET = displayOffset * cellWidth;
-  const WIDTH = displayDuration * cellWidth;
+  const cellPercentage = 100 / days.length;
+  const LEFT_OFFSET = `${displayOffset * cellPercentage}%`;
+  const WIDTH = `${displayDuration * cellPercentage}%`;
 
-  // If outside of view, hide
-  if (offsetDays < 0 && offsetDays + durationDays < 0) return null;
-
-  // Time Off styling
   const isTimeOff = assignment.isTimeOff;
-  const bgColor = isTimeOff ? "#6b7280" : (project?.color || "#ccc");
-  const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown");
+  const bgColor = isTimeOff ? "#6b7280" : "#2563eb";
+  const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown Project");
 
-  // Calculate working days for effort
   let workingDays = 0;
   let currentDate = new Date(startDate);
   while (currentDate <= endDate) {
@@ -232,300 +258,227 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const formattedStartDate = format(startDate, "dd MMM");
   const formattedEndDate = format(endDate, "dd MMM");
 
-  // Check if a specific date has time-off
-  const hasTimeOffOnDate = useCallback((date: Date) => {
-    return timeOffAssignments.some(a => 
-      isWithinInterval(startOfDay(date), {
-        start: startOfDay(new Date(a.startDate)),
-        end: startOfDay(new Date(a.endDate))
-      })
-    );
-  }, [timeOffAssignments]);
-
-  // Check if any date in a range has time-off (for detecting overlap)
-  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
-    // Check if any time-off assignment overlaps with the given range
-    // Exclude the current assignment if it's a time-off assignment being resized
-    return timeOffAssignments.some(a => {
-      // Skip checking against the current assignment itself
-      if (a.id === assignment.id) return false;
-
-      const timeOffStart = startOfDay(new Date(a.startDate));
-      const timeOffEnd = startOfDay(new Date(a.endDate));
-      const checkStart = startOfDay(rangeStart);
-      const checkEnd = startOfDay(rangeEnd);
-
-      // Two ranges overlap if one starts before the other ends AND ends after the other starts
-      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
-    });
-  }, [timeOffAssignments, assignment.id]);
-
-  // Use ref to avoid stale closure for hasTimeOffInRange in nested handlers
-  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
-  hasTimeOffInRangeRef.current = hasTimeOffInRange;
-
-  // Use ref to avoid stale closure for hasTimeOffOnDate in nested handlers
-  const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
-  hasTimeOffOnDateRef.current = hasTimeOffOnDate;
-
-  // Find the visible column index for a date (returns -1 if not visible)
-  const findVisibleIndex = useCallback((date: Date) => {
-    const dateMs = startOfDay(date).getTime();
-    return days.findIndex(d => startOfDay(d).getTime() === dateMs);
-  }, [days]);
-
-  // Find the correct visible index for a date, even if it falls on a hidden weekend or in week view
-  const findCorrectVisibleIndex = useCallback((date: Date) => {
-    if (isWeekView) {
-      // In week view, find which week this date belongs to
-      const dateWeek = startOfWeek(date, { weekStartsOn: 1 });
-      const exactIdx = days.findIndex(d => startOfDay(d).getTime() === dateWeek.getTime());
-      if (exactIdx >= 0) return exactIdx;
-
-      // If not found, find the closest week before this date
-      const dateWeekTime = dateWeek.getTime();
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= dateWeekTime) {
-          return i;
-        }
-      }
-      return -1;
-    } else {
-      // Day view - original logic
-      const exactIdx = findVisibleIndex(date);
-      if (exactIdx >= 0) return exactIdx;
-
-      // If not found (e.g., weekend when weekends are hidden),
-      // find the last visible day that's before or equal to this date
-      const dateTime = startOfDay(date).getTime();
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= dateTime) {
-          return i;
-        }
-      }
-      return -1;
-    }
-  }, [days, findVisibleIndex, isWeekView]);
-
   // Resize handlers
-  const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.MouseEvent) => {
+  const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.PointerEvent) => {
+    if (disabled) return; // Prevent resize when disabled
     e.preventDefault();
     e.stopPropagation();
-    
+
+    const target = e.target as HTMLElement;
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch (err) {
+      console.warn('setPointerCapture failed:', err);
+    }
+
     setIsResizing(edge);
     setTempOffset(0);
     offsetRef.current = 0;
-    
-    const startX = e.clientX;
 
-    // Find current visible indices
+    const startX = e.clientX;
     const startVisibleIdx = findVisibleIndex(startDate);
     const endVisibleIdx = findCorrectVisibleIndex(endDate);
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
+    const handlePointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaColumns = Math.round(deltaX / cellWidth);
-      
-      // Only update if value changed to reduce re-renders
+
       if (offsetRef.current !== deltaColumns) {
         offsetRef.current = deltaColumns;
-        // Use RAF for smooth 60fps updates
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(() => {
           setTempOffset(deltaColumns);
         });
       }
     };
-    
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      
+
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+
       const deltaColumns = offsetRef.current;
-      
-      // Helper to skip weekends - move to nearest weekday
-      const skipWeekend = (date: Date, direction: 'forward' | 'backward'): Date => {
-        let result = new Date(date);
-        const day = result.getDay();
-        if (day === 0) { // Sunday
-          result = addDays(result, direction === 'forward' ? 1 : -2);
-        } else if (day === 6) { // Saturday
-          result = addDays(result, direction === 'forward' ? 2 : -1);
-        }
-        return result;
-      };
-      
-      // Apply the resize
+
       if (onUpdate && deltaColumns !== 0) {
+        hasResizedRef.current = true;
+
         if (isWeekView) {
-          // In week view, each column represents 1 week (7 days)
           const daysToMove = deltaColumns * 7;
 
           if (edge === 'left') {
             let newStartDate = addDays(startDate, daysToMove);
-            // Prevent resizing start date into the past
-            if (isBefore(newStartDate, today)) {
-              newStartDate = today;
-            }
-            // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (hasTimeOffInRangeRef.current(newStartDate, endDate)) {
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
-              return; // Cancel the resize
+              return;
             }
             if (newStartDate <= endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
-              // Clear state - optimistic update will position the block correctly
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
               return;
             }
           } else {
             let newEndDate = addDays(endDate, daysToMove);
-            // Prevent resizing end date into the past
-            if (isBefore(newEndDate, today)) {
-              newEndDate = today;
-            }
-            // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (hasTimeOffInRangeRef.current(startDate, newEndDate)) {
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
-              return; // Cancel the resize
+              return;
             }
             if (newEndDate >= startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
-              // Clear state - optimistic update will position the block correctly
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
               return;
             }
           }
         } else {
-          // In day view, use visible days array
+          // In day view
           if (edge === 'left') {
-            // For left edge: find new start date from days array
             const currentIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
-            let newStartDate = days[newIdx];
+            const newStartDate = days[newIdx];
 
-            // Skip weekend if needed
-            if (newStartDate) {
-              newStartDate = skipWeekend(newStartDate, 'forward');
-            }
-
-            // Prevent resizing start date into the past
-            if (newStartDate && isBefore(newStartDate, today)) {
-              newStartDate = today;
-            }
-
-            // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (newStartDate && hasTimeOffInRangeRef.current(newStartDate, endDate)) {
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
-              return; // Cancel the resize
+              return;
             }
 
             if (newStartDate && newStartDate <= endDate) {
+              if (!isWeekView && isWeekendDate(newStartDate)) {
+                setPendingResize({ edge, newStartDate });
+                setIsResizing(null);
+                setTempOffset(0);
+
+                // Tambahkan timeout agar tidak dicancel oleh native DOM click
+                setTimeout(() => setShowWeekendConfirm(true), 50);
+                return;
+              }
+
               onUpdate(assignment.id, { startDate: newStartDate });
-              // Clear state - optimistic update will position the block correctly
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
               return;
             }
           } else {
-            // For right edge: find new end date from days array
             const currentIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
-            let newEndDate = days[newIdx];
+            const newEndDate = days[newIdx];
 
-            // Skip weekend if needed
-            if (newEndDate) {
-              newEndDate = skipWeekend(newEndDate, 'backward');
-            }
-
-            // Prevent resizing end date into the past
-            if (newEndDate && isBefore(newEndDate, today)) {
-              newEndDate = today;
-            }
-
-            // Prevent resizing into time-off (check if new range overlaps with any time-off)
             if (newEndDate && hasTimeOffInRangeRef.current(startDate, newEndDate)) {
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
-              return; // Cancel the resize
+              return;
             }
 
             if (newEndDate && newEndDate >= startDate) {
+              if (!isWeekView && isWeekendDate(newEndDate)) {
+                setPendingResize({ edge, newEndDate });
+                setIsResizing(null);
+                setTempOffset(0);
+
+                // Tambahkan timeout agar tidak dicancel oleh native DOM click
+                setTimeout(() => setShowWeekendConfirm(true), 50);
+                return;
+              }
+
               onUpdate(assignment.id, { endDate: newEndDate });
-              // Clear state - optimistic update will position the block correctly
               setIsResizing(null);
               setTempOffset(0);
-              offsetRef.current = 0;
               return;
             }
           }
         }
       }
-      
+
       setIsResizing(null);
       setTempOffset(0);
-      offsetRef.current = 0;
     };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, tempOffset, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, today, hasTimeOffOnDate]);
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, isWeekendDate]);
 
   // Edit dialog handlers
   const handleSave = useCallback((updates: Partial<Assignment>) => {
-    if (onUpdate) {
-      onUpdate(assignment.id, updates);
-    }
+    if (onUpdate) onUpdate(assignment.id, updates);
     setIsEditDialogOpen(false);
   }, [assignment.id, onUpdate]);
 
   const handleDelete = useCallback(() => {
-    if (onDelete) {
-      onDelete(assignment.id);
-    }
+    if (onDelete) onDelete(assignment.id);
     setIsEditDialogOpen(false);
   }, [assignment.id, onDelete]);
 
-  // Drag to move handlers
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    // Don't start drag if clicking on resize handles or edit menu
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-resize-handle]') || target.closest('[data-edit-menu]')) {
-      return;
+  // Weekend confirmation handlers
+  const handleWeekendConfirm = useCallback(() => {
+    if (!pendingResize || !onUpdate) return;
+    const { edge, newStartDate, newEndDate } = pendingResize;
+
+    if (edge === 'left' && newStartDate) {
+      onUpdate(assignment.id, { startDate: newStartDate });
+    } else if (edge === 'right' && newEndDate) {
+      onUpdate(assignment.id, { endDate: newEndDate });
+    } else if (edge === 'drag' && newStartDate && newEndDate) {
+      onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
     }
+
+    setShowWeekendConfirm(false);
+    setPendingResize(null);
+  }, [pendingResize, onUpdate, assignment.id]);
+
+  const handleWeekendCancel = useCallback(() => {
+    setShowWeekendConfirm(false);
+    setPendingResize(null);
+  }, []);
+
+  // Click handler
+  const handleBlockClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
+    if (disabled) return; // Prevent click when disabled
+    if (!hasDraggedRef.current && !hasResizedRef.current) {
+      setIsEditDialogOpen(true);
+    }
+    // Setel ulang setelah dicek, agar popover tidak tertutup atau bentrok
+    hasDraggedRef.current = false;
+    hasResizedRef.current = false;
+  }, [disabled]);
+
+  // Drag to move handlers
+  const handleDragStart = useCallback((e: React.PointerEvent) => {
+    if (disabled) return; // Prevent drag when disabled
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-resize-handle]')) return;
 
     e.preventDefault();
     e.stopPropagation();
+
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch (err) {
+      console.warn('setPointerCapture failed:', err);
+    }
+
+    hasDraggedRef.current = false;
+    mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
 
     setIsDragging(true);
     setDragOffset(0);
 
     const startX = e.clientX;
-
-    // Find current visible indices
     const startVisibleIdx = findVisibleIndex(startDate);
     const endVisibleIdx = findCorrectVisibleIndex(endDate);
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
+    const handlePointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaDays = Math.round(deltaX / cellWidth);
-      
-      // Only update if value changed to reduce re-renders
+
+      if (Math.abs(deltaDays) >= 1) {
+        hasDraggedRef.current = true;
+      }
+
       if (offsetRef.current !== deltaDays) {
         offsetRef.current = deltaDays;
-        // Use RAF for smooth 60fps updates
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(() => {
           setDragOffset(deltaDays);
@@ -533,222 +486,245 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       }
     };
 
-    const handleMouseUp = (upEvent: MouseEvent) => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
 
       const deltaX = upEvent.clientX - startX;
       const deltaColumns = Math.round(deltaX / cellWidth);
 
-      // Apply the move
       if (deltaColumns !== 0 && onUpdate) {
         if (isWeekView) {
-          // In week view, each column represents 1 week (7 days)
-          // Move by the number of weeks
           const daysToMove = deltaColumns * 7;
           const newStartDate = addDays(startDate, daysToMove);
           const newEndDate = addDays(endDate, daysToMove);
-          
-          // Prevent moving start date into the past
-          if (isBefore(newStartDate, today)) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return; // Cancel the move
-          }
-          
-          // Prevent moving into time-off (check if new range overlaps with any time-off)
+
           if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
             setIsDragging(false);
             setDragOffset(0);
-            return; // Cancel the move
+            return;
           }
-          
+
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
-          // Clear state - optimistic update will position the block correctly
           setIsDragging(false);
           setDragOffset(0);
           return;
         } else {
-          // In day view, use the visible days array
-
-          // Handle partial visibility - calculate indices with fallbacks
           let newStartIdx: number;
           let newEndIdx: number;
 
           if (startVisibleIdx >= 0) {
-            // Start is visible, calculate from index
             newStartIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx + deltaColumns));
           } else {
-            // Start is not visible (before range or on hidden weekend)
-            // Calculate from actual date
-            const daysToMove = deltaColumns; // In day view, 1 column = 1 visible day
+            const daysToMove = deltaColumns;
             const newStartDate = addDays(startDate, daysToMove);
             newStartIdx = findCorrectVisibleIndex(newStartDate);
-
-            // If still not found, clip to timeline bounds
             if (newStartIdx < 0) {
               newStartIdx = newStartDate < days[0] ? 0 : days.length - 1;
             }
           }
 
           if (endVisibleIdx >= 0) {
-            // End is visible, calculate from index
             newEndIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx + deltaColumns));
           } else {
-            // End is not visible (after range or on hidden weekend)
-            // Calculate from actual date
             const daysToMove = deltaColumns;
             const newEndDate = addDays(endDate, daysToMove);
             newEndIdx = findCorrectVisibleIndex(newEndDate);
-
-            // If still not found, clip to timeline bounds
             if (newEndIdx < 0) {
               newEndIdx = newEndDate < days[0] ? 0 : days.length - 1;
             }
           }
 
-          // Add null checks before using dates
-          const newStartDate = days[newStartIdx];
-          const newEndDate = days[newEndIdx];
+          let newStartDate = days[newStartIdx];
+          let newEndDate = days[newEndIdx];
 
-          // Validate before updating
           if (!newStartDate || !newEndDate) {
             setIsDragging(false);
             setDragOffset(0);
-            return; // Cancel if dates are invalid
+            return;
           }
 
-          // Prevent moving start date into the past
-          if (isBefore(newStartDate, today)) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return; // Cancel the move
-          }
-
-          // Prevent moving into time-off
           if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
             setIsDragging(false);
             setDragOffset(0);
-            return; // Cancel the move
+            return;
+          }
+
+          // CEK WEEKEND SAAT DRAG
+          if (!isWeekView && (isWeekendDate(newStartDate) || isWeekendDate(newEndDate))) {
+            setPendingResize({ edge: 'drag', newStartDate, newEndDate });
+            setIsDragging(false);
+            setDragOffset(0);
+
+            // Timeout penting di sini agar Popover tidak kena event auto-close browser!
+            setTimeout(() => {
+              setShowWeekendConfirm(true);
+            }, 50);
+            return;
           }
 
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
-          // Clear state - optimistic update will position the block correctly
           setIsDragging(false);
           setDragOffset(0);
           return;
         }
       }
 
-      // Only clear immediately if validation failed or no update
       setIsDragging(false);
       setDragOffset(0);
+
+      // Fallback reset hasDraggedRef kalau seandainya onClick tidak kepanggil
+      setTimeout(() => {
+        hasDraggedRef.current = false;
+        hasResizedRef.current = false;
+      }, 150);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, today, hasTimeOffOnDate]);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate]);
+
+  // Check if assignment overlaps with visible timeline range
+  // If no overlap, don't render the block (prevents blocks appearing in wrong columns)
+  if (startDate > timelineEnd || endDate < timelineStart) {
+    return null;
+  }
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            ref={blockRef}
-            className={cn(
-              "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
-              // Only apply transitions when NOT actively resizing or dragging to prevent bounce
-              !isResizing && !isDragging && "transition-all duration-100 ease-out",
-              isTimeOff && "bg-gray-500 opacity-80",
-              isResizing && "cursor-col-resize ring-2 ring-blue-400",
-              isDragging ? "cursor-grabbing opacity-70 ring-2 ring-blue-400 scale-[1.01]" : "cursor-grab",
-              isDeleting && "opacity-50 pointer-events-none animate-pulse",
-              // Show subtle processing state when API call is in flight
-              isUpdating && !isResizing && !isDragging && "opacity-80 ring-1 ring-blue-300"
-            )}
-            style={{
-              left: LEFT_OFFSET,
-              width: WIDTH,
-              backgroundColor: bgColor,
-              top: 4,
-              height: resourceRowHeight - 8,
-            }}
-            onMouseDown={handleDragStart}
-            data-testid="assignment-block"
-            data-assignment-id={assignment.id}
-          >
-            {/* Left resize handle */}
+    <>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
             <div
-              data-resize-handle="left"
-              data-testid="assignment-resize-left"
-              className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-30"
-              onMouseDown={(e) => handleResizeStart('left', e)}
-            />
-
-            {/* Edit menu button */}
-            <button
-              data-edit-menu="true"
-              data-testid="assignment-edit-button"
-              className="absolute right-3 top-1 w-5 h-5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-20 flex items-center justify-center"
-              aria-label="Edit assignment"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsEditDialogOpen(true);
+              ref={blockRef}
+              className={cn(
+                "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
+                !isResizing && !isDragging && "transition-all duration-100 ease-out",
+                isTimeOff && "bg-gray-500 opacity-80",
+                isResizing && "cursor-col-resize ring-2 ring-blue-400",
+                isDragging ? "cursor-grabbing opacity-70 ring-2 ring-blue-400 scale-[1.01]" : "cursor-grab",
+                isDeleting && "opacity-50 pointer-events-none animate-pulse",
+                isUpdating && !isResizing && !isDragging && "opacity-80 ring-1 ring-blue-300",
+                disabled && "pointer-events-none cursor-not-allowed"
+              )}
+              style={{
+                left: LEFT_OFFSET,
+                width: WIDTH,
+                backgroundColor: bgColor,
+                top: 4,
+                height: resourceRowHeight - 4,
+                zIndex: isResizing || isDragging ? 40 : 10,
               }}
-              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={disabled ? undefined : handleDragStart}
+              onClick={disabled ? undefined : handleBlockClick}
+              data-testid="assignment-block"
+              data-assignment-id={assignment.id}
             >
-              <MoreVertical className="h-3 w-3" />
-            </button>
+              {/* Left resize handle */}
+              {!disabled && (
+                <div
+                  data-resize-handle="left"
+                  data-testid="assignment-resize-left"
+                  className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-100 bg-white/20 hover:bg-white/40 transition-all duration-150 z-40"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    handleResizeStart('left', e);
+                  }}
+                />
+              )}
 
-            {/* Content */}
-            <div className="flex-1 px-2 py-1 min-w-0">
-              <div className="font-bold truncate">
-                {isDeleting ? "Deleting..." : displayName}
+              {/* Content */}
+              <div className="flex-1 px-2 py-1 min-w-0 pointer-events-none">
+                <div className="font-bold truncate">
+                  {isDeleting ? "Deleting..." : displayName}
+                </div>
+                <div className="truncate opacity-90">{hoursPerDay}h/day</div>
               </div>
-              <div className="truncate opacity-90">{hoursPerDay}h/day</div>
-            </div>
 
-            {/* Right resize handle */}
-            <div
-              data-resize-handle="right"
-              data-testid="assignment-resize-right"
-              className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/30 transition-opacity z-30"
-              onMouseDown={(e) => handleResizeStart('right', e)}
-            />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent className="bg-slate-800 text-white border-slate-700 p-0 overflow-hidden shadow-xl max-w-xs">
-          <div className="p-3">
-            <div className="font-semibold mb-1 text-sm">
-              Dates: <span className="font-normal text-slate-300">{formattedStartDate} - {formattedEndDate} ({durationDays} days)</span>
+              {/* Right resize handle */}
+              {!disabled && (
+                <div
+                  data-resize-handle="right"
+                  data-testid="assignment-resize-right"
+                  className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-100 bg-white/20 hover:bg-white/40 transition-all duration-150 z-40"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    handleResizeStart('right', e);
+                  }}
+                />
+              )}
             </div>
-            <div className="font-semibold mb-1 text-sm">
-              Total Effort: <span className="font-normal text-slate-300">{totalHours}h @ {hoursPerDay}h/day</span>
-            </div>
-            {assignment.category && (
-              <div className="font-semibold text-sm">
-                Phase: <span className="font-normal text-slate-300">{assignment.category}</span>
+          </TooltipTrigger>
+          <TooltipContent className="bg-slate-800 text-white border-slate-700 p-0 overflow-hidden shadow-xl max-w-xs">
+            {disabled ? (
+              <p>Plan mode - Full access only</p>
+            ) : (
+              <div className="p-3">
+                <div className="font-semibold mb-1 text-sm">
+                  Dates: <span className="font-normal text-slate-300">{formattedStartDate} - {formattedEndDate} ({durationDays} days)</span>
+                </div>
+                <div className="font-semibold mb-1 text-sm">
+                  Total Effort: <span className="font-normal text-slate-300">{totalHours}h @ {hoursPerDay}h/day</span>
+                </div>
+                {assignment.category && (
+                  <div className="font-semibold text-sm">
+                    Phase: <span className="font-normal text-slate-300">{assignment.category}</span>
+                  </div>
+                )}
+                {assignment.note && (
+                  <div className="mt-2 text-xs text-slate-400 italic border-t border-slate-700 pt-2 line-clamp-3 overflow-hidden">
+                    "{assignment.note}"
+                  </div>
+                )}
               </div>
             )}
-            {assignment.note && (
-              <div className="mt-2 text-xs text-slate-400 italic border-t border-slate-700 pt-2 line-clamp-3 overflow-hidden">
-                "{assignment.note}"
-              </div>
-            )}
-          </div>
-        </TooltipContent>
-      </Tooltip>
+          </TooltipContent>
+        </Tooltip>
 
-      <EditAssignmentDialog
-        key={`${assignment.id}-${isEditDialogOpen ? "open" : "closed"}`}
-        assignment={assignment}
-        open={isEditDialogOpen}
-        onOpenChange={setIsEditDialogOpen}
-        onSave={handleSave}
-        onDelete={handleDelete}
-        isDeleting={isDeleting}
-      />
-    </TooltipProvider>
+        {!disabled && (
+          <EditAssignmentDialog
+            key={`${assignment.id}-${isEditDialogOpen ? "open" : "closed"}-${assignment.updatedAt}`}
+            assignment={assignment}
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            isDeleting={isDeleting}
+          />
+        )}
+      </TooltipProvider>
+
+      {/* Weekend confirmation popover */}
+      {showWeekendConfirm && blockRef.current && (
+        <Popover open={showWeekendConfirm} onOpenChange={setShowWeekendConfirm}>
+          <PopoverAnchor
+            virtualRef={{
+              current: {
+                getBoundingClientRect: () => blockRef.current!.getBoundingClientRect(),
+              }
+            }}
+          />
+          <PopoverContent side="bottom" align="center" className="w-64 p-4 z-[100]">
+            <div className="text-center">
+              <p className="text-sm mb-4">Schedule on a non-working day?</p>
+              <div className="flex justify-center gap-3">
+                <Button variant="ghost" size="sm" onClick={handleWeekendCancel}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleWeekendConfirm}
+                  data-testid="weekend-resize-confirm"
+                >
+                  Schedule
+                </Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
+    </>
   );
 };

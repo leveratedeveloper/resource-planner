@@ -17,6 +17,7 @@ interface AssignEmployeesDialogProps {
   projectId: string;
   projectName: string;
   projectColor: string;
+  onAssignPending?: (employeeIds: string[]) => void;
 }
 
 export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
@@ -25,6 +26,7 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
   projectId,
   projectName,
   projectColor,
+  onAssignPending,
 }) => {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
@@ -134,39 +136,18 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
     setIsAssigning(true);
 
     try {
-      // Create minimal draft assignments for each selected employee
-      const today = format(new Date(), "yyyy-MM-dd");
-
-      const promises = Array.from(selectedEmployeeIds).map((employeeId) =>
-        createAssignment.mutateAsync({
-          employeeId: employeeId,
-          projectId: projectId,
-          taskId: null,
-          startDate: today,
-          endDate: today,
-          hoursPerDay: "0", // 0 hours = no capacity impact
-          allocationPercentage: null,
-          isTimeOff: false,
-          timeOffTypeId: null,
-          category: null,
-          isBillable: true,
-          status: "draft",
-          note: "Assigned to project - set dates and hours as needed",
-          createdById: null,
-        })
-      );
-
-      await Promise.all(promises);
+      // Call the callback to add to pending list
+      onAssignPending?.(Array.from(selectedEmployeeIds));
 
       // Clear selection and close dialog
       setSelectedEmployeeIds(new Set());
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to create assignments:", error);
+      console.error("Failed to process assignments:", error);
     } finally {
       setIsAssigning(false);
     }
-  }, [selectedEmployeeIds, projectId, createAssignment, onOpenChange]);
+  }, [selectedEmployeeIds, onAssignPending, onOpenChange]);
 
   // Reset state when modal closes
   useEffect(() => {

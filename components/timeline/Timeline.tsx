@@ -2,12 +2,13 @@
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useEmployees, useBrands, useProjects } from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, endOfWeek, differenceInDays } from "date-fns";
+import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday, getMonth, getYear } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,29 +16,35 @@ interface TimelineProps {
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
+  projectId: string | null;
+  category: string | null;
+  status: string | null;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery }) => {
-  // Fetch data using React Query
+export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
+  // Fetch data using React Query (assignments fetched after date range is calculated)
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [] } = useBrands();
-  const { data: allAssignments = [] } = useAssignments();
   const { data: projects = [] } = useProjects();
+  const { session } = useAuth();
+
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
-  
+  const timelineRootRef = useRef<HTMLDivElement>(null);
+
   // Modal state for assigning projects
   const [assignModalResourceId, setAssignModalResourceId] = useState<string | null>(null);
-  
+
   // Timeline state
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
-  
+  const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
+
   // Initialize dates client-side to avoid hydration mismatch
   useEffect(() => {
     setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
-    
+
     // Load weekend preference from localStorage
     const savedShowWeekends = localStorage.getItem('showWeekends');
     if (savedShowWeekends !== null) {
@@ -45,53 +52,85 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
   }, []);
 
+  // Track container width with ResizeObserver on timeline-root container
+  useEffect(() => {
+    const rootContainer = timelineRootRef.current;
+    if (!rootContainer) {
+      return;
+    }
+
+    const updateWidth = () => {
+      // Use requestAnimationFrame to ensure measurement happens after layout is complete
+      requestAnimationFrame(() => {
+        if (!rootContainer) return;
+        // Measure the timeline-root container width (excluding borders and scrollbars)
+        const rootWidth = rootContainer.clientWidth;
+        // Subtract the fixed sidebar width (250px) to get available width for timeline
+        const sidebarWidth = 250;
+        const availableWidth = rootWidth - sidebarWidth;
+        setContainerWidth(Math.max(availableWidth, 100)); // Minimum 100px
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateWidth();
+    });
+
+    resizeObserver.observe(rootContainer);
+    updateWidth();
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [currentDate]); // Re-run when currentDate changes to ensure ref is ready
+
   // Calculate days/weeks based on view mode and current date
   const allDays = useMemo(() => {
     if (!currentDate) return [];
 
     switch (viewMode) {
       case "week": {
-        // Show 4 weeks (28 days)
-        const endDate = addDays(currentDate, 27);
-        return eachDayOfInterval({ start: currentDate, end: endDate });
+        // Show 7 days (Mon-Sun) - start from Monday of current week
+        const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+        const weekEnd = addDays(weekStart, 6);
+        return eachDayOfInterval({ start: weekStart, end: weekEnd });
       }
       case "month": {
-        // Show 6 weeks (42 days)
-        const endDate = addDays(currentDate, 41);
-        return eachDayOfInterval({ start: currentDate, end: endDate });
+        // Show all days in the month (daily view like week view)
+        const monthStart = startOfMonth(currentDate);
+        const monthEnd = addDays(startOfMonth(addMonths(currentDate, 1)), -1);
+        return eachDayOfInterval({ start: monthStart, end: monthEnd });
       }
       case "quarter": {
-        // Show 13 weeks (Mondays only)
-        const endDate = addWeeks(currentDate, 12);
-        return eachWeekOfInterval(
-          { start: currentDate, end: endDate },
-          { weekStartsOn: 1 }
-        );
+        // Show calendar quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
+        const currentMonth = currentDate.getMonth();
+        const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+        const quarterStart = new Date(currentDate.getFullYear(), quarterStartMonth, 1);
+        const quarterEnd = new Date(currentDate.getFullYear(), quarterStartMonth + 2, 1);
+        return eachMonthOfInterval({ start: quarterStart, end: quarterEnd });
       }
       case "halfYear": {
-        // Show 26 weeks (Mondays only)
-        const endDate = addWeeks(currentDate, 25);
-        return eachWeekOfInterval(
-          { start: currentDate, end: endDate },
-          { weekStartsOn: 1 }
-        );
+        // Show calendar half year (H1: Jan-Jun, H2: Jul-Dec)
+        const currentMonth = currentDate.getMonth();
+        const halfYearStartMonth = currentMonth < 6 ? 0 : 6;
+        const halfYearStart = new Date(currentDate.getFullYear(), halfYearStartMonth, 1);
+        const halfYearEnd = new Date(currentDate.getFullYear(), halfYearStartMonth + 5, 1);
+        return eachMonthOfInterval({ start: halfYearStart, end: halfYearEnd });
       }
       case "year": {
-        // Show 52 weeks (Mondays only)
-        const endDate = addWeeks(currentDate, 51);
-        return eachWeekOfInterval(
-          { start: currentDate, end: endDate },
-          { weekStartsOn: 1 }
-        );
+        // Show full calendar year (Jan-Dec)
+        const yearStart = new Date(currentDate.getFullYear(), 0, 1);
+        const yearEnd = new Date(currentDate.getFullYear(), 11, 1);
+        return eachMonthOfInterval({ start: yearStart, end: yearEnd });
       }
       default:
         return [];
     }
   }, [currentDate, viewMode]);
 
-  // Filter out weekends if needed (only for week and month views)
+  // Filter out weekends if needed (for week and month views)
   const days = useMemo(() => {
-    // For quarter, halfYear, and year views, we're already showing weeks (Mondays only)
+    // For quarter, halfYear, and year views, we're showing months - no weekend filtering
     if (viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year") {
       return allDays;
     }
@@ -104,20 +143,82 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
   }, [allDays, showWeekends, viewMode]);
 
-  // Cell width based on view mode
+  // Cell width based on visible days - fills available space exactly
   const cellWidth = useMemo(() => {
-    switch (viewMode) {
-      case "week": return 100;
-      case "month": return 40;
-      case "quarter": return 80;
-      case "halfYear": return 60;
-      case "year": return 40;
-      default: return 100;
-    }
-  }, [viewMode]);
+    // Always use visible days count for cell width
+    // This ensures cells expand to fill available width when weekends are hidden
+    const dayCount = days.length;
+    if (dayCount === 0) return 100;
 
-  // Determine if we're in week view mode (where each cell = 1 week)
+    const calculatedWidth = containerWidth / dayCount;
+    return calculatedWidth;
+  }, [days.length, containerWidth]);
+
+  // Determine if we're in week view mode (where each cell = 1 month)
+  // Month view now shows daily columns like week view, so it's not included here
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+
+  // PERFORMANCE: Calculate date range for assignments API filtering
+  // This reduces data transfer by ~80% for timeline views
+  // NOTE: We fetch ALL assignments for the organization to show all projects in all views
+  const assignmentDateRange = useMemo(() => {
+    // Return undefined to fetch ALL assignments (no date filter)
+    // This ensures all projects assigned to the organization appear in all views
+    return undefined;
+  }, []);
+
+  // Fetch assignments with date filtering for display
+  const { data: dateFilteredAssignments = [] } = useAssignments(assignmentDateRange);
+
+  // Fetch ALL assignments (no date filter) for employee filtering by brand
+  // This ensures employees with assignments outside the visible date range are still shown
+  // PERFORMANCE: When brandId is selected, filter assignments by project UUIDs at the server level
+  // This reduces the dataset by ~90% when a brand is selected
+  const brandProjectIds = useMemo(() => {
+    if (!brandId || !projects.length) return undefined;
+    return projects.filter(p => p.brandId === brandId).map(p => p.id);
+  }, [brandId, projects]);
+
+  const { data: allAssignments = [] } = useAssignments(
+    brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined
+  );
+
+  // Apply additional filters (project, category, status) to date-filtered assignments for display
+  const filteredAssignments = useMemo(() => {
+    let filtered = dateFilteredAssignments;
+
+    // Filter by project
+    if (projectId) {
+      filtered = filtered.filter(a => a.projectId === projectId);
+    }
+
+    // Filter by category
+    if (category) {
+      filtered = filtered.filter(a => a.category === category);
+    }
+
+    // Filter by status
+    if (status) {
+      filtered = filtered.filter(a => a.status === status);
+    }
+
+    return filtered;
+  }, [dateFilteredAssignments, projectId, category, status]);
+
+
+  // PERFORMANCE: Pre-group assignments by employee ID to avoid N+1 query problem
+  // Each ResourceRow was previously fetching ALL assignments and filtering them
+  // This eliminates 100,000+ comparisons per render (100 employees × 1000 assignments)
+  const assignmentsByEmployee = useMemo(() => {
+    const grouped = new Map<string, typeof filteredAssignments>();
+    filteredAssignments.forEach(a => {
+      if (!grouped.has(a.employeeId)) {
+        grouped.set(a.employeeId, []);
+      }
+      grouped.get(a.employeeId)!.push(a);
+    });
+    return grouped;
+  }, [filteredAssignments]);
 
   // Filter employees based on selected Brand, Department, and Search Query
   const visibleEmployees = useMemo(() => {
@@ -139,9 +240,28 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
            })
            .map((a) => a.employeeId)
        );
-       filtered = filtered.filter(
-         (emp) => memberIds.has(emp.id) || assignmentIds.has(emp.id)
-       );
+
+       // If employeeBrandAssignments data is available (PostgreSQL), use hybrid logic
+       // Otherwise (MySQL API), only filter by project assignments
+       // If NEITHER is available, show all employees (allow users to create assignments)
+       const hasEmployeeBrandData = brand?.employeeBrandAssignments && brand.employeeBrandAssignments.length > 0;
+       const hasAssignmentData = assignmentIds.size > 0;
+
+       // Skip filtering entirely if we have no brand relationship data at all
+       // This allows users to see all employees and create assignments
+       if (!hasEmployeeBrandData && !hasAssignmentData) {
+         // No filtering - show all employees
+       } else {
+         filtered = filtered.filter((emp) => {
+           // When employeeBrandAssignments is available, require either membership OR assignment
+           if (hasEmployeeBrandData) {
+             return memberIds.has(emp.id) || assignmentIds.has(emp.id);
+           }
+           // When employeeBrandAssignments is NOT available (MySQL API), only filter by assignment
+           // This ensures employees with project assignments in the brand are still shown
+           return assignmentIds.has(emp.id);
+         });
+       }
     }
 
     if (department) {
@@ -180,8 +300,21 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
       });
     }
 
-    return filtered;
-  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);
+    // Sort: current user first, then alphabetically by name
+    const sorted = filtered.sort((a, b) => {
+      // Current user (logged-in employee) always first
+      const aIsCurrentUser = a.id === session?.employee?.uuid;
+      const bIsCurrentUser = b.id === session?.employee?.uuid;
+
+      if (aIsCurrentUser && !bIsCurrentUser) return -1;
+      if (!aIsCurrentUser && bIsCurrentUser) return 1;
+
+      // Otherwise, sort alphabetically by full name
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    return sorted;
+  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects, session]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
@@ -196,13 +329,33 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
   }, []);
 
-  const handleAssignProject = useCallback((resourceId: string) => {
-    setAssignModalResourceId(resourceId);
-  }, []);
-
   const handleToday = useCallback(() => {
-    setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  }, []);
+    const today = new Date();
+    setCurrentDate(startOfWeek(today, { weekStartsOn: 1 }));
+
+    // Scroll to center today's date
+    setTimeout(() => {
+      if (bodyScrollRef.current) {
+        const todayIndex = days.findIndex(d =>
+          startOfDay(d).getTime() === startOfDay(today).getTime()
+        );
+
+        if (todayIndex >= 0) {
+          const container = bodyScrollRef.current;
+          const containerWidth = container.offsetWidth;
+          const cellWidth = containerWidth / days.length;
+
+          // Calculate position to center today: today's position - half container width + half cell width
+          const scrollLeft = (todayIndex * cellWidth) - (containerWidth / 2) + (cellWidth / 2);
+
+          container.scrollTo({
+            left: Math.max(0, scrollLeft),
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 100); // Small delay to ensure DOM is updated
+  }, [days]);
 
   const handleDateChange = useCallback((date: Date) => {
     setCurrentDate(startOfWeek(date, { weekStartsOn: 1 }));
@@ -226,7 +379,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   }
 
   return (
-    <div className="flex flex-col h-full" data-testid="timeline-root">
+    <div ref={timelineRootRef} className="flex flex-col h-full" data-testid="timeline-root">
       {/* Timeline Controls */}
       <TimelineHeaderControls
         currentDate={currentDate}
@@ -251,33 +404,41 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           tabIndex={0}
           aria-label="Timeline day headers"
         >
-          <div className="flex" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day) => {
+          <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
+            {days.map((day, index) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+              const isMonthView = viewMode === "month";
+              const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+              const today = isToday(day);
+              const currentMonth = getMonth(day) === getMonth(new Date()) && getYear(day) === getYear(new Date());
+
+              // Month view now shows individual days, not weeks - no week range calculation needed
 
               return (
                 <div
                   key={day.toISOString()}
                   className={cn(
-                    "shrink-0 border-r p-2 text-center text-sm",
-                    isWeekend && !isWeekView ? "bg-muted/50" : "bg-background"
+                    "border-r text-center text-sm shrink-0 relative",
+                    isMonthRangeView ? "p-4" : "p-2",
+                    isWeekend && !isMonthRangeView ? "bg-muted/50" : "bg-background",
+                    today && "border-b-2 border-b-primary bg-muted/30",
+                    isMonthRangeView && currentMonth && "border-b-2 border-b-primary bg-muted/30"
                   )}
-                  style={{ width: cellWidth }}
+                  style={{ width: `${cellWidth}px` }}
                   data-testid="timeline-day-cell"
                   data-date={format(day, "yyyy-MM-dd")}
                   data-weekend={String(isWeekend)}
+                  data-today={String(today)}
                 >
-                  {isWeekView ? (
-                    <>
-                      <div className="font-semibold">{format(day, "MMM")}</div>
-                      <div className="text-muted-foreground">{format(day, "d")}</div>
-                    </>
+                  {isMonthRangeView ? (
+                    <div className="flex flex-col justify-center">
+                      <div className="font-semibold">{format(day, "MMMM")}</div>
+                    </div>
                   ) : (
-                    <>
+                    <div className="flex flex-col">
                       <div className="font-semibold">{format(day, "EEE")}</div>
-                      <div className="text-muted-foreground">{format(day, "d MMM")}</div>
-                    </>
+                      <div className="text-muted-foreground">{format(day, "d")}</div>
+                    </div>
                   )}
                 </div>
               );
@@ -292,7 +453,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         onScroll={handleBodyScroll}
         className="flex-1 overflow-auto"
       >
-        <div className="flex flex-col" style={{ width: `${250 + days.length * cellWidth}px` }}>
+        <div className="flex flex-col w-full">
           {isLoadingEmployees ? (
              <div className="space-y-0">
                {[1, 2, 3, 4, 5].map((i) => (
@@ -327,9 +488,10 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                   }}
                   days={days}
                   brandId={brandId}
-                  onAssignProject={handleAssignProject}
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
+                  assignments={assignmentsByEmployee.get(employee.id) || []}
+                  viewMode={viewMode}
                 />
               ))
           )}

@@ -5,10 +5,18 @@ import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { AssignmentCategory } from "@/types";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 
 // Count weekdays (Mon–Fri) between two dates, inclusive. Returns at least 1.
 function countWeekdays(start: Date, end: Date): number {
@@ -27,7 +35,6 @@ interface AssignmentPopoverProps {
   projectId: string;
   startDate: Date;
   endDate: Date;
-  position: { x: number; y: number };
   onClose: () => void;
   onSave: (assignment: {
     hoursPerDay: number;
@@ -44,7 +51,6 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   projectId,
   startDate,
   endDate,
-  position,
   onClose,
   onSave,
   isCreating = false,
@@ -97,182 +103,183 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
   ];
 
   return (
-    <div
-      className="fixed z-50 bg-white rounded-lg shadow-xl border p-4 min-w-[320px]"
-      style={{
-        left: Math.min(position.x, window.innerWidth - 360),
-        top: Math.min(position.y, window.innerHeight - 400),
-      }}
-      data-testid="assignment-popover"
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          {isWeekendSchedule ? (
-            // Weekend header shows day name
-            <span className="font-medium text-sm">{dayName}</span>
-          ) : (
-            // Normal header shows project color and name
-            <>
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: project?.color || "#ccc" }}
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        className="sm:max-w-[400px]"
+        data-testid="assignment-popover"
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {isWeekendSchedule ? (
+              <span>{dayName}</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: project?.color || "#ccc" }}
+                />
+                <span>{project?.name || "Assignment"}</span>
+              </div>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            <span>Create plan assignment</span>
+            <div className="text-sm font-medium mt-1 text-foreground">{resource?.fullName || 'Unknown'}</div>
+            <div className="text-xs font-medium text-foreground">{resource?.position || '—'}</div>
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Effort Row */}
+        <div className="flex items-start gap-4">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">
+              Effort
+            </label>
+            <div className="flex items-center gap-1">
+              <Input
+                data-testid="assignment-hours-input"
+                type="text"
+                inputMode="decimal"
+                value={hoursInput}
+                onChange={(e) => {
+                  setHoursInput(e.target.value);
+                  setHoursError(null);
+                }}
+                className={`w-16 text-center${hoursError ? " border-red-500 focus-visible:ring-red-500" : ""}`}
               />
-              <span className="font-medium text-sm">{project?.name || "Assignment"}</span>
-            </>
-          )}
-        </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close popover">
-          <Icon icon="lucide:x" className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Effort Row */}
-      <div className="flex items-start gap-4 mb-4">
-        <div className="flex-1">
-          <label className="text-xs text-muted-foreground mb-1 block">
-            Effort
-          </label>
-          <div className="flex items-center gap-1">
-            <Input
-              data-testid="assignment-hours-input"
-              type="text"
-              inputMode="decimal"
-              value={hoursInput}
-              onChange={(e) => {
-                setHoursInput(e.target.value);
-                setHoursError(null);
-              }}
-              className={`w-16 text-center${hoursError ? " border-red-500 focus-visible:ring-red-500" : ""}`}
-            />
-            <span className="text-xs text-muted-foreground">h/d</span>
+              <span className="text-xs text-muted-foreground">h/d</span>
+            </div>
+            {hoursError && (
+              <p className="text-xs text-red-500 mt-1">{hoursError}</p>
+            )}
           </div>
-          {hoursError && (
-            <p className="text-xs text-red-500 mt-1">{hoursError}</p>
-          )}
-        </div>
 
-        <div className="flex-1">
-          <label className="text-xs text-muted-foreground mb-1 block">
-            Work Days
-          </label>
-          <div className="flex items-center gap-1">
-            <Input
-              data-testid="assignment-workdays-input"
-              type="number"
-              value={workDays}
-              onChange={(e) => setWorkDays(Number(e.target.value))}
-              className="w-16 text-center"
-              min={1}
-            />
-            <div className="flex flex-col">
-              <button
-                className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setWorkDays((w) => w + 1)}
-                aria-label="Increase work days"
-              >
-                <Icon icon="lucide:chevron-up" className="h-3 w-3" />
-              </button>
-              <button
-                className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setWorkDays((w) => Math.max(1, w - 1))}
-                aria-label="Decrease work days"
-              >
-                <Icon icon="lucide:chevron-down" className="h-3 w-3" />
-              </button>
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">
+              Work Days
+            </label>
+            <div className="flex items-center gap-1">
+              <Input
+                data-testid="assignment-workdays-input"
+                type="number"
+                value={workDays}
+                onChange={(e) => setWorkDays(Number(e.target.value))}
+                className="w-16 text-center"
+                min={1}
+              />
+              <div className="flex flex-col">
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setWorkDays((w) => w + 1)}
+                  aria-label="Increase work days"
+                >
+                  <Icon icon="lucide:chevron-up" className="h-3 w-3" />
+                </button>
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setWorkDays((w) => Math.max(1, w - 1))}
+                  aria-label="Decrease work days"
+                >
+                  <Icon icon="lucide:chevron-down" className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">
+              Total Effort
+            </label>
+            <div className="flex items-center gap-1">
+              <Input
+                value={`${totalHours.toFixed(1)}`}
+                className="w-20 text-center bg-muted"
+                readOnly
+              />
+              <span className="text-xs text-muted-foreground">Hours</span>
             </div>
           </div>
         </div>
 
-        <div className="flex-1">
-          <label className="text-xs text-muted-foreground mb-1 block">
-            Total Effort
-          </label>
-          <div className="flex items-center gap-1">
-            <Input
-              value={`${totalHours}:00`}
-              className="w-20 text-center bg-muted"
-              readOnly
+        {/* Category */}
+        <div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded-full"
+              style={{ backgroundColor: project?.color || "#ccc" }}
             />
-            <span className="text-xs text-muted-foreground">Hours</span>
+            <select
+              data-testid="assignment-category-select"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as AssignmentCategory)}
+              className="flex-1 border rounded px-2 py-1.5 text-sm bg-background"
+            >
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      </div>
 
-      {/* Category */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-4 h-4 rounded-full"
-            style={{ backgroundColor: project?.color || "#ccc" }}
-          />
-          <select
-            data-testid="assignment-category-select"
-            value={category}
-            onChange={(e) => setCategory(e.target.value as AssignmentCategory)}
-            className="flex-1 border rounded px-2 py-1.5 text-sm bg-background"
-          >
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+        {/* Checkboxes */}
+        <div className="flex items-center gap-6">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={!isBillable}
+              onCheckedChange={(checked) => setIsBillable(!checked)}
+            />
+            Non-Billable
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={repeat}
+              onCheckedChange={(checked) => setRepeat(checked as boolean)}
+            />
+            Repeat
+          </label>
         </div>
-      </div>
 
-      {/* Checkboxes */}
-      <div className="flex items-center gap-6 mb-3">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <Checkbox
-            checked={!isBillable}
-            onCheckedChange={(checked) => setIsBillable(!checked)}
+        {/* Note - Using native details/summary */}
+        <details open={noteOpen}>
+          <summary
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer select-none"
+            onClick={(e) => {
+              e.preventDefault();
+              setNoteOpen(!noteOpen);
+            }}
+          >
+            <Icon
+              icon={noteOpen ? "lucide:chevron-down" : "lucide:chevron-right"}
+              className="h-3 w-3"
+            />
+            Note
+          </summary>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-full border rounded p-2 text-sm resize-none mt-2"
+            rows={2}
+            placeholder="Add a note..."
           />
-          Non-Billable
-        </label>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <Checkbox
-            checked={repeat}
-            onCheckedChange={(checked) => setRepeat(checked as boolean)}
-          />
-          Repeat
-        </label>
-      </div>
+        </details>
 
-      {/* Note - Using native details/summary */}
-      <details className="mb-3" open={noteOpen}>
-        <summary
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer select-none"
-          onClick={(e) => {
-            e.preventDefault();
-            setNoteOpen(!noteOpen);
-          }}
-        >
-          <Icon
-            icon={noteOpen ? "lucide:chevron-down" : "lucide:chevron-right"}
-            className="h-3 w-3"
-          />
-          Note
-        </summary>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className="w-full border rounded p-2 text-sm resize-none mt-2"
-          rows={2}
-          placeholder="Add a note..."
-        />
-      </details>
-
-      {/* Actions */}
-      <div className="flex items-center justify-between pt-3 border-t mt-4">
-        <Button variant="link" onClick={onClose} className="text-sm px-0" disabled={isCreating}>
-          Cancel
-        </Button>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" disabled={isCreating} aria-label="Open calendar">
-            <Icon icon="lucide:calendar" className="h-4 w-4" />
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={isCreating}
+          >
+            Cancel
           </Button>
-          <Button onClick={handleSave} disabled={isCreating} data-testid="assignment-save-button">
+          <Button
+            onClick={() => {
+              if (!isCreating) handleSave();
+            }}
+            disabled={isCreating}
+            data-testid="assignment-save-button"
+          >
             {isCreating ? (
               <>
                 <span className="animate-spin mr-2">⏳</span>
@@ -282,8 +289,8 @@ export const AssignmentPopover: React.FC<AssignmentPopoverProps> = ({
               'Save'
             )}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format, differenceInDays } from 'date-fns';
 import type { Assignment } from '@/lib/query/hooks/useAssignments';
 import { useProjects } from '@/lib/query/hooks/useProjects';
@@ -72,7 +72,7 @@ export function EditAssignmentDialog({
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
 
-  const [hoursPerDay, setHoursPerDay] = useState(parseFloat(assignment.hoursPerDay) || 8);
+  const [hoursInput, setHoursInput] = useState(assignment.hoursPerDay ?? "8");
   const [category, setCategory] = useState(assignment.category || 'Development');
   const [isBillable, setIsBillable] = useState(assignment.isBillable ?? true);
   const [status, setStatus] = useState(assignment.status || 'draft');
@@ -84,12 +84,29 @@ export function EditAssignmentDialog({
   const employee = employees?.find((e) => e.id === assignment.employeeId);
   const createdBy = employees?.find((e) => e.id === assignment.createdById);
 
+  // Store dates in state to ensure they stay in sync with assignment prop
+  // Use string dates directly to avoid timezone issues
+  const [startDateStr, setStartDateStr] = useState(() => assignment.startDate);
+  const [endDateStr, setEndDateStr] = useState(() => assignment.endDate);
+
+  // Sync dates when assignment prop changes
+  useEffect(() => {
+    setStartDateStr(assignment.startDate);
+    setEndDateStr(assignment.endDate);
+  }, [assignment.startDate, assignment.endDate, assignment.id]);
+
+  // For display only - convert to Date for formatting
   const startDate = new Date(assignment.startDate);
   const endDate = new Date(assignment.endDate);
   const duration = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
 
   const handleSave = () => {
-    if (isNaN(hoursPerDay) || hoursPerDay <= 0 || hoursPerDay > 24) {
+    // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
+    const normalizedInput = hoursInput.replace(',', '.');
+    const parsed = parseFloat(normalizedInput);
+
+    // FIXED: Use < 0.5 to match min="0.5" attribute and error message
+    if (hoursInput.trim() === '' || isNaN(parsed) || parsed < 0.5 || parsed > 24) {
       setHoursError('Hours per day must be between 0.5 and 24');
       return;
     }
@@ -98,9 +115,9 @@ export function EditAssignmentDialog({
     onSave({
       employeeId: assignment.employeeId,
       projectId: assignment.projectId,
-      startDate: assignment.startDate,
-      endDate: assignment.endDate,
-      hoursPerDay: hoursPerDay.toString(),
+      startDate: startDateStr, // Use synced state date
+      endDate: endDateStr, // Use synced state date
+      hoursPerDay: parsed.toString(),
       category,
       isBillable,
       status,
@@ -120,29 +137,34 @@ export function EditAssignmentDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[480px] max-h-[90vh] overflow-y-auto"
+        className="max-w-[480px] max-h-[75vh] flex flex-col p-0"
         data-testid="edit-assignment-dialog"
       >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: project?.color || '#94a3b8' }}
-            />
-            {project?.name || 'Time Off'}
-          </DialogTitle>
-          <DialogDescription>
-            View and edit assignment details
-          </DialogDescription>
-        </DialogHeader>
+        <div className="flex flex-col min-h-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: project?.color || '#94a3b8' }}
+              />
+              <div className="flex flex-col">
+                <span>{project?.name || 'Time Off'}</span>
+                <span className="text-sm font-normal text-muted-foreground">{employee?.fullName || 'Unknown'}</span>
+              </div>
+            </DialogTitle>
+            <DialogDescription>
+              Edit plan assignment details
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-6">
+          <div className="min-h-0 overflow-y-auto px-6 space-y-6">
           {/* Read-only section */}
           <div className="space-y-3 pb-4 border-b">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Employee</Label>
                 <div className="text-sm font-medium">{employee?.fullName || 'Unknown'}</div>
+                <div className="text-xs font-medium">{employee?.position || '—'}</div>
               </div>
               {project && (
                 <div>
@@ -180,9 +202,9 @@ export function EditAssignmentDialog({
                 min="0.5"
                 max="24"
                 step="0.5"
-                value={isNaN(hoursPerDay) ? "" : hoursPerDay}
+                value={hoursInput}
                 onChange={(e) => {
-                  setHoursPerDay(parseFloat(e.target.value));
+                  setHoursInput(e.target.value);
                   setHoursError(null);
                 }}
                 className={cn("mt-1.5", hoursError && "border-destructive")}
@@ -265,7 +287,7 @@ export function EditAssignmentDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex justify-between sm:justify-between">
+        <DialogFooter className="px-6 pb-6 pt-2">
           <Button
             variant="destructive"
             onClick={handleDelete}
@@ -290,6 +312,7 @@ export function EditAssignmentDialog({
             </Button>
           </div>
         </DialogFooter>
+        </div>
       </DialogContent>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
