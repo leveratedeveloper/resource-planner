@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
-import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
-import { useEmployees, useBrands, useProjects } from "@/lib/query/hooks";
+import { useEmployees, useBrands, useProjects, useDepartments } from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { ResourceRow } from "./ResourceRow";
+import { AggregatedRow } from "./AggregatedRow";
 import { AssignProjectModal } from "./AssignProjectModal";
-import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday, getMonth, getYear } from "date-fns";
+import { TimelineHeaderControls, ViewMode, ResourceView } from "./TimelineHeaderControls";
+import { addDays, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfDay, isToday, getMonth, getYear } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,7 +24,8 @@ interface TimelineProps {
 export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
   const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
-  const { data: brands = [] } = useBrands();
+  const { data: brands = [], isLoading: isLoadingBrands, isError: isBrandsError } = useBrands();
+  const { data: departments = [], isLoading: isLoadingDepartments, isError: isDepartmentsError } = useDepartments();
   const { data: projects = [] } = useProjects();
   const { session } = useAuth();
 
@@ -39,6 +40,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
+  const [resourceView, setResourceView] = useState<ResourceView>("employee");
   const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
 
   // Initialize dates client-side to avoid hydration mismatch
@@ -183,6 +185,18 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined
   );
 
+  const projectById = useMemo(() => {
+    return new Map(projects.map((project) => [project.id, project]));
+  }, [projects]);
+
+  const employeeById = useMemo(() => {
+    return new Map(employees.map((employee) => [employee.id, employee]));
+  }, [employees]);
+
+  const brandById = useMemo(() => {
+    return new Map(brands.map((brand) => [brand.id, brand]));
+  }, [brands]);
+
   // Apply additional filters (project, category, status) to date-filtered assignments for display
   const filteredAssignments = useMemo(() => {
     let filtered = dateFilteredAssignments;
@@ -190,6 +204,24 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     // Filter by project
     if (projectId) {
       filtered = filtered.filter(a => a.projectId === projectId);
+    }
+
+    // Filter by selected brand
+    if (brandId) {
+      filtered = filtered.filter((assignment) => {
+        if (assignment.project?.brand?.id === brandId) return true;
+        const project = assignment.projectId ? projectById.get(assignment.projectId) : undefined;
+        return project?.brandId === brandId;
+      });
+    }
+
+    // Filter by selected department
+    if (department) {
+      filtered = filtered.filter((assignment) => {
+        if (assignment.employee?.department?.id === department) return true;
+        const employee = employeeById.get(assignment.employeeId);
+        return employee?.departmentId === department;
+      });
     }
 
     // Filter by category
@@ -203,7 +235,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
 
     return filtered;
-  }, [dateFilteredAssignments, projectId, category, status]);
+  }, [dateFilteredAssignments, projectId, brandId, department, category, status, projectById, employeeById]);
 
 
   // PERFORMANCE: Pre-group assignments by employee ID to avoid N+1 query problem
@@ -219,6 +251,55 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
     return grouped;
   }, [filteredAssignments]);
+
+  // Aggregate assignments by department for "By Department" view
+  const assignmentsByDepartment = useMemo(() => {
+    if (resourceView !== "department") return new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
+
+    const grouped = new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
+
+    for (const dept of departments) {
+      grouped.set(dept.id, {
+        name: dept.name,
+        color: dept.color || "#6b7280",
+        assignments: [],
+      });
+    }
+
+    for (const assignment of filteredAssignments) {
+      const dept = assignment.employee?.department ?? employeeById.get(assignment.employeeId)?.department;
+      if (!dept) continue;
+      grouped.get(dept.id)?.assignments.push(assignment);
+    }
+
+    // Sort alphabetically by name
+    return new Map([...grouped.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)));
+  }, [filteredAssignments, resourceView, employeeById, departments]);
+
+  // Aggregate assignments by brand for "By Brand" view
+  const assignmentsByBrand = useMemo(() => {
+    if (resourceView !== "brand") return new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
+
+    const grouped = new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
+
+    for (const brand of brands) {
+      grouped.set(brand.id, {
+        name: brand.name,
+        color: brand.color || "#6b7280",
+        assignments: [],
+      });
+    }
+
+    for (const assignment of filteredAssignments) {
+      const project = assignment.projectId ? projectById.get(assignment.projectId) : undefined;
+      const brand = assignment.project?.brand ?? (project?.brandId ? brandById.get(project.brandId) : undefined);
+      if (!brand) continue;
+      grouped.get(brand.id)?.assignments.push(assignment);
+    }
+
+    // Sort alphabetically by name
+    return new Map([...grouped.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)));
+  }, [filteredAssignments, resourceView, projectById, brandById, brands]);
 
   // Filter employees based on selected Brand, Department, and Search Query
   const visibleEmployees = useMemo(() => {
@@ -301,7 +382,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
 
     // Sort: current user first, then alphabetically by name
-    const sorted = filtered.sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       // Current user (logged-in employee) always first
       const aIsCurrentUser = a.id === session?.employee?.uuid;
       const bIsCurrentUser = b.id === session?.employee?.uuid;
@@ -370,7 +451,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   }, []);
 
   // Show loading while days initializes
-  if (!currentDate || days.length === 0) {
+  if (!currentDate || days.length === 0 || isLoadingDepartments) { // Added isLoadingDepartments to show loading state
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-muted-foreground">Loading timeline...</div>
@@ -385,16 +466,18 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         currentDate={currentDate}
         viewMode={viewMode}
         showWeekends={showWeekends}
+        resourceView={resourceView}
         onViewModeChange={setViewMode}
         onDateChange={handleDateChange}
         onToggleWeekends={handleToggleWeekends}
         onToday={handleToday}
+        onResourceViewChange={setResourceView}
       />
 
       {/* Timeline Header (Days) - Sticky */}
       <div className="flex border-b bg-muted/40 sticky top-0 z-10">
         <div className="w-[250px] shrink-0 p-4 font-semibold border-r bg-background">
-          Resources
+          {resourceView === "employee" ? "Resources" : resourceView === "department" ? "Departments" : "Brands"}
         </div>
         <div 
           ref={headerScrollRef}
@@ -405,14 +488,11 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           aria-label="Timeline day headers"
         >
           <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day, index) => {
+            {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const isMonthView = viewMode === "month";
               const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
               const today = isToday(day);
               const currentMonth = getMonth(day) === getMonth(new Date()) && getYear(day) === getYear(new Date());
-
-              // Month view now shows individual days, not weeks - no week range calculation needed
 
               return (
                 <div
@@ -454,46 +534,100 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         className="flex-1 overflow-auto"
       >
         <div className="flex flex-col w-full">
-          {isLoadingEmployees ? (
-             <div className="space-y-0">
-               {[1, 2, 3, 4, 5].map((i) => (
-                 <div key={i} className="flex border-b">
-                   <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
-                     <Skeleton className="h-8 w-8 rounded-full" />
-                     <div className="space-y-2 flex-1">
-                       <Skeleton className="h-4 w-3/4" />
-                       <Skeleton className="h-3 w-1/2" />
+          {resourceView === "employee" ? (
+            isLoadingEmployees ? (
+               <div className="space-y-0">
+                 {[1, 2, 3, 4, 5].map((i) => (
+                   <div key={i} className="flex border-b">
+                     <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
+                       <Skeleton className="h-8 w-8 rounded-full" />
+                       <div className="space-y-2 flex-1">
+                         <Skeleton className="h-4 w-3/4" />
+                         <Skeleton className="h-3 w-1/2" />
+                       </div>
+                     </div>
+                     <div className="flex-1 px-2 py-4 space-y-2">
+                       <Skeleton className="h-full w-full opacity-20" />
                      </div>
                    </div>
-                   <div className="flex-1 px-2 py-4 space-y-2">
-                     <Skeleton className="h-full w-full opacity-20" />
-                   </div>
-                 </div>
-               ))}
-             </div>
-          ) : visibleEmployees.length === 0 ? (
-             <div className="p-8 text-center text-muted-foreground">
-                 No employees found for this selection. Go to Setup to assign employees to this brand.
-             </div>
-          ) : (
-             visibleEmployees.map((employee) => (
-                <ResourceRow
-                  key={employee.id}
-                  resource={{
-                    id: employee.id,
-                    name: employee.fullName,
-                    role: employee.position,
-                    department: employee.department?.name || "",
-                    capacity: employee.weeklyCapacity,
-                  }}
+                 ))}
+               </div>
+            ) : visibleEmployees.length === 0 ? (
+               <div className="p-8 text-center text-muted-foreground">
+                   No employees found for this selection. Go to Setup to assign employees to this brand.
+               </div>
+            ) : (
+               visibleEmployees.map((employee) => (
+                  <ResourceRow
+                    key={employee.id}
+                    resource={{
+                      id: employee.id,
+                      name: employee.fullName,
+                      role: employee.position,
+                      department: employee.department?.name || "",
+                      capacity: employee.weeklyCapacity,
+                    }}
+                    days={days}
+                    brandId={brandId}
+                    cellWidth={cellWidth}
+                    isWeekView={isWeekView}
+                    assignments={assignmentsByEmployee.get(employee.id) || []}
+                    viewMode={viewMode}
+                  />
+                ))
+            )
+          ) : resourceView === "department" ? (
+            isLoadingDepartments ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Loading departments...
+              </div>
+            ) : isDepartmentsError ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Failed to load departments.
+              </div>
+            ) : assignmentsByDepartment.size === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                No departments found for this selection.
+              </div>
+            ) : (
+              Array.from(assignmentsByDepartment.entries()).map(([deptId, dept]) => (
+                <AggregatedRow
+                  key={deptId}
+                  name={dept.name}
+                  color={dept.color}
                   days={days}
-                  brandId={brandId}
                   cellWidth={cellWidth}
-                  isWeekView={isWeekView}
-                  assignments={assignmentsByEmployee.get(employee.id) || []}
+                  assignments={dept.assignments}
                   viewMode={viewMode}
                 />
               ))
+            )
+          ) : (
+            isLoadingBrands ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Loading brands...
+              </div>
+            ) : isBrandsError ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Failed to load brands.
+              </div>
+            ) : assignmentsByBrand.size === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                No brands found for this selection.
+              </div>
+            ) : (
+              Array.from(assignmentsByBrand.entries()).map(([brandId, brand]) => (
+                <AggregatedRow
+                  key={brandId}
+                  name={brand.name}
+                  color={brand.color}
+                  days={days}
+                  cellWidth={cellWidth}
+                  assignments={brand.assignments}
+                  viewMode={viewMode}
+                />
+              ))
+            )
           )}
         </div>
       </div>

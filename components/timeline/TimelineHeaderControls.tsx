@@ -3,30 +3,50 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@iconify/react";
-import { format, addWeeks, subWeeks, addMonths, subMonths, addQuarters, subQuarters, addYears, subYears, startOfWeek } from "date-fns";
+import { format, addWeeks, subWeeks, addMonths, subMonths, addQuarters, subQuarters, addYears, subYears } from "date-fns";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export type ViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
+export type ResourceView = "employee" | "department" | "brand";
+
+const RESOURCE_VIEW_OPTIONS: { value: ResourceView; label: string; icon: string }[] = [
+  { value: "employee", label: "By Employee", icon: "lucide:user" },
+  { value: "department", label: "By Department", icon: "lucide:building-2" },
+  { value: "brand", label: "By Brand", icon: "lucide:bookmark" },
+];
 
 interface TimelineHeaderControlsProps {
   currentDate: Date;
   viewMode: ViewMode;
   showWeekends: boolean;
+  resourceView: ResourceView;
   onViewModeChange: (mode: ViewMode) => void;
   onDateChange: (date: Date) => void;
   onToggleWeekends: () => void;
   onToday: () => void;
+  onResourceViewChange: (view: ResourceView) => void;
 }
 
 export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
   currentDate,
   viewMode,
   showWeekends,
+  resourceView,
   onViewModeChange,
   onDateChange,
   onToggleWeekends,
   onToday,
+  onResourceViewChange,
 }) => {
+  const selectedResourceView =
+    RESOURCE_VIEW_OPTIONS.find((option) => option.value === resourceView) ?? RESOURCE_VIEW_OPTIONS[0];
+
   const handlePrev = () => {
     switch (viewMode) {
       case "week":
@@ -73,6 +93,35 @@ export const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = ({
       <div className="flex items-center justify-between px-4 py-2">
         {/* Left: Navigation */}
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1.5"
+                data-testid="timeline-resource-view-dropdown"
+              >
+                <Icon icon={selectedResourceView.icon} className="h-3.5 w-3.5" />
+                {selectedResourceView.label}
+                <Icon icon="lucide:chevron-down" className="h-3 w-3 ml-0.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {RESOURCE_VIEW_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onClick={() => onResourceViewChange(option.value)}
+                  className={cn("gap-2 cursor-pointer", resourceView === option.value && "font-semibold")}
+                >
+                  <Icon icon={option.icon} className="h-4 w-4" />
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span className="text-border" aria-hidden="true">
+            |
+          </span>
           <Button
             variant="outline"
             size="sm"
