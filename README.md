@@ -214,6 +214,25 @@ npm run dev
 | **Resource Planner (Vercel)** | [resource-planner-drab.vercel.app](https://resource-planner-drab.vercel.app/) | `super@timetrack.id` | `SEMOGABERKAH2023!#` |
 | **Timetrack Demo** | [demo.timetrack.id](https://demo.timetrack.id/) | `super@timetrack.id` | `SEMOGABERKAH2023!#` |
 
+## User Task Flows
+
+### Project Team Assignment
+
+Flow untuk mengelola team assignment pada sebuah project/campaign.
+
+1. **Login** — Buka app, login dengan akun yang punya **Full Access** (e.g. `super@timetrack.id`). User dengan role Restricted Access tidak bisa mengakses Setup.
+2. **Buka Setup** — Klik tombol **"Setup"** di header/navbar dari halaman utama (Timeline). Ini membuka Setup Manager modal.
+3. **Pilih Tab Projects** — Di Setup modal, klik tab **"Projects"** untuk melihat daftar semua project.
+4. **Pilih Project** — Cari atau klik salah satu project dari daftar. Projects di-group berdasarkan brand untuk memudahkan navigasi.
+5. **Project Detail** — Dialog project detail terbuka, menampilkan informasi project (nama, brand, budget, tanggal) dan daftar team yang sudah di-assign.
+6. **Manage Team** — Klik tombol **"Manage Team"** atau **"Assign Team"** untuk membuka Assign Employees Dialog.
+7. **Assign Team Members** — Pilih employee dari daftar available employees, lalu klik **Assign** untuk menambahkan ke project.
+8. **Set Date Range** — Tentukan **start date** dan **end date** untuk setiap assignment employee ke project.
+9. **Pilih Deliverables** — Untuk setiap assigned member, pilih deliverables yang relevan via popover/checkbox (e.g. Design, Development, Strategy, dll).
+10. **Save Team Assignment** — Klik **Save** untuk menyimpan semua assignment ke database PostgreSQL. Data assignment akan langsung terlihat di Timeline view.
+
+> **Komponen terkait**: `SetupManager.tsx`, `ProjectSetup.tsx`, `AssignEmployeesDialog.tsx`
+
 ## Available NPM Scripts
 
 ```bash
