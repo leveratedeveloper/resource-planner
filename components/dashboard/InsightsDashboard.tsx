@@ -176,7 +176,9 @@ export function InsightsDashboard() {
         <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Executive Signal</CardTitle>
-            <CardDescription>Summary data from the AI Insights analysis engine.</CardDescription>
+            <CardDescription>
+              A planner-ready view of team capacity, workload balance, and delivery risk.
+            </CardDescription>
             <CardAction>
               <Badge variant={attentionCount > 0 ? "destructive" : "secondary"}>
                 {attentionCount > 0 ? `${attentionCount} need review` : "Stable"}
@@ -188,19 +190,19 @@ export function InsightsDashboard() {
               <MetricTile
                 label="Optimal resources"
                 value={`${optimalRate}%`}
-                detail={`${stableResources} of ${totalResources} people`}
+                detail={`${stableResources} of ${totalResources} people are balanced`}
                 icon="lucide:target"
               />
               <MetricTile
                 label="Avg utilization"
                 value={`${averageUtilization}%`}
-                detail="Across analyzed resources"
+                detail="Current workload across the team"
                 icon="lucide:activity"
               />
               <MetricTile
                 label="High-risk weeks"
                 value={highRiskWeeks}
-                detail="Next 4-week forecast"
+                detail="Weeks that may need staffing action"
                 icon="lucide:calendar-alert"
               />
             </div>
@@ -212,13 +214,21 @@ export function InsightsDashboard() {
         </Card>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <RiskQueueCard title="Top Capacity Risks" emptyLabel="No capacity risk detected">
+          <RiskQueueCard
+            title="Top Capacity Risks"
+            description="People most likely to be overloaded or sitting below useful capacity."
+            emptyLabel="No capacity risk detected"
+          >
             {topCapacityRisks.map((resource) => (
               <CompactCapacityRisk key={resource.resourceId} resource={resource} />
             ))}
           </RiskQueueCard>
 
-          <RiskQueueCard title="Conflict Watchlist" emptyLabel="No active conflicts detected">
+          <RiskQueueCard
+            title="Conflict Watchlist"
+            description="Scheduling issues that could block delivery, billing, or time-off coverage."
+            emptyLabel="No active conflicts detected"
+          >
             {topConflicts.map((conflict) => (
               <CompactConflictRisk key={conflict.id} conflict={conflict} />
             ))}
@@ -229,7 +239,7 @@ export function InsightsDashboard() {
           <CardHeader>
             <CardTitle>Insight Workspace</CardTitle>
             <CardDescription>
-              Lists load incrementally as you scroll, keeping the dashboard fast and scannable.
+              Drill into capacity, conflicts, and forecast signals to decide where work should move next.
             </CardDescription>
           </CardHeader>
           <CardContent className="px-0 pb-0">
@@ -357,7 +367,7 @@ function DashboardCapacityPanel({
   }
 
   if (capacityAnalysis.length === 0) {
-    return <EmptyPanel icon="lucide:users" title="No capacity data available" description="Add assignments to see capacity analysis." />;
+    return <EmptyPanel icon="lucide:users" title="No capacity data available" description="Add assignments to reveal who is overloaded, balanced, or available for more work." />;
   }
 
   return (
@@ -405,7 +415,7 @@ function DashboardConflictsPanel({
   }
 
   if (conflicts.length === 0) {
-    return <EmptyPanel icon="lucide:check-circle" title="No conflicts detected" description="All assignments are properly scheduled." />;
+    return <EmptyPanel icon="lucide:check-circle" title="No conflicts detected" description="Current assignments are clear of overload, time-off, and scheduling conflicts." />;
   }
 
   return (
@@ -448,7 +458,7 @@ function DashboardForecastPanel({
   }
 
   if (!forecast) {
-    return <EmptyPanel icon="lucide:calendar-range" title="No forecast data available" description="Add assignments to see the 4-week capacity forecast." />;
+    return <EmptyPanel icon="lucide:calendar-range" title="No forecast data available" description="Add assignments to project capacity pressure across the next 4 weeks." />;
   }
 
   return (
@@ -531,10 +541,12 @@ function MetricTile({
 
 function RiskQueueCard({
   title,
+  description,
   emptyLabel,
   children,
 }: {
   title: string;
+  description: string;
   emptyLabel: string;
   children: React.ReactNode[];
 }) {
@@ -544,7 +556,7 @@ function RiskQueueCard({
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <CardDescription>Fast-scan items before opening the detailed tabs.</CardDescription>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {hasItems ? (
@@ -788,9 +800,9 @@ function TrendIndicator({ trend }: { trend: "improving" | "stable" | "declining"
 }
 
 function getTrendCopy(trend: "improving" | "stable" | "declining") {
-  if (trend === "improving") return "Capacity pressure is improving over time.";
-  if (trend === "declining") return "Capacity pressure is becoming more constrained.";
-  return "Capacity pressure remains stable.";
+  if (trend === "improving") return "Upcoming workload is easing and may create room for new assignments.";
+  if (trend === "declining") return "Upcoming workload is tightening and may require staffing changes.";
+  return "Upcoming workload is steady with no major capacity shift.";
 }
 
 function formatDate(dateStr: string) {
