@@ -225,6 +225,11 @@ export const ProjectSetup = () => {
     return allDeliverables.filter(d => deliverableIds.has(String(d.id)));
   }, [allDeliverables, projectChannels]);
 
+  const availableChannels = useMemo(() => {
+    const channelIds = new Set(projectDeliverables.map(d => String(d.channelId)));
+    return channels.filter(ch => channelIds.has(String(ch.id)));
+  }, [channels, projectDeliverables]);
+
   const teamMembers = useMemo(() => {
     // Find which employees are assigned to this project
     const employeeIdsInProject = new Set<string>();
@@ -411,17 +416,21 @@ export const ProjectSetup = () => {
     setValueTotalEstimate(project.valueTotalEstimate || "");
     setHsDealId(project.hsDealId || "");
     const channelsData = (project as ProjectWithChannels).channels || project.projectChannels || [];
-    setProjectChannels(channelsData.map((pc) => {
+    console.log('[ProjectSetup] Raw channels data:', channelsData);
+    const mappedChannels = channelsData.map((pc) => {
       const snakeCaseChannel = pc as ProjectChannelFormValue;
-
-      return {
-        channelId: pc.channelId || snakeCaseChannel.channel_id || "",
-        deliverableId: pc.deliverableId || snakeCaseChannel.deliverable_id || "",
+      
+      const mapped = {
+        channelId: String(pc.channelId || snakeCaseChannel.channel_id || ""),
+        deliverableId: String(pc.deliverableId || snakeCaseChannel.deliverable_id || ""),
         quantity: pc.quantity || "",
-        channelBudget: pc.channelBudget || snakeCaseChannel.channel_budget || "",
+        channelBudget: String(pc.channelBudget || snakeCaseChannel.channel_budget || snakeCaseChannel.budget || ""),
         manHours: pc.manHours || snakeCaseChannel.man_hours || "",
       };
-    }));
+      console.log('[ProjectSetup] Mapped channel:', mapped);
+      return mapped;
+    });
+    setProjectChannels(mappedChannels);
     if (project.startDate && project.endDate) {
       const range = {
         from: startOfDay(new Date(project.startDate)),
@@ -1131,8 +1140,8 @@ export const ProjectSetup = () => {
 
 
 
-              {/* Channels & Deliverables Section (PITCH ONLY) */}
-              {projectType === 'pitch' && (
+              {/* Channels & Deliverables Section (PITCH & CAMPAIGN) */}
+              {(projectType === 'pitch' || projectType === 'campaign') && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b pb-2">
                     <h3 className="text-sm font-semibold text-foreground">Channels & Deliverables</h3>
@@ -1153,15 +1162,20 @@ export const ProjectSetup = () => {
                               </label>
                               <Select
                                 value={channel.channelId}
-                                disabled
+                                onValueChange={(val) => {
+                                  // Update the project channel with the new channel ID
+                                  setProjectChannels(prev => prev.map((pc, i) => 
+                                    i === index ? { ...pc, channelId: val, deliverableId: "" } : pc
+                                  ));
+                                }}
                               >
                                 <SelectTrigger className="w-full">
                                   <SelectValue placeholder="Select channel" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {channels.map((ch) => (
+                                  {availableChannels.map((ch) => (
                                     <SelectItem key={ch.id} value={ch.id}>
-                                      {ch.channelName}
+                                      {ch.channelNameNew || ch.channelName}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -1180,11 +1194,13 @@ export const ProjectSetup = () => {
                                   <SelectValue placeholder="Select deliverable" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getDeliverablesForChannel(channel.channelId).map((del) => (
-                                    <SelectItem key={del.id} value={del.id}>
-                                      {del.deliverableName}
-                                    </SelectItem>
-                                  ))}
+                                  {projectDeliverables
+                                    .filter(d => d.channelId === channel.channelId)
+                                    .map((del) => (
+                                      <SelectItem key={del.id} value={del.id}>
+                                        {del.deliverableName}
+                                      </SelectItem>
+                                    ))}
                                 </SelectContent>
                               </Select>
                             </div>

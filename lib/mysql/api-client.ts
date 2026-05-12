@@ -36,7 +36,7 @@ class MySqlApiClient {
    * Check if logging should be enabled (development only)
    */
   private shouldLog(): boolean {
-    return process.env.NODE_ENV === 'development';
+    return true; // Always log in development for debugging
   }
 
   /**
@@ -369,6 +369,13 @@ class MySqlApiClient {
    */
   getDeliverables(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
     return this.request<any>('/deliverables', params);
+  }
+
+  /**
+   * Get channel classifications with pagination
+   */
+  getChannelClassifications(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
+    return this.request<any>('/channel-classifications', params);
   }
 
   /**

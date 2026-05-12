@@ -125,47 +125,52 @@ export async function GET(request: Request) {
     });
 
     // Transform campaigns to projects
-    const campaignProjects = campaignsData.map((campaign) => ({
-      id: campaign.uuid,
-      projectNumber: campaign.io_number,
-      name: campaign.campaign_name,
-      brandId: campaign.brand_id !== null && campaign.brand_id !== undefined ? String(campaign.brand_id) : null,
-      companyId: String(campaign.company_id),
-      currency: campaign.currency,
-      budget: campaign.budget,
-      asf: campaign.asf,
-      grandTotal: campaign.grand_total,
-      startDate: campaign.start_date,
-      endDate: campaign.end_date,
-      notes: campaign.notes,
-      ioFile: campaign.io_file,
-      state: campaign.state,
-      status: campaign.flag === 'active' ? 'active' : campaign.flag === 'inactive' ? 'completed' : 'planning',
-      quotationReference: campaign.quotation_reference,
-      createdAt: campaign.created_at,
-      updatedAt: campaign.updated_at,
-      businessUnitId: null,
-      projectCategoryId: null,
-      projectTypeId: null,
-      projectType: 'campaign' as const,
-      entity: null,
-      description: null,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      createdById: null,
-      // Pitch-specific fields (null for campaigns)
-      region: null,
-      submitDate: null,
-      pitchStatus: null,
-      valueTotalEstimate: null,
-      hsDealId: null,
-      brand: campaign.brand ? {
-        id: String(campaign.brand_id),
-        name: campaign.brand.brand_name,
+    const campaignProjects = campaignsData.map((campaign) => {
+      if (campaign.channels && campaign.channels.length > 0) {
+        console.log(`[Projects API] Campaign ${campaign.campaign_name} channels:`, campaign.channels.length);
+      }
+      return {
+        id: campaign.uuid,
+        projectNumber: campaign.io_number,
+        name: campaign.campaign_name,
+        brandId: campaign.brand_id !== null && campaign.brand_id !== undefined ? String(campaign.brand_id) : null,
+        companyId: String(campaign.company_id),
+        currency: campaign.currency,
+        budget: campaign.budget,
+        asf: campaign.asf,
+        grandTotal: campaign.grand_total,
+        startDate: campaign.start_date,
+        endDate: campaign.end_date,
+        notes: campaign.notes,
+        ioFile: campaign.io_file,
+        state: campaign.state,
+        status: campaign.flag === 'active' ? 'active' : campaign.flag === 'inactive' ? 'completed' : 'planning',
+        quotationReference: campaign.quotation_reference,
+        createdAt: campaign.created_at,
+        updatedAt: campaign.updated_at,
+        businessUnitId: null,
+        projectCategoryId: null,
+        projectTypeId: null,
+        projectType: 'campaign' as const,
+        entity: null,
+        description: null,
         color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      } : undefined,
-      company: campaign.company,
-      channels: campaign.channels,
-    }));
+        createdById: null,
+        // Pitch-specific fields (null for campaigns)
+        region: null,
+        submitDate: null,
+        pitchStatus: null,
+        valueTotalEstimate: null,
+        hsDealId: null,
+        brand: campaign.brand ? {
+          id: String(campaign.brand_id),
+          name: campaign.brand.brand_name,
+          color: '#' + Math.floor(Math.random()*16777215).toString(16),
+        } : undefined,
+        company: campaign.company,
+        channels: campaign.channels,
+      };
+    });
 
     // Transform pitches to projects
     const pitchProjects = pitchesData.map((pitch) => ({
