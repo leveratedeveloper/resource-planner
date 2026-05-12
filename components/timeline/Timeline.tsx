@@ -251,14 +251,24 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
     return grouped;
   }, [filteredAssignments]);
-
-  // Aggregate assignments by department for "By Department" view
+  // Aggregate assignments by department for "By Department" view
   const assignmentsByDepartment = useMemo(() => {
     if (resourceView !== "department") return new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
 
     const grouped = new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
 
-    for (const dept of departments) {
+    let filteredDepartments = departments;
+    
+    if (department) {
+      filteredDepartments = filteredDepartments.filter(d => d.id === department);
+    }
+    
+    if (searchQuery && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredDepartments = filteredDepartments.filter(d => d.name.toLowerCase().includes(query));
+    }
+
+    for (const dept of filteredDepartments) {
       grouped.set(dept.id, {
         name: dept.name,
         color: dept.color || "#6b7280",
@@ -274,7 +284,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     // Sort alphabetically by name
     return new Map([...grouped.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)));
-  }, [filteredAssignments, resourceView, employeeById, departments]);
+  }, [filteredAssignments, resourceView, employeeById, departments, department, searchQuery]);
 
   // Aggregate assignments by brand for "By Brand" view
   const assignmentsByBrand = useMemo(() => {
@@ -282,7 +292,18 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     const grouped = new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
 
-    for (const brand of brands) {
+    let filteredBrands = brands;
+    
+    if (brandId) {
+      filteredBrands = filteredBrands.filter(b => b.id === brandId);
+    }
+    
+    if (searchQuery && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredBrands = filteredBrands.filter(b => b.name.toLowerCase().includes(query));
+    }
+
+    for (const brand of filteredBrands) {
       grouped.set(brand.id, {
         name: brand.name,
         color: brand.color || "#6b7280",
@@ -299,7 +320,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     // Sort alphabetically by name
     return new Map([...grouped.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)));
-  }, [filteredAssignments, resourceView, projectById, brandById, brands]);
+  }, [filteredAssignments, resourceView, projectById, brandById, brands, brandId, searchQuery]);;
 
   // Filter employees based on selected Brand, Department, and Search Query
   const visibleEmployees = useMemo(() => {
