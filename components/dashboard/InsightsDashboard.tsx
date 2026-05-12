@@ -14,15 +14,42 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Calendar } from "@/components/ui/calendar";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useApp } from "@/context/AppContext";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useAuth } from "@/context/AuthContext";
+import { useCapacityAnalysis } from "@/hooks/useCapacityAnalysis";
 import { canAccessDashboard } from "@/lib/auth/client-access";
+import { parseLocalDateKey, toLocalDateKey } from "@/lib/analysis/date-utils";
+import {
+  type DashboardDateRange,
+  type DashboardTimePreset,
+  getDashboardDateRange,
+  getDashboardScopeLabel,
+  isValidCustomDateRange,
+} from "@/lib/dashboard/filter-ranges";
+import {
+  filterAssignmentsByResourceIds,
+  filterEmployeesByDepartment,
+} from "@/lib/dashboard/dashboard-scope";
 import { getIncrementalWindow } from "@/lib/dashboard/incremental-list";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
+import { useBrands } from "@/lib/query/hooks/useBrands";
+import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
+import { useProjects } from "@/lib/query/hooks/useProjects";
 import { InsightsSummary } from "@/components/insights/InsightsSummary";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
 import type {
@@ -34,49 +61,201 @@ import type {
 } from "@/lib/analysis/types";
 
 type DashboardTab = "capacity" | "conflicts" | "forecast";
+const DEFAULT_TIME_PRESET: DashboardTimePreset = "monthly";
 
 export function InsightsDashboard() {
   const router = useRouter();
   const { session, isLoading: isSessionLoading } = useAuth();
-  const { analysisResult, isAnalyzing, refreshAnalysis } = useApp();
+  const initialRange = useMemo(
+    () => getDashboardDateRange(DEFAULT_TIME_PRESET),
+    []
+  );
+  const [timePreset, setTimePreset] = useState<DashboardTimePreset>(DEFAULT_TIME_PRESET);
+  const [customStartDate, setCustomStartDate] = useState<Date>(() =>
+    parseLocalDateKey(initialRange.startDate)
+  );
+  const [customEndDate, setCustomEndDate] = useState<Date>(() =>
+    parseLocalDateKey(initialRange.endDate)
+  );
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null);
+  const [appliedRange, setAppliedRange] = useState<DashboardDateRange>(initialRange);
+  const today = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
+  const customRangeValid = isValidCustomDateRange({
+    startDate: customStartDate,
+    endDate: customEndDate,
+    today,
+  });
+  const { data: departments = [] } = useDepartments();
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
-  const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments();
+  const { data: projects = [] } = useProjects();
+  const { data: brands = [] } = useBrands();
+  const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments(appliedRange);
   const [activeTab, setActiveTab] = useState<DashboardTab>("capacity");
   const [visitedTabs, setVisitedTabs] = useState<Set<DashboardTab>>(() => new Set(["capacity"]));
+  const forecastRange = useMemo(() => getForecastDateRange(), []);
+  const { data: forecastAssignments = [], isLoading: forecastAssignmentsLoading } =
+    useAssignments(forecastRange);
+
+  const handleTimePresetChange = useCallback(
+    (preset: DashboardTimePreset) => {
+      setTimePreset(preset);
+
+      const nextRange = getDashboardDateRange(preset, {
+        customStartDate,
+        customEndDate,
+      });
+
+      if (
+        preset !== "custom" ||
+        isValidCustomDateRange({
+          startDate: customStartDate,
+          endDate: customEndDate,
+          today,
+        })
+      ) {
+        setAppliedRange(nextRange);
+      }
+    },
+    [customEndDate, customStartDate, today]
+  );
+
+  const handleCustomStartDateChange = useCallback(
+    (date: Date) => {
+      setCustomStartDate(date);
+      if (isValidCustomDateRange({ startDate: date, endDate: customEndDate, today })) {
+        setAppliedRange(
+          getDashboardDateRange("custom", {
+            customStartDate: date,
+            customEndDate,
+            today,
+          })
+        );
+      }
+    },
+    [customEndDate, today]
+  );
+
+  const handleCustomEndDateChange = useCallback(
+    (date: Date) => {
+      setCustomEndDate(date);
+      if (isValidCustomDateRange({ startDate: customStartDate, endDate: date, today })) {
+        setAppliedRange(
+          getDashboardDateRange("custom", {
+            customStartDate,
+            customEndDate: date,
+            today,
+          })
+        );
+      }
+    },
+    [customStartDate, today]
+  );
+
+  const scopedEmployees = useMemo(
+    () => filterEmployeesByDepartment(employees, selectedDepartmentId),
+    [employees, selectedDepartmentId]
+  );
+
+  const scopedEmployeeIds = useMemo(
+    () => new Set(scopedEmployees.map((employee) => employee.id)),
+    [scopedEmployees]
+  );
+
+  const scopedAssignments = useMemo(
+    () => filterAssignmentsByResourceIds(assignments, scopedEmployeeIds),
+    [assignments, scopedEmployeeIds]
+  );
+
+  const scopedForecastAssignments = useMemo(
+    () => filterAssignmentsByResourceIds(forecastAssignments, scopedEmployeeIds),
+    [forecastAssignments, scopedEmployeeIds]
+  );
 
   const resources = useMemo(
     () =>
-      employees.map((employee) => ({
+      scopedEmployees.map((employee) => ({
         id: employee.id,
         name: employee.fullName,
         role: employee.position,
         department: employee.department?.name || "Unassigned",
         capacity: employee.weeklyCapacity,
       })),
-    [employees]
+    [scopedEmployees]
   );
 
   const mappedAssignments = useMemo<AnalysisAssignment[]>(
+    () => mapAssignmentsForAnalysis(scopedAssignments),
+    [scopedAssignments]
+  );
+
+  const mappedForecastAssignments = useMemo<AnalysisAssignment[]>(
+    () => mapAssignmentsForAnalysis(scopedForecastAssignments),
+    [scopedForecastAssignments]
+  );
+
+  const assignmentsByProject = useMemo(
+    () => indexResourceIdsByProject(scopedAssignments),
+    [scopedAssignments]
+  );
+
+  const analysisProjects = useMemo(
     () =>
-      assignments.map((assignment) => ({
-        id: assignment.id,
-        resourceId: assignment.employeeId,
-        projectId: assignment.projectId || "",
-        startDate: new Date(assignment.startDate),
-        endDate: new Date(assignment.endDate),
-        hoursPerDay: parseFloat(String(assignment.hoursPerDay)),
-        isTimeOff: assignment.isTimeOff,
-        category: assignment.category || "Other",
-        isBillable: assignment.isBillable,
-        note: assignment.note,
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        brandId: project.brandId,
+        color: project.color || "#6366f1",
+        resourceIds: [...(assignmentsByProject.get(project.id) ?? [])],
       })),
-    [assignments]
+    [projects, assignmentsByProject]
+  );
+
+  const analysisBrands = useMemo(
+    () =>
+      brands.map((brand) => {
+        const resourceSet = new Set<string>();
+        for (const project of projects) {
+          if (project.brandId === brand.id) {
+            for (const id of assignmentsByProject.get(project.id) ?? []) {
+              resourceSet.add(id);
+            }
+          }
+        }
+
+        return {
+          id: brand.id,
+          name: brand.name,
+          color: brand.color || "#6366f1",
+          resourceIds: [...resourceSet],
+        };
+      }),
+    [brands, projects, assignmentsByProject]
+  );
+
+  const {
+    result: analysisResult,
+    isAnalyzing,
+    refresh: refreshAnalysis,
+  } = useCapacityAnalysis(
+    resources,
+    mappedAssignments,
+    analysisProjects,
+    analysisBrands,
+    {
+      start: parseLocalDateKey(appliedRange.startDate),
+      end: parseLocalDateKey(appliedRange.endDate),
+    },
+    { enabled: resources.length > 0, debounceMs: 500 }
   );
 
   const forecast = useMemo(() => {
-    if (resources.length === 0 || mappedAssignments.length === 0) return null;
-    return generateForecast(resources, mappedAssignments, 4);
-  }, [resources, mappedAssignments]);
+    if (resources.length === 0 || mappedForecastAssignments.length === 0) return null;
+    return generateForecast(resources, mappedForecastAssignments, 4);
+  }, [resources, mappedForecastAssignments]);
 
   const isLoading = isSessionLoading || employeesLoading || assignmentsLoading || (isAnalyzing && !analysisResult);
   const hasDashboardAccess = canAccessDashboard(session);
@@ -110,6 +289,13 @@ export function InsightsDashboard() {
       .filter((resource) => resource.status !== "optimal")
       .sort((a, b) => b.peakUtilization - a.peakUtilization)
       .slice(0, 4) ?? [];
+  const selectedDepartmentName =
+    departments.find((department) => department.id === selectedDepartmentId)?.name ?? null;
+  const scopeLabel = getDashboardScopeLabel({
+    preset: timePreset,
+    range: appliedRange,
+    departmentName: selectedDepartmentName,
+  });
 
   useEffect(() => {
     if (!isSessionLoading && !hasDashboardAccess) {
@@ -172,6 +358,21 @@ export function InsightsDashboard() {
             </Button>
           </div>
         </header>
+
+        <InsightsDashboardFilters
+          timePreset={timePreset}
+          onTimePresetChange={handleTimePresetChange}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          onCustomStartDateChange={handleCustomStartDateChange}
+          onCustomEndDateChange={handleCustomEndDateChange}
+          isCustomRangeValid={customRangeValid}
+          selectedDepartmentId={selectedDepartmentId}
+          onDepartmentChange={setSelectedDepartmentId}
+          departments={departments}
+          scopeLabel={scopeLabel}
+          today={today}
+        />
 
         <Card className="overflow-hidden">
           <CardHeader>
@@ -284,7 +485,7 @@ export function InsightsDashboard() {
                     key={`forecast-${resetKey}`}
                     forecast={forecast}
                     totalResources={resources.length}
-                    isLoading={isLoading}
+                    isLoading={isLoading || forecastAssignmentsLoading}
                   />
                 )}
               </TabsContent>
@@ -294,6 +495,224 @@ export function InsightsDashboard() {
       </div>
     </main>
   );
+}
+
+function InsightsDashboardFilters({
+  timePreset,
+  onTimePresetChange,
+  customStartDate,
+  customEndDate,
+  onCustomStartDateChange,
+  onCustomEndDateChange,
+  isCustomRangeValid,
+  selectedDepartmentId,
+  onDepartmentChange,
+  departments,
+  scopeLabel,
+  today,
+}: {
+  timePreset: DashboardTimePreset;
+  onTimePresetChange: (preset: DashboardTimePreset) => void;
+  customStartDate: Date;
+  customEndDate: Date;
+  onCustomStartDateChange: (date: Date) => void;
+  onCustomEndDateChange: (date: Date) => void;
+  isCustomRangeValid: boolean;
+  selectedDepartmentId: string | null;
+  onDepartmentChange: (departmentId: string | null) => void;
+  departments: Array<{ id: string; name: string; color?: string }>;
+  scopeLabel: string;
+  today: Date;
+}) {
+  return (
+    <section className="rounded-xl border bg-card p-3 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex items-center gap-2">
+            <Icon icon="lucide:filter" className="text-muted-foreground" />
+            <span className="text-sm font-medium">Filters</span>
+          </div>
+          <ToggleGroup
+            type="single"
+            value={timePreset}
+            onValueChange={(value) => {
+              if (value) onTimePresetChange(value as DashboardTimePreset);
+            }}
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-fit"
+            aria-label="Filter insights by time range"
+          >
+            <ToggleGroupItem value="weekly" aria-label="Show last 7 days">
+              Weekly
+            </ToggleGroupItem>
+            <ToggleGroupItem value="monthly" aria-label="Show last 1 month">
+              Monthly
+            </ToggleGroupItem>
+            <ToggleGroupItem value="annual" aria-label="Show last 1 year">
+              Annual
+            </ToggleGroupItem>
+            <ToggleGroupItem value="custom" aria-label="Show custom date range">
+              Custom
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Select
+            value={selectedDepartmentId || "all"}
+            onValueChange={(value) => onDepartmentChange(value === "all" ? null : value)}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-full sm:w-[220px]"
+              aria-label="Filter insights by department"
+            >
+              <SelectValue placeholder="All Departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+        <Badge variant="secondary" className="w-fit">
+          {scopeLabel}
+        </Badge>
+      </div>
+      {timePreset === "custom" && (
+        <div className="mt-3 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-start">
+          <DashboardDatePicker
+            id="dashboard-start-date"
+            label="Start date"
+            date={customStartDate}
+            onDateChange={onCustomStartDateChange}
+            invalid={!isCustomRangeValid}
+          />
+          <DashboardDatePicker
+            id="dashboard-end-date"
+            label="End date"
+            date={customEndDate}
+            onDateChange={onCustomEndDateChange}
+            invalid={!isCustomRangeValid}
+            maxDate={today}
+          />
+          {!isCustomRangeValid && (
+            <p className="text-xs text-destructive sm:pt-7" role="alert">
+              End date must be on or after the start date and cannot be after today.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DashboardDatePicker({
+  id,
+  label,
+  date,
+  onDateChange,
+  invalid,
+  maxDate,
+}: {
+  id: string;
+  label: string;
+  date: Date;
+  onDateChange: (date: Date) => void;
+  invalid: boolean;
+  maxDate?: Date;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            id={id}
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-invalid={invalid}
+            className="w-full justify-start font-normal sm:w-[160px]"
+          >
+            <Icon icon="lucide:calendar" data-icon="inline-start" />
+            {toLocalDateKey(date)}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={date}
+            disabled={maxDate ? { after: maxDate } : undefined}
+            onSelect={(selected) => {
+              if (selected) onDateChange(selected);
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+function mapAssignmentsForAnalysis(
+  assignments: Array<{
+    id: string;
+    employeeId: string;
+    projectId: string | null;
+    startDate: string;
+    endDate: string;
+    hoursPerDay: string;
+    isTimeOff: boolean;
+    category: string | null;
+    isBillable: boolean;
+    note: string | null;
+  }>
+): AnalysisAssignment[] {
+  return assignments.map((assignment) => ({
+    id: assignment.id,
+    resourceId: assignment.employeeId,
+    projectId: assignment.projectId || "",
+    startDate: new Date(assignment.startDate),
+    endDate: new Date(assignment.endDate),
+    hoursPerDay: parseFloat(String(assignment.hoursPerDay)),
+    isTimeOff: assignment.isTimeOff,
+    category: assignment.category || "Other",
+    isBillable: assignment.isBillable,
+    note: assignment.note,
+  }));
+}
+
+function indexResourceIdsByProject(
+  assignments: Array<{ employeeId: string; projectId: string | null }>
+) {
+  const index = new Map<string, Set<string>>();
+
+  for (const assignment of assignments) {
+    if (!assignment.projectId) continue;
+    const resourceIds = index.get(assignment.projectId) ?? new Set<string>();
+    resourceIds.add(assignment.employeeId);
+    index.set(assignment.projectId, resourceIds);
+  }
+
+  return index;
+}
+
+function getForecastDateRange(): DashboardDateRange {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 28);
+
+  return {
+    startDate: toLocalDateKey(start),
+    endDate: toLocalDateKey(end),
+  };
 }
 
 function useIncrementalList<T>(items: readonly T[], pageSize: number) {

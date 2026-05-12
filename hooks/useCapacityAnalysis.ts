@@ -160,7 +160,7 @@ export function useCapacityAnalysis(
 
   // Auto-run analysis when input changes (debounced)
   useEffect(() => {
-    if (!enabled || assignments.length === 0) return;
+    if (!enabled) return;
 
     // Clear existing timer
     if (debounceTimerRef.current) {
@@ -194,4 +194,3 @@ export function useCapacityAnalysis(
 }
 
 export default useCapacityAnalysis;
-
