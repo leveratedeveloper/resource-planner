@@ -41,6 +41,7 @@
     "next": "16.1.1",
     "openai": "^6.17.0",
     "pg": "^8.20.0",
+    "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-day-picker": "^9.13.0",
     "react-dom": "19.2.3",

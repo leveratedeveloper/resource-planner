@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
+import Link from "next/link";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { useAuth } from "@/context/AuthContext";
+import { canAccessDashboard, isFullAccess } from "@/lib/auth/client-access";
 import {
   Select,
   SelectContent,
@@ -53,7 +55,6 @@ interface FilterBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onOpenSetup: () => void;
-  onOpenInsights: () => void;
   // Assignment filters
   projectId: string | null;
   onProjectChange: (projectId: string | null) => void;
@@ -63,7 +64,7 @@ interface FilterBarProps {
   onStatusChange: (status: string | null) => void;
 }
 
-export const FilterBar = React.memo<FilterBarProps>(({
+const FilterBarComponent = ({
   selectedBrandId,
   onBrandChange,
   selectedDepartment,
@@ -71,46 +72,15 @@ export const FilterBar = React.memo<FilterBarProps>(({
   searchQuery,
   onSearchChange,
   onOpenSetup,
-  onOpenInsights,
   projectId,
   onProjectChange,
-  category,
-  onCategoryChange,
-  status,
-  onStatusChange,
-}) => {
-  const { data: brands = [], isLoading: brandsLoading } = useBrands();
-  const { data: departments = [], isLoading: departmentsLoading } = useDepartments();
-  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+}: FilterBarProps) => {
+  const { data: brands = [] } = useBrands();
+  const { data: departments = [] } = useDepartments();
+  const { data: projects = [] } = useProjects();
   const { session, logout } = useAuth();
-
-  // Local state for instant typing feedback
-  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
-  const isTypingRef = useRef(false);
-
-  // Debounced propagation to parent (300ms matches parent debounce)
-  useEffect(() => {
-    if (isTypingRef.current) {
-      const timer = setTimeout(() => {
-        onSearchChange(localSearchQuery);
-        isTypingRef.current = false;
-      }, 300);
-
-      return () => clearTimeout(timer);
-    }
-  }, [localSearchQuery, onSearchChange]);
-
-  // Sync local state when external changes occur
-  useEffect(() => {
-    if (!isTypingRef.current) {
-      setLocalSearchQuery(searchQuery);
-    }
-  }, [searchQuery]);
-
-  const handleSearchChange = (value: string) => {
-    isTypingRef.current = true;
-    setLocalSearchQuery(value);
-  };
+  const hasFullAccess = isFullAccess(session);
+  const hasDashboardAccess = canAccessDashboard(session);
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
@@ -126,8 +96,8 @@ export const FilterBar = React.memo<FilterBarProps>(({
           <Input
             data-testid="filter-search-input"
             placeholder="Search name, position, project, brand..."
-            value={localSearchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
             className="pl-9 w-full sm:w-auto min-w-[200px]"
           />
         </div>
@@ -278,11 +248,15 @@ export const FilterBar = React.memo<FilterBarProps>(({
             endDate: undefined,
           }}
         />
-        <Button onClick={onOpenInsights} variant="default" data-testid="open-insights-button">
-          <Icon icon="lucide:brain" className="mr-2 h-4 w-4" />
-          AI Insights
-        </Button>
-        {session?.access.level === 'full' && (
+        {hasDashboardAccess && (
+          <Button asChild variant="outline" data-testid="open-dashboard-button">
+            <Link href="/dashboard">
+              <Icon icon="lucide:layout-dashboard" className="mr-2 h-4 w-4" />
+              Dashboard
+            </Link>
+          </Button>
+        )}
+        {hasFullAccess && (
           <Button onClick={onOpenSetup} variant="outline" data-testid="open-setup-button">
             <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
             Setup
@@ -308,8 +282,8 @@ export const FilterBar = React.memo<FilterBarProps>(({
               <DropdownMenuSeparator />
               <div className="px-2 py-1.5">
                 <p className="text-xs text-muted-foreground">
-                  Access: <span className={`font-medium ${session.access.level === 'full' ? 'text-green-600' : 'text-orange-600'}`}>
-                    {session.access.level === 'full' ? 'Full' : 'Restricted'}
+                  Access: <span className={`font-medium ${hasFullAccess ? 'text-green-600' : 'text-orange-600'}`}>
+                    {hasFullAccess ? 'Full' : 'Restricted'}
                   </span>
                 </p>
               </div>
@@ -324,4 +298,7 @@ export const FilterBar = React.memo<FilterBarProps>(({
       </div>
     </div>
   );
-});
+};
+
+export const FilterBar = React.memo(FilterBarComponent);
+FilterBar.displayName = "FilterBar";

@@ -21,7 +21,7 @@ export interface SessionData {
     photo: string;
   };
   access: {
-    level: 'full' | 'restricted';
+    level: 'admin' | 'full' | 'restricted';
     can_view_all: boolean;
     can_view_own_only: boolean;
   };
