@@ -1,16 +1,23 @@
 "use client";
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
-import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useEmployees, useBrands, useProjects } from "@/lib/query/hooks";
-import { useAssignments } from "@/lib/query/hooks/useAssignments";
+import { useAssignments, type Assignment } from "@/lib/query/hooks/useAssignments";
+import { useActualAssignments, type ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday, getMonth, getYear } from "date-fns";
-import { cn } from "@/lib/utils";
+import { addDays, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfDay, isToday, getMonth, getYear } from "date-fns";
+import { cn, toLocalDateString } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  TIMELINE_LOAD_MORE_THRESHOLD_PX,
+  TIMELINE_ROW_BATCH_SIZE,
+  getEffectiveRenderedEmployeeCount,
+  getNextRenderedEmployeeCount,
+  groupActualAssignmentsByEmployee,
+} from "./timeline-performance";
 
 interface TimelineProps {
   brandId: string | null;
@@ -20,6 +27,9 @@ interface TimelineProps {
   category: string | null;
   status: string | null;
 }
+
+const EMPTY_ASSIGNMENTS: Assignment[] = [];
+const EMPTY_ACTUAL_ASSIGNMENTS: ActualAssignment[] = [];
 
 export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
@@ -40,16 +50,24 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
   const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
+  const [renderWindow, setRenderWindow] = useState({
+    key: "",
+    count: TIMELINE_ROW_BATCH_SIZE,
+  });
 
   // Initialize dates client-side to avoid hydration mismatch
   useEffect(() => {
-    setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    const frameId = requestAnimationFrame(() => {
+      setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
-    // Load weekend preference from localStorage
-    const savedShowWeekends = localStorage.getItem('showWeekends');
-    if (savedShowWeekends !== null) {
-      setShowWeekends(savedShowWeekends === 'true');
-    }
+      // Load weekend preference from localStorage
+      const savedShowWeekends = localStorage.getItem('showWeekends');
+      if (savedShowWeekends !== null) {
+        setShowWeekends(savedShowWeekends === 'true');
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
   }, []);
 
   // Track container width with ResizeObserver on timeline-root container
@@ -170,6 +188,18 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   // Fetch assignments with date filtering for display
   const { data: dateFilteredAssignments = [] } = useAssignments(assignmentDateRange);
 
+  const actualAssignmentParams = useMemo(() => {
+    if (days.length === 0) return undefined;
+    return {
+      start_date: toLocalDateString(days[0]),
+      end_date: toLocalDateString(days[days.length - 1]),
+    };
+  }, [days]);
+
+  const { data: actualAssignments = [] } = useActualAssignments(actualAssignmentParams, {
+    enabled: days.length > 0,
+  });
+
   // Fetch ALL assignments (no date filter) for employee filtering by brand
   // This ensures employees with assignments outside the visible date range are still shown
   // PERFORMANCE: When brandId is selected, filter assignments by project UUIDs at the server level
@@ -219,6 +249,11 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
     return grouped;
   }, [filteredAssignments]);
+
+  const actualAssignmentsByEmployee = useMemo(
+    () => groupActualAssignmentsByEmployee(actualAssignments),
+    [actualAssignments]
+  );
 
   // Filter employees based on selected Brand, Department, and Search Query
   const visibleEmployees = useMemo(() => {
@@ -316,12 +351,68 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     return sorted;
   }, [brandId, department, searchQuery, employees, brands, allAssignments, projects, session]);
 
+  const renderWindowKey = useMemo(
+    () => [
+      brandId ?? "",
+      department ?? "",
+      searchQuery?.trim() ?? "",
+      projectId ?? "",
+      category ?? "",
+      status ?? "",
+      viewMode,
+    ].join("|"),
+    [brandId, department, searchQuery, projectId, category, status, viewMode]
+  );
+
+  const renderedEmployeeCount = getEffectiveRenderedEmployeeCount(
+    renderWindow,
+    renderWindowKey,
+    TIMELINE_ROW_BATCH_SIZE
+  );
+
+  const renderedEmployees = useMemo(
+    () => visibleEmployees.slice(0, renderedEmployeeCount),
+    [visibleEmployees, renderedEmployeeCount]
+  );
+
+  useEffect(() => {
+    if (bodyScrollRef.current) {
+      bodyScrollRef.current.scrollTop = 0;
+    }
+  }, [renderWindowKey]);
+
+  const maybeLoadMoreEmployees = useCallback(() => {
+    const container = bodyScrollRef.current;
+    if (!container) return;
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom > TIMELINE_LOAD_MORE_THRESHOLD_PX) return;
+
+    setRenderWindow((current) => {
+      const currentCount = getEffectiveRenderedEmployeeCount(
+        current,
+        renderWindowKey,
+        TIMELINE_ROW_BATCH_SIZE
+      );
+      if (currentCount >= visibleEmployees.length) return current;
+      return {
+        key: renderWindowKey,
+        count: getNextRenderedEmployeeCount(
+          currentCount,
+          visibleEmployees.length,
+          TIMELINE_ROW_BATCH_SIZE
+        ),
+      };
+    });
+  }, [renderWindowKey, visibleEmployees.length]);
+
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
     if (bodyScrollRef.current && headerScrollRef.current) {
       headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
     }
-  }, []);
+    maybeLoadMoreEmployees();
+  }, [maybeLoadMoreEmployees]);
 
   const handleHeaderScroll = useCallback(() => {
     if (headerScrollRef.current && bodyScrollRef.current) {
@@ -405,9 +496,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           aria-label="Timeline day headers"
         >
           <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day, index) => {
+            {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const isMonthView = viewMode === "month";
               const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
               const today = isToday(day);
               const currentMonth = getMonth(day) === getMonth(new Date()) && getYear(day) === getYear(new Date());
@@ -476,7 +566,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                  No employees found for this selection. Go to Setup to assign employees to this brand.
              </div>
           ) : (
-             visibleEmployees.map((employee) => (
+             renderedEmployees.map((employee) => (
                 <ResourceRow
                   key={employee.id}
                   resource={{
@@ -490,7 +580,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                   brandId={brandId}
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
-                  assignments={assignmentsByEmployee.get(employee.id) || []}
+                  assignments={assignmentsByEmployee.get(employee.id) || EMPTY_ASSIGNMENTS}
+                  actualAssignments={actualAssignmentsByEmployee.get(employee.id) || EMPTY_ACTUAL_ASSIGNMENTS}
                   viewMode={viewMode}
                 />
               ))
