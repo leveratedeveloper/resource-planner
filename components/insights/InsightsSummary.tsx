@@ -4,15 +4,31 @@ import React from "react";
 import { Icon } from "@iconify/react";
 import { AnalysisResult } from "@/lib/analysis/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+
+type SummaryComparison = {
+  label: string;
+  tone: "positive" | "negative" | "neutral";
+  icon: string;
+};
+
+type SummaryComparisons = {
+  overallocated?: SummaryComparison | null;
+  underutilized?: SummaryComparison | null;
+  optimal?: SummaryComparison | null;
+  conflicts?: SummaryComparison | null;
+};
 
 interface InsightsSummaryProps {
   result: AnalysisResult | null;
   isLoading: boolean;
+  comparisons?: SummaryComparisons | null;
 }
 
 export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
   result,
   isLoading,
+  comparisons,
 }) => {
   if (isLoading) {
     return (
@@ -48,6 +64,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       color: "text-red-500",
       bgColor: "bg-red-500/10",
       description: "People carrying more work than their capacity supports",
+      comparison: comparisons?.overallocated,
     },
     {
       label: "Underutilized",
@@ -56,6 +73,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       color: "text-amber-500",
       bgColor: "bg-amber-500/10",
       description: "People with room to absorb planned work",
+      comparison: comparisons?.underutilized,
     },
     {
       label: "Optimal",
@@ -64,6 +82,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       color: "text-green-500",
       bgColor: "bg-green-500/10",
       description: "People assigned within the healthy workload range",
+      comparison: comparisons?.optimal,
     },
     {
       label: "Conflicts",
@@ -72,6 +91,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       color: summary.criticalConflicts > 0 ? "text-red-500" : "text-muted-foreground",
       bgColor: summary.criticalConflicts > 0 ? "bg-red-500/10" : "bg-muted/50",
       description: `${summary.criticalConflicts} require immediate planning attention`,
+      comparison: comparisons?.conflicts,
     },
   ];
 
@@ -87,11 +107,42 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
             <span className="text-sm font-medium">{card.label}</span>
           </div>
           <div className={`text-2xl font-bold ${card.color}`}>{card.value}</div>
+          <SummaryComparisonIndicator comparison={card.comparison} />
           <div className="text-xs text-muted-foreground">{card.description}</div>
         </div>
       ))}
     </div>
   );
 };
+
+function SummaryComparisonIndicator({
+  comparison,
+}: {
+  comparison?: SummaryComparison | null;
+}) {
+  if (!comparison) return null;
+
+  const toneClassName =
+    comparison.tone === "positive"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+      : comparison.tone === "negative"
+        ? "border-destructive/30 bg-destructive/10 text-destructive"
+        : "border-border bg-muted/50 text-muted-foreground";
+
+  return (
+    <div
+      className={cn(
+        "my-2 inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium tabular-nums",
+        toneClassName
+      )}
+    >
+      <Icon
+        icon={comparison.icon}
+        className={cn("size-3.5", comparison.icon === "lucide:loader-circle" && "animate-spin")}
+      />
+      <span>{comparison.label}</span>
+    </div>
+  );
+}
 
 export default InsightsSummary;

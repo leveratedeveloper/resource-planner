@@ -155,14 +155,14 @@ function calculateTrend(
 export function generateForecast(
   resources: Resource[],
   assignments: AnalysisAssignment[],
-  weeksAhead: number = 4
+  weeksAhead: number = 4,
+  startDate: Date = new Date()
 ): ForecastResult {
   const forecasts: WeeklyForecast[] = [];
   let previousAvg = 0;
 
-  // Start from current week
-  const today = new Date();
-  let currentWeekStart = getWeekStart(today);
+  // Start from the current week by default, or from a supplied comparison period.
+  const currentWeekStart = getWeekStart(startDate);
 
   for (let i = 0; i < weeksAhead; i++) {
     const weekStart = new Date(currentWeekStart);
