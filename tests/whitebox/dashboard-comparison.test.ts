@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getForecastDateRange,
   getPreviousPeriodRange,
   getPreviousForecastRange,
   getComparisonDelta,
@@ -47,25 +48,44 @@ describe("dashboard comparison helpers", () => {
   });
 
   describe("getPreviousForecastRange", () => {
-    it("preserves the inclusive duration for forecast ranges", () => {
+    it("aligns the current forecast fetch range to four full calendar weeks", () => {
+      expect(getForecastDateRange(new Date(2026, 4, 13))).toEqual({
+        startDate: "2026-05-11",
+        endDate: "2026-06-07",
+      });
+    });
+
+    it("aligns previous forecast ranges to full calendar weeks before the current forecast", () => {
+      expect(
+        getPreviousForecastRange({
+          startDate: "2026-05-11",
+          endDate: "2026-06-07",
+        })
+      ).toEqual({
+        startDate: "2026-04-13",
+        endDate: "2026-05-10",
+      });
+    });
+
+    it("keeps previous forecast ranges to four weeks even when the supplied start is mid-week", () => {
       expect(
         getPreviousForecastRange({
           startDate: "2026-05-13",
           endDate: "2026-06-10",
         })
       ).toEqual({
-        startDate: "2026-04-14",
-        endDate: "2026-05-12",
+        startDate: "2026-04-13",
+        endDate: "2026-05-10",
       });
     });
 
-    it("ends exactly one day before the current forecast range starts", () => {
+    it("ends exactly one day before the current forecast week starts", () => {
       expect(
         getPreviousForecastRange({
-          startDate: "2026-05-13",
-          endDate: "2026-06-10",
+          startDate: "2026-05-11",
+          endDate: "2026-06-07",
         }).endDate
-      ).toBe("2026-05-12");
+      ).toBe("2026-05-10");
     });
   });
 

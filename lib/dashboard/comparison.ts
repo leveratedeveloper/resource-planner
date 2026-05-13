@@ -8,6 +8,8 @@ export type ComparisonUnit = "percentage-point" | "count";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const UTILIZATION_TARGET = 80;
+const DEFAULT_FORECAST_WEEKS = 4;
+const DAYS_PER_WEEK = 7;
 
 function getPreviousEquivalentRange(range: DashboardDateRange): DashboardDateRange {
   const currentStart = parseLocalDateKey(range.startDate);
@@ -30,8 +32,46 @@ export function getPreviousPeriodRange(range: DashboardDateRange): DashboardDate
   return getPreviousEquivalentRange(range);
 }
 
-export function getPreviousForecastRange(range: DashboardDateRange): DashboardDateRange {
-  return getPreviousEquivalentRange(range);
+function getWeekStart(date: Date): Date {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+  start.setDate(diff);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+export function getForecastDateRange(
+  startDate: Date = new Date(),
+  weeksAhead: number = DEFAULT_FORECAST_WEEKS
+): DashboardDateRange {
+  const start = getWeekStart(startDate);
+  const end = new Date(start);
+  end.setDate(end.getDate() + weeksAhead * DAYS_PER_WEEK - 1);
+
+  return {
+    startDate: toLocalDateKey(start),
+    endDate: toLocalDateKey(end),
+  };
+}
+
+export function getPreviousForecastRange(
+  range: DashboardDateRange,
+  weeksAhead: number = DEFAULT_FORECAST_WEEKS
+): DashboardDateRange {
+  const currentStart = getWeekStart(parseLocalDateKey(range.startDate));
+  const durationDays = weeksAhead * DAYS_PER_WEEK;
+
+  const previousEnd = new Date(currentStart);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - durationDays + 1);
+
+  return {
+    startDate: toLocalDateKey(previousStart),
+    endDate: toLocalDateKey(previousEnd),
+  };
 }
 
 export function getComparisonDelta({

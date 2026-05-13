@@ -42,13 +42,14 @@ import {
 } from "@/lib/dashboard/filter-ranges";
 import {
   filterAssignmentsByResourceIds,
+  filterEmployeesActiveDuringRange,
   filterEmployeesByDepartment,
 } from "@/lib/dashboard/dashboard-scope";
 import { getIncrementalWindow } from "@/lib/dashboard/incremental-list";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
-import { useEmployees } from "@/lib/query/hooks/useEmployees";
+import { type Employee, useEmployees } from "@/lib/query/hooks/useEmployees";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import { InsightsSummary } from "@/components/insights/InsightsSummary";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
@@ -58,6 +59,7 @@ import {
   type DashboardComparisonMode,
   getComparisonDelta,
   getDirectionalTone,
+  getForecastDateRange,
   getPreviousForecastRange,
   getPreviousPeriodRange,
   getUtilizationTone,
@@ -79,6 +81,16 @@ type ComparisonDisplay = {
 };
 const DEFAULT_TIME_PRESET: DashboardTimePreset = "monthly";
 const DEFAULT_COMPARISON_MODE: DashboardComparisonMode = "none";
+
+function mapEmployeeToResource(employee: Employee) {
+  return {
+    id: employee.id,
+    name: employee.fullName,
+    role: employee.position,
+    department: employee.department?.name || "Unassigned",
+    capacity: employee.weeklyCapacity,
+  };
+}
 
 export function InsightsDashboard() {
   const router = useRouter();
@@ -194,14 +206,34 @@ export function InsightsDashboard() {
     [scopedEmployees]
   );
 
+  const comparisonScopedEmployees = useMemo(
+    () => filterEmployeesActiveDuringRange(scopedEmployees, comparisonRange),
+    [scopedEmployees, comparisonRange]
+  );
+
+  const comparisonEmployeeIds = useMemo(
+    () => new Set(comparisonScopedEmployees.map((employee) => employee.id)),
+    [comparisonScopedEmployees]
+  );
+
+  const previousForecastScopedEmployees = useMemo(
+    () => filterEmployeesActiveDuringRange(scopedEmployees, previousForecastRange),
+    [scopedEmployees, previousForecastRange]
+  );
+
+  const previousForecastEmployeeIds = useMemo(
+    () => new Set(previousForecastScopedEmployees.map((employee) => employee.id)),
+    [previousForecastScopedEmployees]
+  );
+
   const scopedAssignments = useMemo(
     () => filterAssignmentsByResourceIds(assignments, scopedEmployeeIds),
     [assignments, scopedEmployeeIds]
   );
 
   const scopedComparisonAssignments = useMemo(
-    () => filterAssignmentsByResourceIds(comparisonAssignments, scopedEmployeeIds),
-    [comparisonAssignments, scopedEmployeeIds]
+    () => filterAssignmentsByResourceIds(comparisonAssignments, comparisonEmployeeIds),
+    [comparisonAssignments, comparisonEmployeeIds]
   );
 
   const scopedForecastAssignments = useMemo(
@@ -210,20 +242,23 @@ export function InsightsDashboard() {
   );
 
   const scopedPreviousForecastAssignments = useMemo(
-    () => filterAssignmentsByResourceIds(previousForecastAssignments, scopedEmployeeIds),
-    [previousForecastAssignments, scopedEmployeeIds]
+    () => filterAssignmentsByResourceIds(previousForecastAssignments, previousForecastEmployeeIds),
+    [previousForecastAssignments, previousForecastEmployeeIds]
   );
 
   const resources = useMemo(
-    () =>
-      scopedEmployees.map((employee) => ({
-        id: employee.id,
-        name: employee.fullName,
-        role: employee.position,
-        department: employee.department?.name || "Unassigned",
-        capacity: employee.weeklyCapacity,
-      })),
+    () => scopedEmployees.map(mapEmployeeToResource),
     [scopedEmployees]
+  );
+
+  const comparisonResources = useMemo(
+    () => comparisonScopedEmployees.map(mapEmployeeToResource),
+    [comparisonScopedEmployees]
+  );
+
+  const previousForecastResources = useMemo(
+    () => previousForecastScopedEmployees.map(mapEmployeeToResource),
+    [previousForecastScopedEmployees]
   );
 
   const mappedAssignments = useMemo<AnalysisAssignment[]>(
@@ -344,7 +379,7 @@ export function InsightsDashboard() {
     result: comparisonAnalysisResult,
     isAnalyzing: isComparisonAnalyzing,
   } = useCapacityAnalysis(
-    resources,
+    comparisonResources,
     mappedComparisonAssignments,
     comparisonAnalysisProjects,
     comparisonAnalysisBrands,
@@ -353,7 +388,7 @@ export function InsightsDashboard() {
       end: parseLocalDateKey(comparisonRange.endDate),
     },
     {
-      enabled: comparisonEnabled && resources.length > 0,
+      enabled: comparisonEnabled && comparisonResources.length > 0,
       debounceMs: 500,
       cacheKey: "dashboard-previous-period",
     }
@@ -361,20 +396,25 @@ export function InsightsDashboard() {
 
   const forecast = useMemo(() => {
     if (resources.length === 0 || mappedForecastAssignments.length === 0) return null;
-    return generateForecast(resources, mappedForecastAssignments, 4);
-  }, [resources, mappedForecastAssignments]);
+    return generateForecast(
+      resources,
+      mappedForecastAssignments,
+      4,
+      parseLocalDateKey(forecastRange.startDate)
+    );
+  }, [forecastRange.startDate, resources, mappedForecastAssignments]);
 
   const comparisonForecast = useMemo(() => {
     if (
       !comparisonEnabled ||
-      resources.length === 0 ||
+      previousForecastResources.length === 0 ||
       mappedPreviousForecastAssignments.length === 0
     ) {
       return null;
     }
 
     return generateForecast(
-      resources,
+      previousForecastResources,
       mappedPreviousForecastAssignments,
       4,
       parseLocalDateKey(previousForecastRange.startDate)
@@ -382,7 +422,7 @@ export function InsightsDashboard() {
   }, [
     comparisonEnabled,
     previousForecastRange.startDate,
-    resources,
+    previousForecastResources,
     mappedPreviousForecastAssignments,
   ]);
 
@@ -413,7 +453,7 @@ export function InsightsDashboard() {
     : 0;
   const highRiskWeeks = forecast?.weeks.filter((week) => week.riskLevel === "high").length ?? 0;
   const comparisonSummary = comparisonAnalysisResult?.summary;
-  const comparisonTotalResources = comparisonSummary?.totalResources ?? resources.length;
+  const comparisonTotalResources = comparisonSummary?.totalResources ?? comparisonResources.length;
   const comparisonOptimalRate =
     comparisonTotalResources > 0 && comparisonSummary
       ? Math.round((comparisonSummary.optimalCount / comparisonTotalResources) * 100)
@@ -435,7 +475,7 @@ export function InsightsDashboard() {
     : 0;
   const comparisonLoading =
     comparisonEnabled &&
-    resources.length > 0 &&
+    comparisonResources.length > 0 &&
     (isAnalyzing ||
       comparisonAssignmentsLoading ||
       isComparisonAnalyzing ||
@@ -1039,18 +1079,6 @@ function createComparisonDisplay({
     label: delta.label,
     tone,
     icon,
-  };
-}
-
-function getForecastDateRange(): DashboardDateRange {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 28);
-
-  return {
-    startDate: toLocalDateKey(start),
-    endDate: toLocalDateKey(end),
   };
 }
 
