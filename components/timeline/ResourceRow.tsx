@@ -6,7 +6,7 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { differenceInDays, isWithinInterval, startOfDay, addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
-import { useActualAssignments, useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
+import { useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { calculatePlannedHoursForMonth, calculateActualHoursForMonth } from "@/lib/utils/actual-hours-validation";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import type { Project } from "@/lib/query/hooks/useProjects";
@@ -54,6 +54,7 @@ interface ResourceRowProps {
   cellWidth?: number;
   isWeekView?: boolean;
   assignments: Assignment[]; // Pre-filtered assignments for this employee
+  actualAssignments: ActualAssignment[]; // Pre-filtered actual assignments for this employee
   viewMode?: 'week' | 'month' | 'quarter' | 'halfYear' | 'year';
 }
 
@@ -643,7 +644,7 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
 });
 
 
-export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments, viewMode = 'week' }) => {
+export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments, actualAssignments, viewMode = 'week' }) => {
   // Determine if this is MonthRange view (Quarter/HalfYear/Year)
   // These views show monthly columns instead of weekly columns
   const isMonthRangeView = viewMode === 'quarter' || viewMode === 'halfYear' || viewMode === 'year';
@@ -652,28 +653,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const { session } = useAuth();
   const queryClient = useQueryClient();
 
-  // Debug: Log resource.id vs session.employee.uuid for actual assignment button visibility
-  console.log('[ResourceRow] Permission check for actual assignment:', {
-    resourceName: resource.name,
-    resourceId: resource.id,
-    sessionEmployeeUuid: session?.employee?.uuid,
-    canCreateActual: resource.id === session?.employee?.uuid,
-    areEqual: resource.id === session?.employee?.uuid
-  });
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
   const deleteAssignmentMutation = useDeleteAssignment();
 
-  // Actual assignments hooks - fetch for the resource being displayed, not just logged-in user
-  const { data: actualAssignments = [], isLoading: actualsLoading } = useActualAssignments({
-    employee_uuid: resource.id,  // ← FIXED: Use resource.id instead of session?.employee.uuid
-    start_date: toLocalDateString(days[0]),
-    end_date: toLocalDateString(days[days.length - 1]),
-  });
-
-  // Debug: log actual assignments
-  // console.log('[ResourceRow] actualAssignments:', actualAssignments);
-  // console.log('[ResourceRow] actualsLoading:', actualsLoading);
   const createActualAssignment = useCreateActualAssignment();
   const updateActualAssignment = useUpdateActualAssignment();
   const deleteActualAssignment = useDeleteActualAssignment();

@@ -47,7 +47,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       icon: "lucide:alert-triangle",
       color: "text-red-500",
       bgColor: "bg-red-500/10",
-      description: "Resources > 100% capacity",
+      description: "People carrying more work than their capacity supports",
     },
     {
       label: "Underutilized",
@@ -55,7 +55,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       icon: "lucide:trending-down",
       color: "text-amber-500",
       bgColor: "bg-amber-500/10",
-      description: "Resources < 60% capacity",
+      description: "People with room to absorb planned work",
     },
     {
       label: "Optimal",
@@ -63,7 +63,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       icon: "lucide:check-circle",
       color: "text-green-500",
       bgColor: "bg-green-500/10",
-      description: "Resources at ideal capacity",
+      description: "People assigned within the healthy workload range",
     },
     {
       label: "Conflicts",
@@ -71,7 +71,7 @@ export const InsightsSummary: React.FC<InsightsSummaryProps> = ({
       icon: "lucide:x-circle",
       color: summary.criticalConflicts > 0 ? "text-red-500" : "text-muted-foreground",
       bgColor: summary.criticalConflicts > 0 ? "bg-red-500/10" : "bg-muted/50",
-      description: `${summary.criticalConflicts} critical`,
+      description: `${summary.criticalConflicts} require immediate planning attention`,
     },
   ];
 
