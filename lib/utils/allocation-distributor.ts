@@ -82,6 +82,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
   const startDate = parseDateNoTZ(monthStart);
   const endDate = parseDateNoTZ(monthEnd);
 
+  /*
   console.log('[Allocation Distributor] Input params:', {
     monthStart,
     monthEnd,
@@ -89,6 +90,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
     endDateLocal: endDate.toISOString(),
     totalHours
   });
+  */
 
   // Convert time-off assignments to date strings for comparison
   const timeOffAssignmentsStr = timeOffAssignments.map((a) => ({
@@ -98,7 +100,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
 
   // Calculate total days in range
   const totalDaysInRange = differenceInDays(endDate, startDate) + 1;
-  console.log('[Allocation Distributor] Total days in range:', totalDaysInRange);
+  // console.log('[Allocation Distributor] Total days in range:', totalDaysInRange);
 
   // Collect working days
   const workingDays: Date[] = [];
@@ -116,6 +118,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
     const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday (LOCAL time)
     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
 
+    /*
     console.log('[Allocation Distributor] Processing day:', {
       dayCount,
       currentDateStr,
@@ -123,14 +126,17 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
       dayName,
       currentDateLocal: currentDate.toISOString()
     });
+    */
 
     // Check if weekend (0 = Sunday, 6 = Saturday) - using LOCAL time
     if (dayOfWeek === 0 || dayOfWeek === 6) {
+      /*
       console.log('[Allocation Distributor] Skipping weekend:', {
         date: currentDateStr,
         dayOfWeek,
         dayName
       });
+      */
       blockedDays.weekend++;
     } else {
       // Check if day is time-off (only time-off blocks days)
@@ -141,11 +147,13 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
       if (isTimeOff) {
         blockedDays.timeOff++;
       } else {
+        /*
         console.log('[Allocation Distributor] Adding working day:', {
           date: currentDateStr,
           dayOfWeek,
           dayName
         });
+        */
         // Create LOCAL date at noon to be consistent with toLocalDateString()
         const localDate = new Date(
           currentDate.getFullYear(),
@@ -162,7 +170,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
 
   // 3. Calculate distribution
   const daysCount = workingDays.length;
-  console.log('[Allocation Distributor] Working days found:', daysCount);
+  // console.log('[Allocation Distributor] Working days found:', daysCount);
 
   if (daysCount === 0) {
     return {
@@ -200,6 +208,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
   const totalDistributedHours = Math.round(distributions.reduce((sum, d) => sum + d.hours, 0) * 100) / 100;
   const remainingHours = Math.max(0, Math.round((totalHours - totalDistributedHours) * 100) / 100);
 
+  /*
   console.log('[Allocation Distributor] Final result:', {
     totalDays: daysCount,
     totalHours: totalDistributedHours,
@@ -213,6 +222,7 @@ export function distributeMonthlyHours(params: DistributeMonthlyHoursParams): Di
       hours: d.hours
     }))
   });
+  */
 
   return {
     distributions,

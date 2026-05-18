@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ExportButton } from "@/components/export";
+import { ImportButton } from "./ImportButton";
 
 // Assignment categories
 export const ASSIGNMENT_CATEGORIES = [
@@ -201,74 +202,10 @@ export const FilterBar = React.memo<FilterBarProps>(({
             ))}
           </SelectContent>
         </Select>
-
-        {/* More Dropdown with Category, Status, Clear All - HIDDEN */}
-        {/* <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" data-testid="filter-more-trigger">
-              More
-              <Icon icon="lucide:chevron-down" className="ml-2 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-[200px]">
-            {/* Category Filter *\/}
-            <div className="px-2 py-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Category: {category || "All"}</label>
-            </div>
-            {ASSIGNMENT_CATEGORIES.map((cat) => (
-              <DropdownMenuItem
-                key={cat}
-                onClick={() => onCategoryChange(category === cat ? null : cat)}
-                data-testid={`filter-category-${cat.toLowerCase()}`}
-              >
-                <Icon
-                  icon={category === cat ? "lucide:check" : "lucide:circle"}
-                  className="mr-2 h-4 w-4"
-                />
-                {cat}
-              </DropdownMenuItem>
-            ))}
-
-            <DropdownMenuSeparator />
-
-            {/* Status Filter *\/}
-            <div className="px-2 py-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Status: {status || "All"}</label>
-            </div>
-            {ASSIGNMENT_STATUSES.map((statusOption) => (
-              <DropdownMenuItem
-                key={statusOption.value}
-                onClick={() => onStatusChange(statusOption.value === "all" ? null : statusOption.value)}
-                data-testid={`filter-status-${statusOption.value.toLowerCase()}`}
-              >
-                <Icon
-                  icon={status === statusOption.value || (status === null && statusOption.value === "all") ? "lucide:check" : "lucide:circle"}
-                  className="mr-2 h-4 w-4"
-                />
-                {statusOption.label}
-              </DropdownMenuItem>
-            ))}
-
-            <DropdownMenuSeparator />
-
-            {/* Clear All Filters *\/}
-            <DropdownMenuItem
-              onClick={() => {
-                onProjectChange(null);
-                onCategoryChange(null);
-                onStatusChange(null);
-              }}
-              disabled={!projectId && !category && !status}
-              data-testid="filter-clear-all"
-            >
-              <Icon icon="lucide:x" className="mr-2 h-4 w-4" />
-              Clear Assignment Filters
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu> */}
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+        <ImportButton />
         <ExportButton
           filters={{
             brandId: selectedBrandId,

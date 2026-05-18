@@ -124,7 +124,7 @@ export async function GET(request: Request) {
     const actualData = response?.data?.data || response?.data || [];
 
     // Use the actual data from the API
-    const mergedBrands = (Array.isArray(actualData) ? actualData : []) as RawBrand[];
+    let mergedBrands = (Array.isArray(actualData) ? actualData : []) as RawBrand[];
 
     // Extract meta data from either response.data.meta or response.meta
     const dataMeta = response?.data?.meta;
@@ -132,20 +132,50 @@ export async function GET(request: Request) {
 
     // Use dataMeta if available, otherwise fall back to responseMeta
     const meta = dataMeta || responseMeta;
-    const total = mergedBrands.length;
     const currentPage = meta?.current_page ?? 1;
     const lastPage = meta?.last_page ?? 1;
 
     // Calculate hasMore based on whether we have data and there are more pages
     const hasMore = mergedBrands.length > 0 && currentPage < lastPage;
 
+    // Fetch remaining pages when called without pagination (useCache path)
+    if (useCache && currentPage < lastPage) {
+      const remainingPages = Array.from(
+        { length: lastPage - currentPage },
+        (_, index) => currentPage + index + 1
+      );
+
+      const remainingResponses = await Promise.all(
+        remainingPages.map((nextPage) =>
+          client.getBrands({
+            page: nextPage,
+            per_page: perPage,
+            include: 'all',
+          })
+        )
+      );
+
+      const additionalBrands = remainingResponses.flatMap((pageResponse) => {
+        if (pageResponse.error) {
+          console.error('[Brands API] Failed to fetch brand page:', pageResponse.error);
+          return [];
+        }
+        const pageData = pageResponse?.data?.data || pageResponse?.data || [];
+        return (Array.isArray(pageData) ? pageData : []) as RawBrand[];
+      });
+
+      mergedBrands = [...mergedBrands, ...additionalBrands];
+    }
+
+    const finalHasMore = useCache ? false : hasMore;
+
     console.log('[Brands API] Processed response:', {
       dataLength: mergedBrands.length,
-      total,
       currentPage,
       lastPage,
-      hasMore,
+      hasMore: finalHasMore,
       hasMeta: !!meta,
+      fetchedAllPages: useCache && currentPage < lastPage,
       sampleBrand: mergedBrands[0] ? Object.keys(mergedBrands[0]) : [],
     });
 
@@ -200,8 +230,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: response.success ?? true,
       data: transformedBrands,
-      total,
-      hasMore,
+      total: transformedBrands.length,
+      hasMore: finalHasMore,
     });
   } catch (error) {
     console.error("Failed to fetch brands:", error);

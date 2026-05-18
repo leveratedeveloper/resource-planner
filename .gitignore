@@ -52,5 +52,10 @@ cookies.txt
 debug_*.js
 test-db-koneksi.ts
 
+# scratch/test/check scripts
+scratch/
+
 # local planning notes
 view_plan.md
+import_plan.md
+brands_dump.json
