@@ -6,15 +6,6 @@ type EmployeeScoped = {
   employeeId: string;
 };
 
-type WorkStartScoped = {
-  workStartDate?: string | null;
-};
-
-type DateRangeScoped = {
-  startDate: string;
-  endDate: string;
-};
-
 export function filterEmployeesByDepartment<T extends DepartmentScoped>(
   employees: readonly T[],
   departmentId: string | null
@@ -28,14 +19,4 @@ export function filterAssignmentsByResourceIds<T extends EmployeeScoped>(
   resourceIds: ReadonlySet<string>
 ) {
   return assignments.filter((assignment) => resourceIds.has(assignment.employeeId));
-}
-
-export function filterEmployeesActiveDuringRange<T extends WorkStartScoped>(
-  employees: readonly T[],
-  range: DateRangeScoped
-) {
-  return employees.filter((employee) => {
-    if (!employee.workStartDate) return true;
-    return employee.workStartDate.slice(0, 10) <= range.startDate;
-  });
 }

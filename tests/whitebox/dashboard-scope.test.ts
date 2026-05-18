@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   filterAssignmentsByResourceIds,
-  filterEmployeesActiveDuringRange,
   filterEmployeesByDepartment,
 } from "@/lib/dashboard/dashboard-scope";
 
@@ -30,64 +29,5 @@ describe("dashboard scope helpers", () => {
     expect(filterAssignmentsByResourceIds(assignments, new Set(["emp-1", "emp-3"]))).toEqual([
       assignments[0],
     ]);
-  });
-
-  it("excludes employees whose work start date is after the comparison window", () => {
-    const roster = [
-      { id: "emp-1", workStartDate: "2026-04-01" },
-      { id: "emp-2", workStartDate: "2026-05-15" },
-    ];
-
-    expect(
-      filterEmployeesActiveDuringRange(roster, {
-        startDate: "2026-04-13",
-        endDate: "2026-05-10",
-      })
-    ).toEqual([roster[0]]);
-  });
-
-  it("keeps employees without a work start date in historical rosters", () => {
-    const roster = [
-      { id: "emp-1", workStartDate: null },
-      { id: "emp-2" },
-    ];
-
-    expect(
-      filterEmployeesActiveDuringRange(roster, {
-        startDate: "2026-04-13",
-        endDate: "2026-05-10",
-      })
-    ).toEqual(roster);
-  });
-
-  it("keeps employees active from the start of the comparison window", () => {
-    const roster = [
-      { id: "emp-1", workStartDate: "2026-04-13" },
-      { id: "emp-2", workStartDate: "2026-04-12" },
-    ];
-
-    expect(
-      filterEmployeesActiveDuringRange(roster, {
-        startDate: "2026-04-13",
-        endDate: "2026-05-10",
-      })
-    ).toEqual(roster);
-  });
-
-  it("excludes employees who start inside the comparison window", () => {
-    // Roster = employees active for the full window. Mid-window hires are excluded
-    // to avoid artificial zero-utilization days before employment starts.
-    const roster = [
-      { id: "emp-1", workStartDate: "2026-04-13" },
-      { id: "emp-2", workStartDate: "2026-04-20" },
-      { id: "emp-3", workStartDate: "2026-05-10" },
-    ];
-
-    expect(
-      filterEmployeesActiveDuringRange(roster, {
-        startDate: "2026-04-13",
-        endDate: "2026-05-10",
-      })
-    ).toEqual([roster[0]]);
   });
 });

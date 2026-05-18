@@ -17,7 +17,6 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -28,6 +27,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useAuth } from "@/context/AuthContext";
 import { useCapacityAnalysis } from "@/hooks/useCapacityAnalysis";
@@ -42,7 +47,6 @@ import {
 } from "@/lib/dashboard/filter-ranges";
 import {
   filterAssignmentsByResourceIds,
-  filterEmployeesActiveDuringRange,
   filterEmployeesByDepartment,
 } from "@/lib/dashboard/dashboard-scope";
 import { getIncrementalWindow } from "@/lib/dashboard/incremental-list";
@@ -51,18 +55,17 @@ import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
 import { type Employee, useEmployees } from "@/lib/query/hooks/useEmployees";
 import { useProjects } from "@/lib/query/hooks/useProjects";
-import { InsightsSummary } from "@/components/insights/InsightsSummary";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
 import {
-  calculateAssignedHoursForRange,
-  canShowDashboardComparisonDelta,
-  type ComparisonUnit,
-  type ComparisonTone,
   type DashboardComparisonMode,
-  getComparisonDelta,
-  getForecastDateRange,
   getPreviousPeriodRange,
 } from "@/lib/dashboard/comparison";
+import { getForecastDateRange } from "@/lib/dashboard/forecast-range";
+import {
+  buildUtilizationSignals,
+  type UtilizationBandId,
+  type UtilizationSignal,
+} from "@/lib/dashboard/utilization-signals";
 import { cn } from "@/lib/utils";
 import type {
   AnalysisAssignment,
@@ -73,6 +76,7 @@ import type {
 } from "@/lib/analysis/types";
 
 type DashboardTab = "capacity" | "conflicts" | "forecast";
+type ComparisonTone = "positive" | "negative" | "neutral";
 type ComparisonDisplay = {
   label: string;
   tone: ComparisonTone;
@@ -199,24 +203,14 @@ export function InsightsDashboard() {
     [scopedEmployees]
   );
 
-  const comparisonScopedEmployees = useMemo(
-    () => filterEmployeesActiveDuringRange(scopedEmployees, comparisonRange),
-    [scopedEmployees, comparisonRange]
-  );
-
-  const comparisonEmployeeIds = useMemo(
-    () => new Set(comparisonScopedEmployees.map((employee) => employee.id)),
-    [comparisonScopedEmployees]
-  );
-
   const scopedAssignments = useMemo(
     () => filterAssignmentsByResourceIds(assignments, scopedEmployeeIds),
     [assignments, scopedEmployeeIds]
   );
 
   const scopedComparisonAssignments = useMemo(
-    () => filterAssignmentsByResourceIds(comparisonAssignments, comparisonEmployeeIds),
-    [comparisonAssignments, comparisonEmployeeIds]
+    () => filterAssignmentsByResourceIds(comparisonAssignments, scopedEmployeeIds),
+    [comparisonAssignments, scopedEmployeeIds]
   );
 
   const scopedForecastAssignments = useMemo(
@@ -234,6 +228,11 @@ export function InsightsDashboard() {
     [scopedAssignments]
   );
 
+  const mappedComparisonAssignments = useMemo<AnalysisAssignment[]>(
+    () => mapAssignmentsForAnalysis(scopedComparisonAssignments),
+    [scopedComparisonAssignments]
+  );
+
   const mappedForecastAssignments = useMemo<AnalysisAssignment[]>(
     () => mapAssignmentsForAnalysis(scopedForecastAssignments),
     [scopedForecastAssignments]
@@ -242,6 +241,11 @@ export function InsightsDashboard() {
   const assignmentsByProject = useMemo(
     () => indexResourceIdsByProject(scopedAssignments),
     [scopedAssignments]
+  );
+
+  const comparisonAssignmentsByProject = useMemo(
+    () => indexResourceIdsByProject(scopedComparisonAssignments),
+    [scopedComparisonAssignments]
   );
 
   const analysisProjects = useMemo(
@@ -254,6 +258,18 @@ export function InsightsDashboard() {
         resourceIds: [...(assignmentsByProject.get(project.id) ?? [])],
       })),
     [projects, assignmentsByProject]
+  );
+
+  const comparisonAnalysisProjects = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        brandId: project.brandId,
+        color: project.color || "#6366f1",
+        resourceIds: [...(comparisonAssignmentsByProject.get(project.id) ?? [])],
+      })),
+    [projects, comparisonAssignmentsByProject]
   );
 
   const analysisBrands = useMemo(
@@ -278,6 +294,28 @@ export function InsightsDashboard() {
     [brands, projects, assignmentsByProject]
   );
 
+  const comparisonAnalysisBrands = useMemo(
+    () =>
+      brands.map((brand) => {
+        const resourceSet = new Set<string>();
+        for (const project of projects) {
+          if (project.brandId === brand.id) {
+            for (const id of comparisonAssignmentsByProject.get(project.id) ?? []) {
+              resourceSet.add(id);
+            }
+          }
+        }
+
+        return {
+          id: brand.id,
+          name: brand.name,
+          color: brand.color || "#6366f1",
+          resourceIds: [...resourceSet],
+        };
+      }),
+    [brands, projects, comparisonAssignmentsByProject]
+  );
+
   const {
     result: analysisResult,
     isAnalyzing,
@@ -292,6 +330,26 @@ export function InsightsDashboard() {
       end: parseLocalDateKey(appliedRange.endDate),
     },
     { enabled: resources.length > 0, debounceMs: 500, cacheKey: "dashboard-current" }
+  );
+
+  const {
+    result: comparisonAnalysisResult,
+    isAnalyzing: isComparisonAnalyzing,
+    refresh: refreshComparisonAnalysis,
+  } = useCapacityAnalysis(
+    resources,
+    mappedComparisonAssignments,
+    comparisonAnalysisProjects,
+    comparisonAnalysisBrands,
+    {
+      start: parseLocalDateKey(comparisonRange.startDate),
+      end: parseLocalDateKey(comparisonRange.endDate),
+    },
+    {
+      enabled: comparisonEnabled && resources.length > 0,
+      debounceMs: 500,
+      cacheKey: "dashboard-comparison",
+    }
   );
 
   const forecast = useMemo(() => {
@@ -314,39 +372,19 @@ export function InsightsDashboard() {
       })
     : "Pending analysis";
 
-  const summary = analysisResult?.summary;
-  const totalResources = summary?.totalResources ?? resources.length;
-  const stableResources = summary ? summary.optimalCount : 0;
-  const attentionCount = summary
-    ? summary.overallocatedCount + summary.underutilizedCount + summary.criticalConflicts
-    : 0;
-  const optimalRate = totalResources > 0 ? Math.round((stableResources / totalResources) * 100) : 0;
-  const averageUtilization = analysisResult?.capacityAnalysis.length
-    ? Math.round(
-        analysisResult.capacityAnalysis.reduce(
-          (total, resource) => total + resource.averageUtilization,
-          0
-        ) / analysisResult.capacityAnalysis.length
-      )
-    : 0;
-  const assignedHours = Math.round(calculateAssignedHoursForRange(scopedAssignments, appliedRange));
-  const comparisonAssignedHours = Math.round(
-    calculateAssignedHoursForRange(scopedComparisonAssignments, comparisonRange)
+  const utilizationSignals = useMemo(
+    () =>
+      buildUtilizationSignals({
+        current: analysisResult?.capacityAnalysis ?? [],
+        previous:
+          comparisonEnabled ? comparisonAnalysisResult?.capacityAnalysis ?? [] : null,
+      }),
+    [analysisResult?.capacityAnalysis, comparisonAnalysisResult, comparisonEnabled]
   );
-  const highRiskWeeks = forecast?.weeks.filter((week) => week.riskLevel === "high").length ?? 0;
-  const assignmentComparisonLoading = comparisonEnabled && (assignmentsLoading || comparisonAssignmentsLoading);
-  const assignedHoursComparison =
+  const utilizationComparisonLoading =
     comparisonEnabled &&
-    canShowDashboardComparisonDelta("assigned-hours", { selectedDepartmentId })
-      ? createComparisonDisplay({
-          current: assignedHours,
-          previous: comparisonAssignedHours,
-          unit: "hours",
-          tone: "neutral",
-          isLoading: assignmentComparisonLoading,
-          isUnavailable: false,
-        })
-      : null;
+    resources.length > 0 &&
+    (comparisonAssignmentsLoading || (isComparisonAnalyzing && !comparisonAnalysisResult));
   const topConflicts = analysisResult?.conflicts.slice(0, 3) ?? [];
   const topCapacityRisks =
     analysisResult?.capacityAnalysis
@@ -412,11 +450,21 @@ export function InsightsDashboard() {
                 Main planner
               </Link>
             </Button>
-            <Button onClick={refreshAnalysis} disabled={isAnalyzing}>
+            <Button
+              onClick={() => {
+                refreshAnalysis();
+                if (comparisonEnabled) refreshComparisonAnalysis();
+              }}
+              disabled={isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)}
+            >
               <Icon
                 icon="lucide:refresh-cw"
                 data-icon="inline-start"
-                className={isAnalyzing ? "animate-spin" : undefined}
+                className={
+                  isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)
+                    ? "animate-spin"
+                    : undefined
+                }
               />
               Refresh insights
             </Button>
@@ -444,57 +492,33 @@ export function InsightsDashboard() {
           <CardHeader>
             <CardTitle>Executive Signal</CardTitle>
             <CardDescription>
-              A planner-ready view of team capacity, workload balance, and delivery risk.
+              Employee utilization mix for {scopeLabel}.
               {comparisonEnabled && (
                 <span className="mt-1 block">
-                  {selectedDepartmentId
-                    ? "Previous-period workload comparison is hidden for department filters because department membership is current-state only."
-                    : `Workload compared with ${comparisonRange.startDate} to ${comparisonRange.endDate}. Capacity metrics use current team state.`}
+                  Compared with {comparisonRange.startDate} to {comparisonRange.endDate} using current
+                  team capacity and department structure.
                 </span>
               )}
             </CardDescription>
             <CardAction>
               <div className="flex flex-col items-end gap-1.5">
-                <Badge variant={attentionCount > 0 ? "destructive" : "secondary"}>
-                  {attentionCount > 0 ? `${attentionCount} need review` : "Stable"}
+                <Badge variant="secondary">
+                  {resources.length} {resources.length === 1 ? "person" : "people"}
                 </Badge>
               </div>
             </CardAction>
           </CardHeader>
-          <CardContent className="flex flex-col gap-5">
+          <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricTile
-                label="Optimal resources"
-                value={`${optimalRate}%`}
-                detail={`${stableResources} of ${totalResources} people are balanced`}
-                icon="lucide:target"
-              />
-              <MetricTile
-                label="Avg utilization"
-                value={`${averageUtilization}%`}
-                detail="Current workload across the team"
-                icon="lucide:activity"
-              />
-              <MetricTile
-                label="Assigned hours"
-                value={assignedHours}
-                detail="Exact workload from assignment history"
-                icon="lucide:briefcase-business"
-                comparison={assignedHoursComparison}
-              />
-              <MetricTile
-                label="High-risk weeks"
-                value={highRiskWeeks}
-                detail="Weeks that may need staffing action"
-                icon="lucide:calendar-alert"
-              />
-            </div>
-            <Separator />
-            <div className="rounded-xl border bg-muted/40">
-              <InsightsSummary
-                result={analysisResult}
-                isLoading={isLoading}
-              />
+              {utilizationSignals.map((signal) => (
+                <UtilizationSignalTile
+                  key={signal.id}
+                  signal={signal}
+                  isLoading={isLoading}
+                  comparisonEnabled={comparisonEnabled}
+                  comparisonLoading={utilizationComparisonLoading}
+                />
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -810,52 +834,6 @@ function indexResourceIdsByProject(
   return index;
 }
 
-function createComparisonDisplay({
-  current,
-  previous,
-  unit,
-  tone,
-  isLoading,
-  isUnavailable,
-}: {
-  current: number;
-  previous: number;
-  unit: ComparisonUnit;
-  tone: ComparisonTone;
-  isLoading: boolean;
-  isUnavailable: boolean;
-}): ComparisonDisplay {
-  if (isLoading) {
-    return {
-      label: "Comparing…",
-      tone: "neutral",
-      icon: "lucide:loader-circle",
-    };
-  }
-
-  if (isUnavailable) {
-    return {
-      label: "No previous comparison",
-      tone: "neutral",
-      icon: "lucide:minus",
-    };
-  }
-
-  const delta = getComparisonDelta({ current, previous, unit });
-  const icon =
-    delta.rawDelta > 0
-      ? "lucide:trending-up"
-      : delta.rawDelta < 0
-        ? "lucide:trending-down"
-        : "lucide:minus";
-
-  return {
-    label: delta.label,
-    tone,
-    icon,
-  };
-}
-
 function useIncrementalList<T>(items: readonly T[], pageSize: number) {
   const [pageCount, setPageCount] = useState(1);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -1074,32 +1052,107 @@ function DashboardForecastPanel({
   );
 }
 
-function MetricTile({
-  label,
-  value,
-  detail,
-  icon,
-  comparison,
+function UtilizationSignalTile({
+  signal,
+  isLoading,
+  comparisonEnabled,
+  comparisonLoading,
 }: {
-  label: string;
-  value: string | number;
-  detail: string;
-  icon: string;
-  comparison?: ComparisonDisplay | null;
+  signal: UtilizationSignal;
+  isLoading: boolean;
+  comparisonEnabled: boolean;
+  comparisonLoading: boolean;
 }) {
+  const comparison = getUtilizationSignalComparison(signal, {
+    comparisonEnabled,
+    comparisonLoading,
+  });
+
   return (
-    <div className="rounded-xl border bg-background p-4">
+    <div
+      className={cn(
+        "rounded-xl border border-l-4 p-4 shadow-sm",
+        signal.surfaceClassName,
+        signal.accentClassName
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-          <Icon icon={icon} />
-        </div>
+        <p className="text-sm font-medium text-foreground">{signal.label}</p>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg border border-border/60 outline-none transition focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  signal.iconSurfaceClassName
+                )}
+                aria-label={`${signal.label}: ${signal.description}`}
+              >
+                <Icon icon={signal.icon} className={signal.colorClassName} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-56 text-xs leading-5">
+              <div className="font-medium text-foreground">{signal.label}</div>
+              <div className="text-muted-foreground">{signal.description}</div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      <div className="mt-4 text-3xl font-semibold tabular-nums">{value}</div>
-      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+      {isLoading ? (
+        <Skeleton className="mt-4 h-9 w-20" />
+      ) : (
+        <div className={cn("mt-4 text-3xl font-semibold tabular-nums", signal.colorClassName)}>
+          {signal.percentage}%
+        </div>
+      )}
+      <p className="mt-1 text-xs text-muted-foreground">
+        {signal.count} of {signal.totalCount} {signal.totalCount === 1 ? "person" : "people"}
+      </p>
       <ComparisonIndicator comparison={comparison} className="mt-3" />
     </div>
   );
+}
+
+function getUtilizationSignalComparison(
+  signal: UtilizationSignal,
+  {
+    comparisonEnabled,
+    comparisonLoading,
+  }: {
+    comparisonEnabled: boolean;
+    comparisonLoading: boolean;
+  }
+): ComparisonDisplay | null {
+  if (!comparisonEnabled) return null;
+
+  if (comparisonLoading || signal.delta === undefined || !signal.deltaLabel) {
+    return {
+      label: "Comparing…",
+      tone: "neutral",
+      icon: "lucide:loader-circle",
+    };
+  }
+
+  return {
+    label: signal.deltaLabel,
+    tone: getUtilizationSignalTone(signal.id, signal.delta),
+    icon:
+      signal.delta > 0
+        ? "lucide:trending-up"
+        : signal.delta < 0
+          ? "lucide:trending-down"
+          : "lucide:minus",
+  };
+}
+
+function getUtilizationSignalTone(
+  bandId: UtilizationBandId,
+  delta: number
+): ComparisonTone {
+  if (delta === 0) return "neutral";
+  if (bandId === "healthy-load") return delta > 0 ? "positive" : "negative";
+  return delta < 0 ? "positive" : "negative";
 }
 
 function ComparisonIndicator({
