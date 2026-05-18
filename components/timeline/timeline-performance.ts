@@ -8,7 +8,7 @@ export interface TimelineRenderWindow {
   count: number;
 }
 
-export function getEffectiveRenderedEmployeeCount(
+export function getEffectiveRenderedRowCount(
   renderWindow: TimelineRenderWindow,
   renderWindowKey: string,
   batchSize = TIMELINE_ROW_BATCH_SIZE
@@ -16,13 +16,13 @@ export function getEffectiveRenderedEmployeeCount(
   return renderWindow.key === renderWindowKey ? renderWindow.count : batchSize;
 }
 
-export function getNextRenderedEmployeeCount(
+export function getNextRenderedRowCount(
   currentCount: number,
-  totalEmployees: number,
+  totalRows: number,
   batchSize = TIMELINE_ROW_BATCH_SIZE
 ) {
-  if (currentCount >= totalEmployees) return currentCount;
-  return Math.min(currentCount + batchSize, totalEmployees);
+  if (currentCount >= totalRows) return currentCount;
+  return Math.min(currentCount + batchSize, totalRows);
 }
 
 export function groupActualAssignmentsByEmployee(

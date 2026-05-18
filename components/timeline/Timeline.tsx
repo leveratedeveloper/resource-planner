@@ -15,8 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   TIMELINE_LOAD_MORE_THRESHOLD_PX,
   TIMELINE_ROW_BATCH_SIZE,
-  getEffectiveRenderedEmployeeCount,
-  getNextRenderedEmployeeCount,
+  getEffectiveRenderedRowCount,
+  getNextRenderedRowCount,
   groupActualAssignmentsByEmployee,
 } from "./timeline-performance";
 
@@ -385,15 +385,35 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     [brandId, department, searchQuery, projectId, category, status, viewMode, resourceView]
   );
 
-  const renderedEmployeeCount = getEffectiveRenderedEmployeeCount(
+  const renderedRowCount = getEffectiveRenderedRowCount(
     renderWindow,
     renderWindowKey,
     TIMELINE_ROW_BATCH_SIZE
   );
 
   const renderedEmployees = useMemo(
-    () => visibleEmployees.slice(0, renderedEmployeeCount),
-    [visibleEmployees, renderedEmployeeCount]
+    () => visibleEmployees.slice(0, renderedRowCount),
+    [visibleEmployees, renderedRowCount]
+  );
+
+  const visibleBrands = useMemo(
+    () => Array.from(assignmentsByBrand.entries()),
+    [assignmentsByBrand]
+  );
+
+  const renderedBrands = useMemo(
+    () => visibleBrands.slice(0, renderedRowCount),
+    [visibleBrands, renderedRowCount]
+  );
+
+  const visibleDepartments = useMemo(
+    () => Array.from(assignmentsByDepartment.entries()),
+    [assignmentsByDepartment]
+  );
+
+  const renderedDepartments = useMemo(
+    () => visibleDepartments.slice(0, renderedRowCount),
+    [visibleDepartments, renderedRowCount]
   );
 
   useEffect(() => {
@@ -402,38 +422,44 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
   }, [renderWindowKey]);
 
-  const maybeLoadMoreEmployees = useCallback(() => {
-    if (resourceView !== "employee") return;
+  const maybeLoadMoreRows = useCallback(() => {
+    if (resourceView !== "employee" && resourceView !== "brand" && resourceView !== "department") return;
     const container = bodyScrollRef.current;
     if (!container) return;
 
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     if (distanceFromBottom > TIMELINE_LOAD_MORE_THRESHOLD_PX) return;
 
+    const totalVisibleRows = resourceView === "employee" 
+      ? visibleEmployees.length 
+      : resourceView === "brand"
+        ? visibleBrands.length
+        : visibleDepartments.length;
+
     setRenderWindow((current) => {
-      const currentCount = getEffectiveRenderedEmployeeCount(
+      const currentCount = getEffectiveRenderedRowCount(
         current,
         renderWindowKey,
         TIMELINE_ROW_BATCH_SIZE
       );
-      if (currentCount >= visibleEmployees.length) return current;
+      if (currentCount >= totalVisibleRows) return current;
       return {
         key: renderWindowKey,
-        count: getNextRenderedEmployeeCount(
+        count: getNextRenderedRowCount(
           currentCount,
-          visibleEmployees.length,
+          totalVisibleRows,
           TIMELINE_ROW_BATCH_SIZE
         ),
       };
     });
-  }, [renderWindowKey, visibleEmployees.length, resourceView]);
+  }, [renderWindowKey, visibleEmployees.length, visibleBrands.length, visibleDepartments.length, resourceView]);
 
   const handleBodyScroll = useCallback(() => {
     if (bodyScrollRef.current && headerScrollRef.current) {
       headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
     }
-    maybeLoadMoreEmployees();
-  }, [maybeLoadMoreEmployees]);
+    maybeLoadMoreRows();
+  }, [maybeLoadMoreRows]);
 
   const handleHeaderScroll = useCallback(() => {
     if (headerScrollRef.current && bodyScrollRef.current) {
@@ -615,7 +641,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                 No departments found for this selection.
               </div>
             ) : (
-              Array.from(assignmentsByDepartment.entries()).map(([deptId, dept]) => (
+              renderedDepartments.map(([deptId, dept]) => (
                 <AggregatedRow
                   key={deptId}
                   name={dept.name}
@@ -641,7 +667,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                 No brands found for this selection.
               </div>
             ) : (
-              Array.from(assignmentsByBrand.entries()).map(([brandId, brand]) => (
+              renderedBrands.map(([brandId, brand]) => (
                 <AggregatedRow
                   key={brandId}
                   name={brand.name}
