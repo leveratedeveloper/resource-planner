@@ -54,15 +54,14 @@ import { useProjects } from "@/lib/query/hooks/useProjects";
 import { InsightsSummary } from "@/components/insights/InsightsSummary";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
 import {
+  calculateAssignedHoursForRange,
+  canShowDashboardComparisonDelta,
   type ComparisonUnit,
   type ComparisonTone,
   type DashboardComparisonMode,
   getComparisonDelta,
-  getDirectionalTone,
   getForecastDateRange,
-  getPreviousForecastRange,
   getPreviousPeriodRange,
-  getUtilizationTone,
 } from "@/lib/dashboard/comparison";
 import { cn } from "@/lib/utils";
 import type {
@@ -132,14 +131,8 @@ export function InsightsDashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("capacity");
   const [visitedTabs, setVisitedTabs] = useState<Set<DashboardTab>>(() => new Set(["capacity"]));
   const forecastRange = useMemo(() => getForecastDateRange(), []);
-  const previousForecastRange = useMemo(
-    () => getPreviousForecastRange(forecastRange),
-    [forecastRange]
-  );
   const { data: forecastAssignments = [], isLoading: forecastAssignmentsLoading } =
     useAssignments(forecastRange);
-  const { data: previousForecastAssignments = [], isLoading: previousForecastAssignmentsLoading } =
-    useAssignments(previousForecastRange, { enabled: comparisonEnabled });
 
   const handleTimePresetChange = useCallback(
     (preset: DashboardTimePreset) => {
@@ -216,16 +209,6 @@ export function InsightsDashboard() {
     [comparisonScopedEmployees]
   );
 
-  const previousForecastScopedEmployees = useMemo(
-    () => filterEmployeesActiveDuringRange(scopedEmployees, previousForecastRange),
-    [scopedEmployees, previousForecastRange]
-  );
-
-  const previousForecastEmployeeIds = useMemo(
-    () => new Set(previousForecastScopedEmployees.map((employee) => employee.id)),
-    [previousForecastScopedEmployees]
-  );
-
   const scopedAssignments = useMemo(
     () => filterAssignmentsByResourceIds(assignments, scopedEmployeeIds),
     [assignments, scopedEmployeeIds]
@@ -241,24 +224,9 @@ export function InsightsDashboard() {
     [forecastAssignments, scopedEmployeeIds]
   );
 
-  const scopedPreviousForecastAssignments = useMemo(
-    () => filterAssignmentsByResourceIds(previousForecastAssignments, previousForecastEmployeeIds),
-    [previousForecastAssignments, previousForecastEmployeeIds]
-  );
-
   const resources = useMemo(
     () => scopedEmployees.map(mapEmployeeToResource),
     [scopedEmployees]
-  );
-
-  const comparisonResources = useMemo(
-    () => comparisonScopedEmployees.map(mapEmployeeToResource),
-    [comparisonScopedEmployees]
-  );
-
-  const previousForecastResources = useMemo(
-    () => previousForecastScopedEmployees.map(mapEmployeeToResource),
-    [previousForecastScopedEmployees]
   );
 
   const mappedAssignments = useMemo<AnalysisAssignment[]>(
@@ -266,29 +234,14 @@ export function InsightsDashboard() {
     [scopedAssignments]
   );
 
-  const mappedComparisonAssignments = useMemo<AnalysisAssignment[]>(
-    () => mapAssignmentsForAnalysis(scopedComparisonAssignments),
-    [scopedComparisonAssignments]
-  );
-
   const mappedForecastAssignments = useMemo<AnalysisAssignment[]>(
     () => mapAssignmentsForAnalysis(scopedForecastAssignments),
     [scopedForecastAssignments]
   );
 
-  const mappedPreviousForecastAssignments = useMemo<AnalysisAssignment[]>(
-    () => mapAssignmentsForAnalysis(scopedPreviousForecastAssignments),
-    [scopedPreviousForecastAssignments]
-  );
-
   const assignmentsByProject = useMemo(
     () => indexResourceIdsByProject(scopedAssignments),
     [scopedAssignments]
-  );
-
-  const comparisonAssignmentsByProject = useMemo(
-    () => indexResourceIdsByProject(scopedComparisonAssignments),
-    [scopedComparisonAssignments]
   );
 
   const analysisProjects = useMemo(
@@ -301,18 +254,6 @@ export function InsightsDashboard() {
         resourceIds: [...(assignmentsByProject.get(project.id) ?? [])],
       })),
     [projects, assignmentsByProject]
-  );
-
-  const comparisonAnalysisProjects = useMemo(
-    () =>
-      projects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        brandId: project.brandId,
-        color: project.color || "#6366f1",
-        resourceIds: [...(comparisonAssignmentsByProject.get(project.id) ?? [])],
-      })),
-    [projects, comparisonAssignmentsByProject]
   );
 
   const analysisBrands = useMemo(
@@ -337,28 +278,6 @@ export function InsightsDashboard() {
     [brands, projects, assignmentsByProject]
   );
 
-  const comparisonAnalysisBrands = useMemo(
-    () =>
-      brands.map((brand) => {
-        const resourceSet = new Set<string>();
-        for (const project of projects) {
-          if (project.brandId === brand.id) {
-            for (const id of comparisonAssignmentsByProject.get(project.id) ?? []) {
-              resourceSet.add(id);
-            }
-          }
-        }
-
-        return {
-          id: brand.id,
-          name: brand.name,
-          color: brand.color || "#6366f1",
-          resourceIds: [...resourceSet],
-        };
-      }),
-    [brands, projects, comparisonAssignmentsByProject]
-  );
-
   const {
     result: analysisResult,
     isAnalyzing,
@@ -375,25 +294,6 @@ export function InsightsDashboard() {
     { enabled: resources.length > 0, debounceMs: 500, cacheKey: "dashboard-current" }
   );
 
-  const {
-    result: comparisonAnalysisResult,
-    isAnalyzing: isComparisonAnalyzing,
-  } = useCapacityAnalysis(
-    comparisonResources,
-    mappedComparisonAssignments,
-    comparisonAnalysisProjects,
-    comparisonAnalysisBrands,
-    {
-      start: parseLocalDateKey(comparisonRange.startDate),
-      end: parseLocalDateKey(comparisonRange.endDate),
-    },
-    {
-      enabled: comparisonEnabled && comparisonResources.length > 0,
-      debounceMs: 500,
-      cacheKey: "dashboard-previous-period",
-    }
-  );
-
   const forecast = useMemo(() => {
     if (resources.length === 0 || mappedForecastAssignments.length === 0) return null;
     return generateForecast(
@@ -403,28 +303,6 @@ export function InsightsDashboard() {
       parseLocalDateKey(forecastRange.startDate)
     );
   }, [forecastRange.startDate, resources, mappedForecastAssignments]);
-
-  const comparisonForecast = useMemo(() => {
-    if (
-      !comparisonEnabled ||
-      previousForecastResources.length === 0 ||
-      mappedPreviousForecastAssignments.length === 0
-    ) {
-      return null;
-    }
-
-    return generateForecast(
-      previousForecastResources,
-      mappedPreviousForecastAssignments,
-      4,
-      parseLocalDateKey(previousForecastRange.startDate)
-    );
-  }, [
-    comparisonEnabled,
-    previousForecastRange.startDate,
-    previousForecastResources,
-    mappedPreviousForecastAssignments,
-  ]);
 
   const isLoading = isSessionLoading || employeesLoading || assignmentsLoading || (isAnalyzing && !analysisResult);
   const hasDashboardAccess = canAccessDashboard(session);
@@ -451,132 +329,24 @@ export function InsightsDashboard() {
         ) / analysisResult.capacityAnalysis.length
       )
     : 0;
+  const assignedHours = Math.round(calculateAssignedHoursForRange(scopedAssignments, appliedRange));
+  const comparisonAssignedHours = Math.round(
+    calculateAssignedHoursForRange(scopedComparisonAssignments, comparisonRange)
+  );
   const highRiskWeeks = forecast?.weeks.filter((week) => week.riskLevel === "high").length ?? 0;
-  const comparisonSummary = comparisonAnalysisResult?.summary;
-  const comparisonTotalResources = comparisonSummary?.totalResources ?? comparisonResources.length;
-  const comparisonOptimalRate =
-    comparisonTotalResources > 0 && comparisonSummary
-      ? Math.round((comparisonSummary.optimalCount / comparisonTotalResources) * 100)
-      : 0;
-  const comparisonAverageUtilization = comparisonAnalysisResult?.capacityAnalysis.length
-    ? Math.round(
-        comparisonAnalysisResult.capacityAnalysis.reduce(
-          (total, resource) => total + resource.averageUtilization,
-          0
-        ) / comparisonAnalysisResult.capacityAnalysis.length
-      )
-    : 0;
-  const comparisonHighRiskWeeks =
-    comparisonForecast?.weeks.filter((week) => week.riskLevel === "high").length ?? 0;
-  const comparisonAttentionCount = comparisonSummary
-    ? comparisonSummary.overallocatedCount +
-      comparisonSummary.underutilizedCount +
-      comparisonSummary.criticalConflicts
-    : 0;
-  const comparisonLoading =
+  const assignmentComparisonLoading = comparisonEnabled && (assignmentsLoading || comparisonAssignmentsLoading);
+  const assignedHoursComparison =
     comparisonEnabled &&
-    comparisonResources.length > 0 &&
-    (isAnalyzing ||
-      comparisonAssignmentsLoading ||
-      isComparisonAnalyzing ||
-      !comparisonAnalysisResult);
-  const forecastComparisonLoading =
-    comparisonLoading || forecastAssignmentsLoading || previousForecastAssignmentsLoading;
-  const comparisonUnavailable =
-    comparisonEnabled && !comparisonLoading && (!comparisonAnalysisResult || comparisonTotalResources === 0);
-  const optimalRateComparison = comparisonEnabled
-    ? createComparisonDisplay({
-        current: optimalRate,
-        previous: comparisonOptimalRate,
-        unit: "percentage-point",
-        tone: getDirectionalTone(optimalRate - comparisonOptimalRate, "higher-is-better"),
-        isLoading: comparisonLoading,
-        isUnavailable: comparisonUnavailable,
-      })
-    : null;
-  const averageUtilizationComparison = comparisonEnabled
-    ? createComparisonDisplay({
-        current: averageUtilization,
-        previous: comparisonAverageUtilization,
-        unit: "percentage-point",
-        tone: getUtilizationTone({
-          current: averageUtilization,
-          previous: comparisonAverageUtilization,
-        }),
-        isLoading: comparisonLoading,
-        isUnavailable: comparisonUnavailable,
-      })
-    : null;
-  const highRiskWeeksComparison = comparisonEnabled
-    ? createComparisonDisplay({
-        current: highRiskWeeks,
-        previous: comparisonHighRiskWeeks,
-        unit: "count",
-        tone: getDirectionalTone(highRiskWeeks - comparisonHighRiskWeeks, "lower-is-better"),
-        isLoading: forecastComparisonLoading,
-        isUnavailable:
-          comparisonUnavailable ||
-          (!forecastComparisonLoading && comparisonEnabled && !comparisonForecast),
-      })
-    : null;
-  const attentionCountComparison = comparisonEnabled
-    ? createComparisonDisplay({
-        current: attentionCount,
-        previous: comparisonAttentionCount,
-        unit: "count",
-        tone: getDirectionalTone(attentionCount - comparisonAttentionCount, "lower-is-better"),
-        isLoading: comparisonLoading,
-        isUnavailable: comparisonUnavailable,
-      })
-    : null;
-  const summaryComparisons = comparisonEnabled
-    ? {
-        overallocated: createComparisonDisplay({
-          current: summary?.overallocatedCount ?? 0,
-          previous: comparisonSummary?.overallocatedCount ?? 0,
-          unit: "count",
-          tone: getDirectionalTone(
-            (summary?.overallocatedCount ?? 0) - (comparisonSummary?.overallocatedCount ?? 0),
-            "lower-is-better"
-          ),
-          isLoading: comparisonLoading,
-          isUnavailable: comparisonUnavailable,
-        }),
-        underutilized: createComparisonDisplay({
-          current: summary?.underutilizedCount ?? 0,
-          previous: comparisonSummary?.underutilizedCount ?? 0,
-          unit: "count",
-          tone: getDirectionalTone(
-            (summary?.underutilizedCount ?? 0) - (comparisonSummary?.underutilizedCount ?? 0),
-            "lower-is-better"
-          ),
-          isLoading: comparisonLoading,
-          isUnavailable: comparisonUnavailable,
-        }),
-        optimal: createComparisonDisplay({
-          current: summary?.optimalCount ?? 0,
-          previous: comparisonSummary?.optimalCount ?? 0,
-          unit: "count",
-          tone: getDirectionalTone(
-            (summary?.optimalCount ?? 0) - (comparisonSummary?.optimalCount ?? 0),
-            "higher-is-better"
-          ),
-          isLoading: comparisonLoading,
-          isUnavailable: comparisonUnavailable,
-        }),
-        conflicts: createComparisonDisplay({
-          current: summary?.conflictCount ?? 0,
-          previous: comparisonSummary?.conflictCount ?? 0,
-          unit: "count",
-          tone: getDirectionalTone(
-            (summary?.conflictCount ?? 0) - (comparisonSummary?.conflictCount ?? 0),
-            "lower-is-better"
-          ),
-          isLoading: comparisonLoading,
-          isUnavailable: comparisonUnavailable,
-        }),
-      }
-    : null;
+    canShowDashboardComparisonDelta("assigned-hours", { selectedDepartmentId })
+      ? createComparisonDisplay({
+          current: assignedHours,
+          previous: comparisonAssignedHours,
+          unit: "hours",
+          tone: "neutral",
+          isLoading: assignmentComparisonLoading,
+          isUnavailable: false,
+        })
+      : null;
   const topConflicts = analysisResult?.conflicts.slice(0, 3) ?? [];
   const topCapacityRisks =
     analysisResult?.capacityAnalysis
@@ -677,7 +447,9 @@ export function InsightsDashboard() {
               A planner-ready view of team capacity, workload balance, and delivery risk.
               {comparisonEnabled && (
                 <span className="mt-1 block">
-                  Compared with {comparisonRange.startDate} to {comparisonRange.endDate}
+                  {selectedDepartmentId
+                    ? "Previous-period workload comparison is hidden for department filters because department membership is current-state only."
+                    : `Workload compared with ${comparisonRange.startDate} to ${comparisonRange.endDate}. Capacity metrics use current team state.`}
                 </span>
               )}
             </CardDescription>
@@ -686,32 +458,35 @@ export function InsightsDashboard() {
                 <Badge variant={attentionCount > 0 ? "destructive" : "secondary"}>
                   {attentionCount > 0 ? `${attentionCount} need review` : "Stable"}
                 </Badge>
-                <ComparisonIndicator comparison={attentionCountComparison} />
               </div>
             </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricTile
                 label="Optimal resources"
                 value={`${optimalRate}%`}
                 detail={`${stableResources} of ${totalResources} people are balanced`}
                 icon="lucide:target"
-                comparison={optimalRateComparison}
               />
               <MetricTile
                 label="Avg utilization"
                 value={`${averageUtilization}%`}
                 detail="Current workload across the team"
                 icon="lucide:activity"
-                comparison={averageUtilizationComparison}
+              />
+              <MetricTile
+                label="Assigned hours"
+                value={assignedHours}
+                detail="Exact workload from assignment history"
+                icon="lucide:briefcase-business"
+                comparison={assignedHoursComparison}
               />
               <MetricTile
                 label="High-risk weeks"
                 value={highRiskWeeks}
                 detail="Weeks that may need staffing action"
                 icon="lucide:calendar-alert"
-                comparison={highRiskWeeksComparison}
               />
             </div>
             <Separator />
@@ -719,7 +494,6 @@ export function InsightsDashboard() {
               <InsightsSummary
                 result={analysisResult}
                 isLoading={isLoading}
-                comparisons={summaryComparisons}
               />
             </div>
           </CardContent>

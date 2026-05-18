@@ -60,10 +60,10 @@ describe("dashboard scope helpers", () => {
     ).toEqual(roster);
   });
 
-  it("keeps employees whose work start date falls inside the comparison window", () => {
+  it("keeps employees active from the start of the comparison window", () => {
     const roster = [
       { id: "emp-1", workStartDate: "2026-04-13" },
-      { id: "emp-2", workStartDate: "2026-05-10" },
+      { id: "emp-2", workStartDate: "2026-04-12" },
     ];
 
     expect(
@@ -72,5 +72,22 @@ describe("dashboard scope helpers", () => {
         endDate: "2026-05-10",
       })
     ).toEqual(roster);
+  });
+
+  it("excludes employees who start inside the comparison window", () => {
+    // Roster = employees active for the full window. Mid-window hires are excluded
+    // to avoid artificial zero-utilization days before employment starts.
+    const roster = [
+      { id: "emp-1", workStartDate: "2026-04-13" },
+      { id: "emp-2", workStartDate: "2026-04-20" },
+      { id: "emp-3", workStartDate: "2026-05-10" },
+    ];
+
+    expect(
+      filterEmployeesActiveDuringRange(roster, {
+        startDate: "2026-04-13",
+        endDate: "2026-05-10",
+      })
+    ).toEqual([roster[0]]);
   });
 });

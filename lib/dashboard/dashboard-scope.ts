@@ -36,6 +36,6 @@ export function filterEmployeesActiveDuringRange<T extends WorkStartScoped>(
 ) {
   return employees.filter((employee) => {
     if (!employee.workStartDate) return true;
-    return employee.workStartDate <= range.endDate;
+    return employee.workStartDate.slice(0, 10) <= range.startDate;
   });
 }
