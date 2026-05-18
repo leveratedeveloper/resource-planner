@@ -51,3 +51,7 @@ cookies.txt
 # debug scripts
 debug_*.js
 test-db-koneksi.ts
+
+# AI Agents
+AGENTS.md
+DESIGN.md
