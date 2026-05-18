@@ -29,6 +29,10 @@ type UseCapacityAnalysisOptions = {
 type UseCapacityAnalysisReturn = {
   /** Latest analysis result */
   result: AnalysisResult | null;
+  /** Fingerprint used to produce the latest result */
+  resultFingerprint: string | null;
+  /** Whether the latest result matches the current input fingerprint */
+  isResultFresh: boolean;
   /** Whether analysis is currently running */
   isAnalyzing: boolean;
   /** Error if analysis failed */
@@ -46,6 +50,16 @@ export function getAnalysisDateRangeKeys(dateRange: { start: Date; end: Date }) 
   };
 }
 
+export function isAnalysisResultFresh({
+  resultFingerprint,
+  inputFingerprint,
+}: {
+  resultFingerprint: string | null;
+  inputFingerprint: string;
+}) {
+  return resultFingerprint === inputFingerprint;
+}
+
 /**
  * Hook for performing capacity analysis in a Web Worker
  */
@@ -60,6 +74,7 @@ export function useCapacityAnalysis(
   const { debounceMs = 300, enabled = true, cacheKey = "main" } = options;
 
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [resultFingerprint, setResultFingerprint] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<Date | null>(null);
@@ -129,6 +144,7 @@ export function useCapacityAnalysis(
       if (cachedResult) {
         console.log("[useCapacityAnalysis] Cache hit - using cached result");
         setResult(cachedResult as AnalysisResult);
+        setResultFingerprint(inputFingerprint);
         return;
       }
     }
@@ -147,6 +163,7 @@ export function useCapacityAnalysis(
       // Only update state if this is still the current request (Fix 5)
       if (currentRequestIdRef.current === requestId) {
         setResult(analysisResult);
+        setResultFingerprint(inputFingerprint);
         setLastAnalyzedAt(new Date());
         // Cache the result (Fix 1)
         analysisResultCache.set(cacheKey, analysisResult, inputFingerprint);
@@ -159,6 +176,7 @@ export function useCapacityAnalysis(
       if (currentRequestIdRef.current === requestId) {
         console.error("[useCapacityAnalysis] Analysis failed:", err);
         setError(err instanceof Error ? err : new Error("Analysis failed"));
+        setResultFingerprint(null);
       }
     } finally {
       // Only update loading state if this is still the current request
@@ -196,6 +214,8 @@ export function useCapacityAnalysis(
 
   return {
     result,
+    resultFingerprint,
+    isResultFresh: isAnalysisResultFresh({ resultFingerprint, inputFingerprint }),
     isAnalyzing,
     error,
     refresh,

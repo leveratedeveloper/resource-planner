@@ -25,6 +25,12 @@ export type UtilizationSignal = UtilizationSignalBand & {
   deltaLabel?: string;
 };
 
+export type UtilizationComparisonDisplay = {
+  label: string;
+  tone: "positive" | "negative" | "neutral";
+  icon: string;
+};
+
 export const UTILIZATION_SIGNAL_BANDS: UtilizationSignalBand[] = [
   {
     id: "available-capacity",
@@ -96,6 +102,57 @@ function getPercentage(count: number, totalCount: number) {
 function formatDelta(delta: number) {
   if (delta === 0) return "No change";
   return `${delta > 0 ? "+" : ""}${delta} pts vs previous`;
+}
+
+function getUtilizationSignalTone(
+  bandId: UtilizationBandId,
+  delta: number
+): UtilizationComparisonDisplay["tone"] {
+  if (delta === 0) return "neutral";
+  if (bandId === "healthy-load") return delta > 0 ? "positive" : "negative";
+  return delta < 0 ? "positive" : "negative";
+}
+
+export function getUtilizationComparisonDisplay(
+  signal: UtilizationSignal,
+  {
+    comparisonEnabled,
+    comparisonLoading,
+    comparisonUnavailable,
+  }: {
+    comparisonEnabled: boolean;
+    comparisonLoading: boolean;
+    comparisonUnavailable: boolean;
+  }
+): UtilizationComparisonDisplay | null {
+  if (!comparisonEnabled) return null;
+
+  if (comparisonUnavailable) {
+    return {
+      label: "Comparison unavailable",
+      tone: "neutral",
+      icon: "lucide:circle-alert",
+    };
+  }
+
+  if (comparisonLoading || signal.delta === undefined || !signal.deltaLabel) {
+    return {
+      label: "Comparing…",
+      tone: "neutral",
+      icon: "lucide:loader-circle",
+    };
+  }
+
+  return {
+    label: signal.deltaLabel,
+    tone: getUtilizationSignalTone(signal.id, signal.delta),
+    icon:
+      signal.delta > 0
+        ? "lucide:trending-up"
+        : signal.delta < 0
+          ? "lucide:trending-down"
+          : "lucide:minus",
+  };
 }
 
 export function buildUtilizationSignals({

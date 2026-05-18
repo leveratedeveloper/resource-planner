@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildUtilizationSignals,
+  getUtilizationComparisonDisplay,
   getUtilizationBand,
 } from "@/lib/dashboard/utilization-signals";
 import type { ResourceCapacityAnalysis } from "@/lib/analysis/types";
@@ -98,5 +99,62 @@ describe("dashboard utilization signals", () => {
       "-25 pts vs previous",
       "No change",
     ]);
+  });
+
+  it("does not render real deltas while previous-period comparison is still loading", () => {
+    const signal = buildUtilizationSignals({
+      current: [makeResource("emp-1", 84)],
+      previous: [makeResource("emp-1", 20)],
+    })[2];
+
+    expect(
+      getUtilizationComparisonDisplay(signal, {
+        comparisonEnabled: true,
+        comparisonLoading: true,
+        comparisonUnavailable: false,
+      })
+    ).toMatchObject({
+      label: "Comparing…",
+      tone: "neutral",
+      icon: "lucide:loader-circle",
+    });
+  });
+
+  it("renders unavailable state when previous-period comparison fails", () => {
+    const signal = buildUtilizationSignals({
+      current: [makeResource("emp-1", 84)],
+      previous: [makeResource("emp-1", 20)],
+    })[2];
+
+    expect(
+      getUtilizationComparisonDisplay(signal, {
+        comparisonEnabled: true,
+        comparisonLoading: false,
+        comparisonUnavailable: true,
+      })
+    ).toMatchObject({
+      label: "Comparison unavailable",
+      tone: "neutral",
+      icon: "lucide:circle-alert",
+    });
+  });
+
+  it("renders no-change deltas for successful empty previous-period data", () => {
+    const signal = buildUtilizationSignals({
+      current: [],
+      previous: [],
+    })[0];
+
+    expect(
+      getUtilizationComparisonDisplay(signal, {
+        comparisonEnabled: true,
+        comparisonLoading: false,
+        comparisonUnavailable: false,
+      })
+    ).toMatchObject({
+      label: "No change",
+      tone: "neutral",
+      icon: "lucide:minus",
+    });
   });
 });

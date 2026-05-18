@@ -63,7 +63,8 @@ import {
 import { getForecastDateRange } from "@/lib/dashboard/forecast-range";
 import {
   buildUtilizationSignals,
-  type UtilizationBandId,
+  getUtilizationComparisonDisplay,
+  type UtilizationComparisonDisplay,
   type UtilizationSignal,
 } from "@/lib/dashboard/utilization-signals";
 import { cn } from "@/lib/utils";
@@ -76,12 +77,6 @@ import type {
 } from "@/lib/analysis/types";
 
 type DashboardTab = "capacity" | "conflicts" | "forecast";
-type ComparisonTone = "positive" | "negative" | "neutral";
-type ComparisonDisplay = {
-  label: string;
-  tone: ComparisonTone;
-  icon: string;
-};
 const DEFAULT_TIME_PRESET: DashboardTimePreset = "monthly";
 const DEFAULT_COMPARISON_MODE: DashboardComparisonMode = "none";
 
@@ -130,7 +125,12 @@ export function InsightsDashboard() {
   const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments(appliedRange);
   const comparisonRange = useMemo(() => getPreviousPeriodRange(appliedRange), [appliedRange]);
   const comparisonEnabled = comparisonMode === "previous-period";
-  const { data: comparisonAssignments = [], isLoading: comparisonAssignmentsLoading } =
+  const {
+    data: comparisonAssignments,
+    isError: comparisonAssignmentsError,
+    isLoading: comparisonAssignmentsLoading,
+    isSuccess: comparisonAssignmentsSuccess,
+  } =
     useAssignments(comparisonRange, { enabled: comparisonEnabled });
   const [activeTab, setActiveTab] = useState<DashboardTab>("capacity");
   const [visitedTabs, setVisitedTabs] = useState<Set<DashboardTab>>(() => new Set(["capacity"]));
@@ -209,7 +209,7 @@ export function InsightsDashboard() {
   );
 
   const scopedComparisonAssignments = useMemo(
-    () => filterAssignmentsByResourceIds(comparisonAssignments, scopedEmployeeIds),
+    () => filterAssignmentsByResourceIds(comparisonAssignments ?? [], scopedEmployeeIds),
     [comparisonAssignments, scopedEmployeeIds]
   );
 
@@ -334,6 +334,7 @@ export function InsightsDashboard() {
 
   const {
     result: comparisonAnalysisResult,
+    isResultFresh: isComparisonAnalysisFresh,
     isAnalyzing: isComparisonAnalyzing,
     refresh: refreshComparisonAnalysis,
   } = useCapacityAnalysis(
@@ -346,7 +347,7 @@ export function InsightsDashboard() {
       end: parseLocalDateKey(comparisonRange.endDate),
     },
     {
-      enabled: comparisonEnabled && resources.length > 0,
+      enabled: comparisonEnabled && comparisonAssignmentsSuccess && resources.length > 0,
       debounceMs: 500,
       cacheKey: "dashboard-comparison",
     }
@@ -377,14 +378,24 @@ export function InsightsDashboard() {
       buildUtilizationSignals({
         current: analysisResult?.capacityAnalysis ?? [],
         previous:
-          comparisonEnabled ? comparisonAnalysisResult?.capacityAnalysis ?? [] : null,
+          comparisonEnabled && comparisonAssignmentsSuccess && isComparisonAnalysisFresh
+            ? comparisonAnalysisResult?.capacityAnalysis ?? []
+            : null,
       }),
-    [analysisResult?.capacityAnalysis, comparisonAnalysisResult, comparisonEnabled]
+    [
+      analysisResult?.capacityAnalysis,
+      comparisonAnalysisResult,
+      comparisonAssignmentsSuccess,
+      comparisonEnabled,
+      isComparisonAnalysisFresh,
+    ]
   );
+  const utilizationComparisonUnavailable = comparisonEnabled && comparisonAssignmentsError;
   const utilizationComparisonLoading =
     comparisonEnabled &&
     resources.length > 0 &&
-    (comparisonAssignmentsLoading || (isComparisonAnalyzing && !comparisonAnalysisResult));
+    !utilizationComparisonUnavailable &&
+    (!comparisonAssignmentsSuccess || comparisonAssignmentsLoading || isComparisonAnalyzing || !isComparisonAnalysisFresh);
   const topConflicts = analysisResult?.conflicts.slice(0, 3) ?? [];
   const topCapacityRisks =
     analysisResult?.capacityAnalysis
@@ -495,8 +506,9 @@ export function InsightsDashboard() {
               Employee utilization mix for {scopeLabel}.
               {comparisonEnabled && (
                 <span className="mt-1 block">
-                  Compared with {comparisonRange.startDate} to {comparisonRange.endDate} using current
-                  team capacity and department structure.
+                  Previous-period metrics use historical assignments from {comparisonRange.startDate} to{" "}
+                  {comparisonRange.endDate} mapped onto the current scoped roster, current capacity,
+                  and current department structure.
                 </span>
               )}
             </CardDescription>
@@ -517,6 +529,7 @@ export function InsightsDashboard() {
                   isLoading={isLoading}
                   comparisonEnabled={comparisonEnabled}
                   comparisonLoading={utilizationComparisonLoading}
+                  comparisonUnavailable={utilizationComparisonUnavailable}
                 />
               ))}
             </div>
@@ -1057,15 +1070,18 @@ function UtilizationSignalTile({
   isLoading,
   comparisonEnabled,
   comparisonLoading,
+  comparisonUnavailable,
 }: {
   signal: UtilizationSignal;
   isLoading: boolean;
   comparisonEnabled: boolean;
   comparisonLoading: boolean;
+  comparisonUnavailable: boolean;
 }) {
-  const comparison = getUtilizationSignalComparison(signal, {
+  const comparison = getUtilizationComparisonDisplay(signal, {
     comparisonEnabled,
     comparisonLoading,
+    comparisonUnavailable,
   });
 
   return (
@@ -1114,52 +1130,11 @@ function UtilizationSignalTile({
   );
 }
 
-function getUtilizationSignalComparison(
-  signal: UtilizationSignal,
-  {
-    comparisonEnabled,
-    comparisonLoading,
-  }: {
-    comparisonEnabled: boolean;
-    comparisonLoading: boolean;
-  }
-): ComparisonDisplay | null {
-  if (!comparisonEnabled) return null;
-
-  if (comparisonLoading || signal.delta === undefined || !signal.deltaLabel) {
-    return {
-      label: "Comparing…",
-      tone: "neutral",
-      icon: "lucide:loader-circle",
-    };
-  }
-
-  return {
-    label: signal.deltaLabel,
-    tone: getUtilizationSignalTone(signal.id, signal.delta),
-    icon:
-      signal.delta > 0
-        ? "lucide:trending-up"
-        : signal.delta < 0
-          ? "lucide:trending-down"
-          : "lucide:minus",
-  };
-}
-
-function getUtilizationSignalTone(
-  bandId: UtilizationBandId,
-  delta: number
-): ComparisonTone {
-  if (delta === 0) return "neutral";
-  if (bandId === "healthy-load") return delta > 0 ? "positive" : "negative";
-  return delta < 0 ? "positive" : "negative";
-}
-
 function ComparisonIndicator({
   comparison,
   className,
 }: {
-  comparison?: ComparisonDisplay | null;
+  comparison?: UtilizationComparisonDisplay | null;
   className?: string;
 }) {
   if (!comparison) return null;

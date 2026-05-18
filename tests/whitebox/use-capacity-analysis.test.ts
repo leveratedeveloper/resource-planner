@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getAnalysisDateRangeKeys } from "@/hooks/useCapacityAnalysis";
+import {
+  getAnalysisDateRangeKeys,
+  isAnalysisResultFresh,
+} from "@/hooks/useCapacityAnalysis";
 
 describe("useCapacityAnalysis helpers", () => {
   it("normalizes equivalent date values to stable local date keys", () => {
@@ -17,5 +20,28 @@ describe("useCapacityAnalysis helpers", () => {
       endKey: "2026-05-12",
     });
     expect(second).toEqual(first);
+  });
+
+  it("marks analysis results stale when their fingerprint no longer matches the latest input", () => {
+    expect(
+      isAnalysisResultFresh({
+        resultFingerprint: "current-input",
+        inputFingerprint: "current-input",
+      })
+    ).toBe(true);
+
+    expect(
+      isAnalysisResultFresh({
+        resultFingerprint: "old-input",
+        inputFingerprint: "current-input",
+      })
+    ).toBe(false);
+
+    expect(
+      isAnalysisResultFresh({
+        resultFingerprint: null,
+        inputFingerprint: "current-input",
+      })
+    ).toBe(false);
   });
 });
