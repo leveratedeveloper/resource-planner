@@ -25,6 +25,9 @@ export function getNextRenderedRowCount(
   return Math.min(currentCount + batchSize, totalRows);
 }
 
+export const getEffectiveRenderedEmployeeCount = getEffectiveRenderedRowCount;
+export const getNextRenderedEmployeeCount = getNextRenderedRowCount;
+
 export function groupActualAssignmentsByEmployee(
   actualAssignments: ActualAssignment[]
 ) {

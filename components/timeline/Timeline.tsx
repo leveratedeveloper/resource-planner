@@ -10,7 +10,7 @@ import { AggregatedRow } from "./AggregatedRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode, ResourceView } from "./TimelineHeaderControls";
 import { addDays, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfDay, isToday, getMonth, getYear } from "date-fns";
-import { cn, toLocalDateString } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   TIMELINE_LOAD_MORE_THRESHOLD_PX,
@@ -19,6 +19,11 @@ import {
   getNextRenderedRowCount,
   groupActualAssignmentsByEmployee,
 } from "./timeline-performance";
+import {
+  getAssignmentDepartmentId,
+  groupAssignmentsByDepartment,
+} from "./timeline-aggregation";
+import { getTimelineDateRange } from "./timeline-date-range";
 
 interface TimelineProps {
   brandId: string | null;
@@ -159,15 +164,22 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
-  const { data: dateFilteredAssignments = [] } = useAssignments(undefined);
+  const assignmentParams = useMemo(
+    () => getTimelineDateRange(days, viewMode),
+    [days, viewMode]
+  );
+
+  const { data: dateFilteredAssignments = [] } = useAssignments(assignmentParams, {
+    enabled: days.length > 0,
+  });
 
   const actualAssignmentParams = useMemo(() => {
-    if (days.length === 0) return undefined;
+    if (!assignmentParams) return undefined;
     return {
-      start_date: toLocalDateString(days[0]),
-      end_date: toLocalDateString(days[days.length - 1]),
+      start_date: assignmentParams.startDate,
+      end_date: assignmentParams.endDate,
     };
-  }, [days]);
+  }, [assignmentParams]);
 
   const { data: actualAssignments = [] } = useActualAssignments(actualAssignmentParams, {
     enabled: days.length > 0,
@@ -203,9 +215,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     if (department) {
       filtered = filtered.filter((assignment) => {
-        if (assignment.employee?.department?.id === department) return true;
-        const employee = employeeById.get(assignment.employeeId);
-        return employee?.departmentId === department;
+        const assignmentDepartmentId = getAssignmentDepartmentId(assignment, employeeById);
+        return assignmentDepartmentId === department;
       });
     }
 
@@ -240,33 +251,13 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const assignmentsByDepartment = useMemo(() => {
     if (resourceView !== "department") return new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
 
-    const grouped = new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
-    let filteredDepartments = departments;
-    
-    if (department) {
-      filteredDepartments = filteredDepartments.filter(d => d.id === department);
-    }
-    
-    if (searchQuery && searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filteredDepartments = filteredDepartments.filter(d => d.name.toLowerCase().includes(query));
-    }
-
-    for (const dept of filteredDepartments) {
-      grouped.set(dept.id, {
-        name: dept.name,
-        color: dept.color || "#6b7280",
-        assignments: [],
-      });
-    }
-
-    for (const assignment of filteredAssignments) {
-      const dept = assignment.employee?.department ?? employeeById.get(assignment.employeeId)?.department;
-      if (!dept) continue;
-      grouped.get(dept.id)?.assignments.push(assignment);
-    }
-
-    return new Map([...grouped.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)));
+    return groupAssignmentsByDepartment({
+      assignments: filteredAssignments,
+      departments,
+      employeeById,
+      selectedDepartmentId: department,
+      searchQuery,
+    });
   }, [filteredAssignments, resourceView, employeeById, departments, department, searchQuery]);
 
   // Aggregate by Brand
