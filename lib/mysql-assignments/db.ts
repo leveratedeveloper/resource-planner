@@ -4,15 +4,15 @@
  * - Vercel (production): PostgreSQL with single client per request
  */
 
-import { createPool, type Pool as MySQLPool } from 'mysql2/promise';
 import { Pool as PostgreSQLPool, Client as PostgreSQLClient } from 'pg';
+import type { Pool as MySQLPool } from 'mysql2/promise';
 
 // Type for database connection
 export type DbClient = 'mysql' | 'postgresql';
 
 // Detect database type from environment
 export const getDbClient = (): DbClient => {
-  // If DATABASE_URL is set (Vercel Postgres), use PostgreSQL
+  // If DATABASE_URL is set, use PostgreSQL (production)
   if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
     return 'postgresql';
   }
@@ -22,18 +22,25 @@ export const getDbClient = (): DbClient => {
 
 const dbClient = getDbClient();
 
-// MySQL Pool (for local development)
-const mysqlPool: MySQLPool = createPool({
-  host: process.env.MYSQL_ASSIGNMENTS_HOST || '127.0.0.1',
-  port: parseInt(process.env.MYSQL_ASSIGNMENTS_PORT || '3306'),
-  user: process.env.MYSQL_ASSIGNMENTS_USER || 'root',
-  password: process.env.MYSQL_ASSIGNMENTS_PASSWORD || '',
-  database: process.env.MYSQL_ASSIGNMENTS_DATABASE || 'resource_planner_assignments',
-  waitForConnections: true,
-  connectionLimit: 10,
-  timezone: '+00:00',
-  dateStrings: true,
-});
+// MySQL Pool (lazy — only loaded when dbClient === 'mysql', so the Workers
+// bundler does not pull in mysql2 on the production Postgres path).
+let _mysqlPool: MySQLPool | null = null;
+async function getMysqlPool(): Promise<MySQLPool> {
+  if (_mysqlPool) return _mysqlPool;
+  const { createPool } = await import('mysql2/promise');
+  _mysqlPool = createPool({
+    host: process.env.MYSQL_ASSIGNMENTS_HOST || '127.0.0.1',
+    port: parseInt(process.env.MYSQL_ASSIGNMENTS_PORT || '3306'),
+    user: process.env.MYSQL_ASSIGNMENTS_USER || 'root',
+    password: process.env.MYSQL_ASSIGNMENTS_PASSWORD || '',
+    database: process.env.MYSQL_ASSIGNMENTS_DATABASE || 'resource_planner_assignments',
+    waitForConnections: true,
+    connectionLimit: 10,
+    timezone: '+00:00',
+    dateStrings: true,
+  });
+  return _mysqlPool;
+}
 
 // PostgreSQL client for serverless - ALWAYS create new connection to avoid stale connections
 async function getPostgresClient(): Promise<PostgreSQLClient> {
@@ -62,7 +69,8 @@ export const assignmentsDb = {
         await client.end();
       }
     } else {
-      return mysqlPool.query(sql, params);
+      const pool = await getMysqlPool();
+      return pool.query(sql, params);
     }
   },
 
@@ -81,7 +89,8 @@ export const assignmentsDb = {
         await client.end();
       }
     } else {
-      return mysqlPool.execute(sql, params);
+      const pool = await getMysqlPool();
+      return pool.execute(sql, params);
     }
   },
 
@@ -105,14 +114,16 @@ export const assignmentsDb = {
         ping: async () => client.query('SELECT 1'),
       };
     }
-    return mysqlPool.getConnection();
+    const pool = await getMysqlPool();
+    return pool.getConnection();
   },
 
   async end() {
     // No-op for PostgreSQL serverless (connections auto-close)
-    // MySQL pool still needs to be closed
-    if (dbClient === 'mysql') {
-      await mysqlPool.end();
+    // MySQL pool still needs to be closed if it was ever opened
+    if (dbClient === 'mysql' && _mysqlPool) {
+      await _mysqlPool.end();
+      _mysqlPool = null;
     }
   },
 };
@@ -159,5 +170,3 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
-// Export MySQL pool for direct access (PostgreSQL no longer exports client as it's created per-request)
-export { mysqlPool };
