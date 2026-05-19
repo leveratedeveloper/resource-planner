@@ -60,6 +60,10 @@ import {
   type DashboardComparisonMode,
   getPreviousPeriodRange,
 } from "@/lib/dashboard/comparison";
+import {
+  getUtilizationComparisonState,
+  refreshDashboardInsights,
+} from "@/lib/dashboard/comparison-state";
 import { getForecastDateRange } from "@/lib/dashboard/forecast-range";
 import {
   buildUtilizationSignals,
@@ -130,6 +134,7 @@ export function InsightsDashboard() {
     isError: comparisonAssignmentsError,
     isLoading: comparisonAssignmentsLoading,
     isSuccess: comparisonAssignmentsSuccess,
+    refetch: refetchComparisonAssignments,
   } =
     useAssignments(comparisonRange, { enabled: comparisonEnabled });
   const [activeTab, setActiveTab] = useState<DashboardTab>("capacity");
@@ -318,6 +323,7 @@ export function InsightsDashboard() {
 
   const {
     result: analysisResult,
+    isResultFresh: isCurrentAnalysisFresh,
     isAnalyzing,
     refresh: refreshAnalysis,
   } = useCapacityAnalysis(
@@ -373,29 +379,31 @@ export function InsightsDashboard() {
       })
     : "Pending analysis";
 
+  const utilizationComparisonState = getUtilizationComparisonState({
+    comparisonEnabled,
+    resourceCount: resources.length,
+    assignmentsError: comparisonAssignmentsError,
+    assignmentsLoading: comparisonAssignmentsLoading,
+    assignmentsSuccess: comparisonAssignmentsSuccess,
+    currentAnalyzing: isAnalyzing,
+    currentFresh: isCurrentAnalysisFresh,
+    comparisonAnalyzing: isComparisonAnalyzing,
+    comparisonFresh: isComparisonAnalysisFresh,
+  });
   const utilizationSignals = useMemo(
     () =>
       buildUtilizationSignals({
         current: analysisResult?.capacityAnalysis ?? [],
-        previous:
-          comparisonEnabled && comparisonAssignmentsSuccess && isComparisonAnalysisFresh
-            ? comparisonAnalysisResult?.capacityAnalysis ?? []
-            : null,
+        previous: utilizationComparisonState.shouldUsePrevious
+          ? comparisonAnalysisResult?.capacityAnalysis ?? []
+          : null,
       }),
     [
       analysisResult?.capacityAnalysis,
       comparisonAnalysisResult,
-      comparisonAssignmentsSuccess,
-      comparisonEnabled,
-      isComparisonAnalysisFresh,
+      utilizationComparisonState.shouldUsePrevious,
     ]
   );
-  const utilizationComparisonUnavailable = comparisonEnabled && comparisonAssignmentsError;
-  const utilizationComparisonLoading =
-    comparisonEnabled &&
-    resources.length > 0 &&
-    !utilizationComparisonUnavailable &&
-    (!comparisonAssignmentsSuccess || comparisonAssignmentsLoading || isComparisonAnalyzing || !isComparisonAnalysisFresh);
   const topConflicts = analysisResult?.conflicts.slice(0, 3) ?? [];
   const topCapacityRisks =
     analysisResult?.capacityAnalysis
@@ -463,8 +471,12 @@ export function InsightsDashboard() {
             </Button>
             <Button
               onClick={() => {
-                refreshAnalysis();
-                if (comparisonEnabled) refreshComparisonAnalysis();
+                refreshDashboardInsights({
+                  comparisonEnabled,
+                  refreshAnalysis,
+                  refreshComparisonAnalysis,
+                  refetchComparisonAssignments,
+                });
               }}
               disabled={isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)}
             >
@@ -528,8 +540,8 @@ export function InsightsDashboard() {
                   signal={signal}
                   isLoading={isLoading}
                   comparisonEnabled={comparisonEnabled}
-                  comparisonLoading={utilizationComparisonLoading}
-                  comparisonUnavailable={utilizationComparisonUnavailable}
+                  comparisonLoading={utilizationComparisonState.loading}
+                  comparisonUnavailable={utilizationComparisonState.unavailable}
                 />
               ))}
             </div>
