@@ -44,10 +44,6 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    // Debug logging - show full response to diagnose issues
-    console.log('[Projects API] Campaigns FULL response:', JSON.stringify(campaignsResponse, null, 2));
-    console.log('[Projects API] Pitches FULL response:', JSON.stringify(pitchesResponse, null, 2));
-
     // Check for error responses - return early if both failed
     if (campaignsResponse?.error && pitchesResponse?.error) {
       console.error('[Projects API] Both campaigns and pitches failed');
@@ -67,9 +63,6 @@ export async function GET(request: Request) {
     // MySQL API might return: { success: true, data: [...] } or { success: true, data: { data: [...], meta: {...} } }
     const campaignsData = campaignsResponse?.data?.data || campaignsResponse?.data || [];
     const pitchesData = pitchesResponse?.data?.data || pitchesResponse?.data || [];
-
-    console.log('[Projects API] Campaigns count:', campaignsData.length);
-    console.log('[Projects API] Pitches count:', pitchesData.length);
 
     // Transform campaigns to projects
     const campaignProjects = campaignsData.map((campaign: any) => ({

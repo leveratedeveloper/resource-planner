@@ -31,8 +31,6 @@ export async function GET(request: Request) {
       search: search || undefined,
     });
 
-    console.log('[Departments API] Raw MySQL response:', JSON.stringify(response, null, 2));
-
     // Check for API errors from the client
     if (response.error) {
       console.error('[Departments API] MySQL API returned an error:', response.error);

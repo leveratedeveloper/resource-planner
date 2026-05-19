@@ -149,10 +149,11 @@ async function deleteEmployee(id: string): Promise<void> {
 }
 
 // Hooks
-export function useEmployees() {
+export function useEmployees(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.employees,
     queryFn: fetchEmployees,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -178,7 +179,7 @@ async function fetchEmployeesPaginated({ pageParam = 0, search }: { pageParam?: 
   };
 }
 
-export function useInfiniteEmployees(search?: string) {
+export function useInfiniteEmployees(search?: string, options?: { enabled?: boolean }) {
   return useInfiniteQuery({
     queryKey: [...queryKeys.employeesInfinite, search],
     queryFn: ({ pageParam }) => fetchEmployeesPaginated({ pageParam, search }),
@@ -187,6 +188,7 @@ export function useInfiniteEmployees(search?: string) {
       if (!lastPage.hasMore) return undefined;
       return allPages.reduce((acc, page) => acc + page.data.length, 0);
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

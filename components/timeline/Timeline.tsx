@@ -1,15 +1,25 @@
 "use client";
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
-import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
-import { useEmployees, useBrands, useProjects } from "@/lib/query/hooks";
+import { useEmployees, useInfiniteEmployees, useBrands, useProjects } from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
+import { useActualAssignments } from "@/lib/query/hooks/useActualAssignments";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  getActualAssignmentsForEmployee,
+  getTimelineActualQueryParams,
+  groupActualAssignmentsByEmployee,
+} from "@/lib/timeline/actuals";
+import {
+  getLoadedTimelineEmployees,
+  shouldUseCompleteEmployeeList,
+} from "@/lib/timeline/employees";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
 import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday, getMonth, getYear } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, toLocalDateString } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface TimelineProps {
@@ -23,7 +33,25 @@ interface TimelineProps {
 
 export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
-  const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
+  const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, searchQuery });
+  const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
+    enabled: useCompleteEmployeeList,
+  });
+  const {
+    data: incrementalEmployeePages,
+    isLoading: isLoadingIncrementalEmployees,
+    hasNextPage: hasNextEmployeePage,
+    isFetchingNextPage: isFetchingNextEmployeePage,
+    fetchNextPage: fetchNextEmployeePage,
+  } = useInfiniteEmployees(searchQuery, {
+    enabled: !useCompleteEmployeeList,
+  });
+  const employees = useCompleteEmployeeList
+    ? completeEmployees
+    : getLoadedTimelineEmployees(incrementalEmployeePages?.pages);
+  const isLoadingEmployees = useCompleteEmployeeList
+    ? isLoadingCompleteEmployees
+    : isLoadingIncrementalEmployees;
   const { data: brands = [] } = useBrands();
   const { data: projects = [] } = useProjects();
   const { session } = useAuth();
@@ -158,14 +186,15 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   // Month view now shows daily columns like week view, so it's not included here
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
-  // PERFORMANCE: Calculate date range for assignments API filtering
-  // This reduces data transfer by ~80% for timeline views
-  // NOTE: We fetch ALL assignments for the organization to show all projects in all views
+  // PERFORMANCE: Calculate date range for assignments API filtering.
+  // Brand visibility still uses allAssignments below when it needs cross-range context.
   const assignmentDateRange = useMemo(() => {
-    // Return undefined to fetch ALL assignments (no date filter)
-    // This ensures all projects assigned to the organization appear in all views
-    return undefined;
-  }, []);
+    if (days.length === 0) return undefined;
+    return {
+      startDate: toLocalDateString(days[0]),
+      endDate: toLocalDateString(days[days.length - 1]),
+    };
+  }, [days]);
 
   // Fetch assignments with date filtering for display
   const { data: dateFilteredAssignments = [] } = useAssignments(assignmentDateRange);
@@ -179,8 +208,27 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     return projects.filter(p => p.brandId === brandId).map(p => p.id);
   }, [brandId, projects]);
 
+  const shouldFetchBrandAssignments =
+    !!brandId && (!projects.length || (brandProjectIds?.length ?? 0) > 0);
+
   const { data: allAssignments = [] } = useAssignments(
-    brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined
+    brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined,
+    { enabled: shouldFetchBrandAssignments }
+  );
+
+  const actualQueryParams = useMemo(
+    () => getTimelineActualQueryParams(days),
+    [days]
+  );
+
+  const { data: visibleActualAssignments = [] } = useActualAssignments(
+    actualQueryParams,
+    { enabled: !!actualQueryParams }
+  );
+
+  const actualAssignmentsByEmployee = useMemo(
+    () => groupActualAssignmentsByEmployee(visibleActualAssignments),
+    [visibleActualAssignments]
   );
 
   // Apply additional filters (project, category, status) to date-filtered assignments for display
@@ -301,7 +349,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     }
 
     // Sort: current user first, then alphabetically by name
-    const sorted = filtered.sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       // Current user (logged-in employee) always first
       const aIsCurrentUser = a.id === session?.employee?.uuid;
       const bIsCurrentUser = b.id === session?.employee?.uuid;
@@ -315,6 +363,38 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     return sorted;
   }, [brandId, department, searchQuery, employees, brands, allAssignments, projects, session]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: visibleEmployees.length,
+    getScrollElement: () => bodyScrollRef.current,
+    estimateSize: () => 72,
+    overscan: 8,
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) {
+      return;
+    }
+
+    const lastVirtualRow = virtualRows[virtualRows.length - 1];
+    const shouldPrefetchInitialRows = !isLoadingEmployees && visibleEmployees.length < 20;
+    const shouldPrefetchNearEnd =
+      !!lastVirtualRow && lastVirtualRow.index >= visibleEmployees.length - 10;
+
+    if (shouldPrefetchInitialRows || shouldPrefetchNearEnd) {
+      fetchNextEmployeePage();
+    }
+  }, [
+    fetchNextEmployeePage,
+    hasNextEmployeePage,
+    isFetchingNextEmployeePage,
+    isLoadingEmployees,
+    useCompleteEmployeeList,
+    virtualRows,
+    visibleEmployees.length,
+  ]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
@@ -476,24 +556,50 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                  No employees found for this selection. Go to Setup to assign employees to this brand.
              </div>
           ) : (
-             visibleEmployees.map((employee) => (
-                <ResourceRow
-                  key={employee.id}
-                  resource={{
-                    id: employee.id,
-                    name: employee.fullName,
-                    role: employee.position,
-                    department: employee.department?.name || "",
-                    capacity: employee.weeklyCapacity,
-                  }}
-                  days={days}
-                  brandId={brandId}
-                  cellWidth={cellWidth}
-                  isWeekView={isWeekView}
-                  assignments={assignmentsByEmployee.get(employee.id) || []}
-                  viewMode={viewMode}
-                />
-              ))
+             <div
+               className="relative w-full"
+               style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+             >
+               {virtualRows.map((virtualRow) => {
+                 const employee = visibleEmployees[virtualRow.index];
+                 if (!employee) return null;
+
+                 return (
+                   <div
+                     key={employee.id}
+                     data-index={virtualRow.index}
+                     ref={rowVirtualizer.measureElement}
+                     className="absolute left-0 top-0 w-full"
+                     style={{ transform: `translateY(${virtualRow.start}px)` }}
+                   >
+                     <ResourceRow
+                       resource={{
+                         id: employee.id,
+                         name: employee.fullName,
+                         role: employee.position,
+                         department: employee.department?.name || "",
+                         capacity: employee.weeklyCapacity,
+                       }}
+                       days={days}
+                       brandId={brandId}
+                       cellWidth={cellWidth}
+                       isWeekView={isWeekView}
+                       assignments={assignmentsByEmployee.get(employee.id) || []}
+                       actualAssignments={getActualAssignmentsForEmployee(actualAssignmentsByEmployee, employee.id)}
+                       viewMode={viewMode}
+                     />
+                   </div>
+                 );
+               })}
+               {!useCompleteEmployeeList && isFetchingNextEmployeePage ? (
+                 <div
+                   className="absolute left-0 w-full border-b bg-background p-4 text-sm text-muted-foreground"
+                   style={{ transform: `translateY(${rowVirtualizer.getTotalSize()}px)` }}
+                 >
+                   Loading more employees...
+                 </div>
+               ) : null}
+             </div>
           )}
         </div>
       </div>
