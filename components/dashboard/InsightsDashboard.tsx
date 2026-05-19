@@ -132,7 +132,7 @@ export function InsightsDashboard() {
   const {
     data: comparisonAssignments,
     isError: comparisonAssignmentsError,
-    isLoading: comparisonAssignmentsLoading,
+    isFetching: comparisonAssignmentsLoading,
     isSuccess: comparisonAssignmentsSuccess,
     refetch: refetchComparisonAssignments,
   } =
@@ -471,20 +471,26 @@ export function InsightsDashboard() {
             </Button>
             <Button
               onClick={() => {
-                refreshDashboardInsights({
+                void refreshDashboardInsights({
                   comparisonEnabled,
                   refreshAnalysis,
                   refreshComparisonAnalysis,
                   refetchComparisonAssignments,
                 });
               }}
-              disabled={isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)}
+              disabled={
+                isAnalyzing ||
+                (comparisonEnabled &&
+                  (isComparisonAnalyzing || comparisonAssignmentsLoading))
+              }
             >
               <Icon
                 icon="lucide:refresh-cw"
                 data-icon="inline-start"
                 className={
-                  isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)
+                  isAnalyzing ||
+                  (comparisonEnabled &&
+                    (isComparisonAnalyzing || comparisonAssignmentsLoading))
                     ? "animate-spin"
                     : undefined
                 }

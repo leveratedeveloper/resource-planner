@@ -125,12 +125,18 @@ describe("dashboard comparison state", () => {
     });
   });
 
-  it("retries previous-period assignments when refreshing with comparison enabled", () => {
+  it("awaits previous-period assignments before refreshing the workers", async () => {
     const refreshAnalysis = vi.fn();
     const refreshComparisonAnalysis = vi.fn();
-    const refetchComparisonAssignments = vi.fn();
+    let resolveRefetch: (() => void) | undefined;
+    const refetchComparisonAssignments = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefetch = resolve;
+        })
+    );
 
-    refreshDashboardInsights({
+    const promise = refreshDashboardInsights({
       comparisonEnabled: true,
       refreshAnalysis,
       refreshComparisonAnalysis,
@@ -138,16 +144,22 @@ describe("dashboard comparison state", () => {
     });
 
     expect(refetchComparisonAssignments).toHaveBeenCalledTimes(1);
+    expect(refreshAnalysis).not.toHaveBeenCalled();
+    expect(refreshComparisonAnalysis).not.toHaveBeenCalled();
+
+    resolveRefetch?.();
+    await promise;
+
     expect(refreshAnalysis).toHaveBeenCalledTimes(1);
     expect(refreshComparisonAnalysis).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry previous-period assignments when comparison is disabled", () => {
+  it("does not retry previous-period assignments when comparison is disabled", async () => {
     const refreshAnalysis = vi.fn();
     const refreshComparisonAnalysis = vi.fn();
     const refetchComparisonAssignments = vi.fn();
 
-    refreshDashboardInsights({
+    await refreshDashboardInsights({
       comparisonEnabled: false,
       refreshAnalysis,
       refreshComparisonAnalysis,

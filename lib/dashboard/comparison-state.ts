@@ -59,14 +59,14 @@ type RefreshDashboardInsightsInput = {
   refetchComparisonAssignments: () => unknown;
 };
 
-export function refreshDashboardInsights({
+export async function refreshDashboardInsights({
   comparisonEnabled,
   refreshAnalysis,
   refreshComparisonAnalysis,
   refetchComparisonAssignments,
-}: RefreshDashboardInsightsInput) {
+}: RefreshDashboardInsightsInput): Promise<void> {
   if (comparisonEnabled) {
-    refetchComparisonAssignments();
+    await refetchComparisonAssignments();
   }
 
   refreshAnalysis();
