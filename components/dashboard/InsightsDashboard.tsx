@@ -17,7 +17,6 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -28,6 +27,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useAuth } from "@/context/AuthContext";
 import { useCapacityAnalysis } from "@/hooks/useCapacityAnalysis";
@@ -48,10 +53,25 @@ import { getIncrementalWindow } from "@/lib/dashboard/incremental-list";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
-import { useEmployees } from "@/lib/query/hooks/useEmployees";
+import { type Employee, useEmployees } from "@/lib/query/hooks/useEmployees";
 import { useProjects } from "@/lib/query/hooks/useProjects";
-import { InsightsSummary } from "@/components/insights/InsightsSummary";
 import { generateForecast } from "@/lib/analysis/forecasting-engine";
+import {
+  type DashboardComparisonMode,
+  getPreviousPeriodRange,
+} from "@/lib/dashboard/comparison";
+import {
+  getUtilizationComparisonState,
+  refreshDashboardInsights,
+} from "@/lib/dashboard/comparison-state";
+import { getForecastDateRange } from "@/lib/dashboard/forecast-range";
+import {
+  buildUtilizationSignals,
+  getUtilizationComparisonDisplay,
+  type UtilizationComparisonDisplay,
+  type UtilizationSignal,
+} from "@/lib/dashboard/utilization-signals";
+import { cn } from "@/lib/utils";
 import type {
   AnalysisAssignment,
   Conflict,
@@ -62,6 +82,17 @@ import type {
 
 type DashboardTab = "capacity" | "conflicts" | "forecast";
 const DEFAULT_TIME_PRESET: DashboardTimePreset = "monthly";
+const DEFAULT_COMPARISON_MODE: DashboardComparisonMode = "none";
+
+function mapEmployeeToResource(employee: Employee) {
+  return {
+    id: employee.id,
+    name: employee.fullName,
+    role: employee.position,
+    department: employee.department?.name || "Unassigned",
+    capacity: employee.weeklyCapacity,
+  };
+}
 
 export function InsightsDashboard() {
   const router = useRouter();
@@ -78,6 +109,8 @@ export function InsightsDashboard() {
     parseLocalDateKey(initialRange.endDate)
   );
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null);
+  const [comparisonMode, setComparisonMode] =
+    useState<DashboardComparisonMode>(DEFAULT_COMPARISON_MODE);
   const [appliedRange, setAppliedRange] = useState<DashboardDateRange>(initialRange);
   const today = useMemo(() => {
     const date = new Date();
@@ -94,6 +127,16 @@ export function InsightsDashboard() {
   const { data: projects = [] } = useProjects();
   const { data: brands = [] } = useBrands();
   const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments(appliedRange);
+  const comparisonRange = useMemo(() => getPreviousPeriodRange(appliedRange), [appliedRange]);
+  const comparisonEnabled = comparisonMode === "previous-period";
+  const {
+    data: comparisonAssignments,
+    isError: comparisonAssignmentsError,
+    isLoading: comparisonAssignmentsLoading,
+    isSuccess: comparisonAssignmentsSuccess,
+    refetch: refetchComparisonAssignments,
+  } =
+    useAssignments(comparisonRange, { enabled: comparisonEnabled });
   const [activeTab, setActiveTab] = useState<DashboardTab>("capacity");
   const [visitedTabs, setVisitedTabs] = useState<Set<DashboardTab>>(() => new Set(["capacity"]));
   const forecastRange = useMemo(() => getForecastDateRange(), []);
@@ -170,26 +213,29 @@ export function InsightsDashboard() {
     [assignments, scopedEmployeeIds]
   );
 
+  const scopedComparisonAssignments = useMemo(
+    () => filterAssignmentsByResourceIds(comparisonAssignments ?? [], scopedEmployeeIds),
+    [comparisonAssignments, scopedEmployeeIds]
+  );
+
   const scopedForecastAssignments = useMemo(
     () => filterAssignmentsByResourceIds(forecastAssignments, scopedEmployeeIds),
     [forecastAssignments, scopedEmployeeIds]
   );
 
   const resources = useMemo(
-    () =>
-      scopedEmployees.map((employee) => ({
-        id: employee.id,
-        name: employee.fullName,
-        role: employee.position,
-        department: employee.department?.name || "Unassigned",
-        capacity: employee.weeklyCapacity,
-      })),
+    () => scopedEmployees.map(mapEmployeeToResource),
     [scopedEmployees]
   );
 
   const mappedAssignments = useMemo<AnalysisAssignment[]>(
     () => mapAssignmentsForAnalysis(scopedAssignments),
     [scopedAssignments]
+  );
+
+  const mappedComparisonAssignments = useMemo<AnalysisAssignment[]>(
+    () => mapAssignmentsForAnalysis(scopedComparisonAssignments),
+    [scopedComparisonAssignments]
   );
 
   const mappedForecastAssignments = useMemo<AnalysisAssignment[]>(
@@ -202,6 +248,11 @@ export function InsightsDashboard() {
     [scopedAssignments]
   );
 
+  const comparisonAssignmentsByProject = useMemo(
+    () => indexResourceIdsByProject(scopedComparisonAssignments),
+    [scopedComparisonAssignments]
+  );
+
   const analysisProjects = useMemo(
     () =>
       projects.map((project) => ({
@@ -212,6 +263,18 @@ export function InsightsDashboard() {
         resourceIds: [...(assignmentsByProject.get(project.id) ?? [])],
       })),
     [projects, assignmentsByProject]
+  );
+
+  const comparisonAnalysisProjects = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        brandId: project.brandId,
+        color: project.color || "#6366f1",
+        resourceIds: [...(comparisonAssignmentsByProject.get(project.id) ?? [])],
+      })),
+    [projects, comparisonAssignmentsByProject]
   );
 
   const analysisBrands = useMemo(
@@ -236,8 +299,31 @@ export function InsightsDashboard() {
     [brands, projects, assignmentsByProject]
   );
 
+  const comparisonAnalysisBrands = useMemo(
+    () =>
+      brands.map((brand) => {
+        const resourceSet = new Set<string>();
+        for (const project of projects) {
+          if (project.brandId === brand.id) {
+            for (const id of comparisonAssignmentsByProject.get(project.id) ?? []) {
+              resourceSet.add(id);
+            }
+          }
+        }
+
+        return {
+          id: brand.id,
+          name: brand.name,
+          color: brand.color || "#6366f1",
+          resourceIds: [...resourceSet],
+        };
+      }),
+    [brands, projects, comparisonAssignmentsByProject]
+  );
+
   const {
     result: analysisResult,
+    isResultFresh: isCurrentAnalysisFresh,
     isAnalyzing,
     refresh: refreshAnalysis,
   } = useCapacityAnalysis(
@@ -249,13 +335,39 @@ export function InsightsDashboard() {
       start: parseLocalDateKey(appliedRange.startDate),
       end: parseLocalDateKey(appliedRange.endDate),
     },
-    { enabled: resources.length > 0, debounceMs: 500 }
+    { enabled: resources.length > 0, debounceMs: 500, cacheKey: "dashboard-current" }
+  );
+
+  const {
+    result: comparisonAnalysisResult,
+    isResultFresh: isComparisonAnalysisFresh,
+    isAnalyzing: isComparisonAnalyzing,
+    refresh: refreshComparisonAnalysis,
+  } = useCapacityAnalysis(
+    resources,
+    mappedComparisonAssignments,
+    comparisonAnalysisProjects,
+    comparisonAnalysisBrands,
+    {
+      start: parseLocalDateKey(comparisonRange.startDate),
+      end: parseLocalDateKey(comparisonRange.endDate),
+    },
+    {
+      enabled: comparisonEnabled && comparisonAssignmentsSuccess && resources.length > 0,
+      debounceMs: 500,
+      cacheKey: "dashboard-comparison",
+    }
   );
 
   const forecast = useMemo(() => {
     if (resources.length === 0 || mappedForecastAssignments.length === 0) return null;
-    return generateForecast(resources, mappedForecastAssignments, 4);
-  }, [resources, mappedForecastAssignments]);
+    return generateForecast(
+      resources,
+      mappedForecastAssignments,
+      4,
+      parseLocalDateKey(forecastRange.startDate)
+    );
+  }, [forecastRange.startDate, resources, mappedForecastAssignments]);
 
   const isLoading = isSessionLoading || employeesLoading || assignmentsLoading || (isAnalyzing && !analysisResult);
   const hasDashboardAccess = canAccessDashboard(session);
@@ -267,22 +379,31 @@ export function InsightsDashboard() {
       })
     : "Pending analysis";
 
-  const summary = analysisResult?.summary;
-  const totalResources = summary?.totalResources ?? resources.length;
-  const stableResources = summary ? summary.optimalCount : 0;
-  const attentionCount = summary
-    ? summary.overallocatedCount + summary.underutilizedCount + summary.criticalConflicts
-    : 0;
-  const optimalRate = totalResources > 0 ? Math.round((stableResources / totalResources) * 100) : 0;
-  const averageUtilization = analysisResult?.capacityAnalysis.length
-    ? Math.round(
-        analysisResult.capacityAnalysis.reduce(
-          (total, resource) => total + resource.averageUtilization,
-          0
-        ) / analysisResult.capacityAnalysis.length
-      )
-    : 0;
-  const highRiskWeeks = forecast?.weeks.filter((week) => week.riskLevel === "high").length ?? 0;
+  const utilizationComparisonState = getUtilizationComparisonState({
+    comparisonEnabled,
+    resourceCount: resources.length,
+    assignmentsError: comparisonAssignmentsError,
+    assignmentsLoading: comparisonAssignmentsLoading,
+    assignmentsSuccess: comparisonAssignmentsSuccess,
+    currentAnalyzing: isAnalyzing,
+    currentFresh: isCurrentAnalysisFresh,
+    comparisonAnalyzing: isComparisonAnalyzing,
+    comparisonFresh: isComparisonAnalysisFresh,
+  });
+  const utilizationSignals = useMemo(
+    () =>
+      buildUtilizationSignals({
+        current: analysisResult?.capacityAnalysis ?? [],
+        previous: utilizationComparisonState.shouldUsePrevious
+          ? comparisonAnalysisResult?.capacityAnalysis ?? []
+          : null,
+      }),
+    [
+      analysisResult?.capacityAnalysis,
+      comparisonAnalysisResult,
+      utilizationComparisonState.shouldUsePrevious,
+    ]
+  );
   const topConflicts = analysisResult?.conflicts.slice(0, 3) ?? [];
   const topCapacityRisks =
     analysisResult?.capacityAnalysis
@@ -348,11 +469,25 @@ export function InsightsDashboard() {
                 Main planner
               </Link>
             </Button>
-            <Button onClick={refreshAnalysis} disabled={isAnalyzing}>
+            <Button
+              onClick={() => {
+                refreshDashboardInsights({
+                  comparisonEnabled,
+                  refreshAnalysis,
+                  refreshComparisonAnalysis,
+                  refetchComparisonAssignments,
+                });
+              }}
+              disabled={isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)}
+            >
               <Icon
                 icon="lucide:refresh-cw"
                 data-icon="inline-start"
-                className={isAnalyzing ? "animate-spin" : undefined}
+                className={
+                  isAnalyzing || (comparisonEnabled && isComparisonAnalyzing)
+                    ? "animate-spin"
+                    : undefined
+                }
               />
               Refresh insights
             </Button>
@@ -369,6 +504,8 @@ export function InsightsDashboard() {
           isCustomRangeValid={customRangeValid}
           selectedDepartmentId={selectedDepartmentId}
           onDepartmentChange={setSelectedDepartmentId}
+          comparisonMode={comparisonMode}
+          onComparisonModeChange={setComparisonMode}
           departments={departments}
           scopeLabel={scopeLabel}
           today={today}
@@ -378,38 +515,35 @@ export function InsightsDashboard() {
           <CardHeader>
             <CardTitle>Executive Signal</CardTitle>
             <CardDescription>
-              A planner-ready view of team capacity, workload balance, and delivery risk.
+              Employee utilization mix for {scopeLabel}.
+              {comparisonEnabled && (
+                <span className="mt-1 block">
+                  Previous-period metrics use historical assignments from {comparisonRange.startDate} to{" "}
+                  {comparisonRange.endDate} mapped onto the current scoped roster, current capacity,
+                  and current department structure.
+                </span>
+              )}
             </CardDescription>
             <CardAction>
-              <Badge variant={attentionCount > 0 ? "destructive" : "secondary"}>
-                {attentionCount > 0 ? `${attentionCount} need review` : "Stable"}
-              </Badge>
+              <div className="flex flex-col items-end gap-1.5">
+                <Badge variant="secondary">
+                  {resources.length} {resources.length === 1 ? "person" : "people"}
+                </Badge>
+              </div>
             </CardAction>
           </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MetricTile
-                label="Optimal resources"
-                value={`${optimalRate}%`}
-                detail={`${stableResources} of ${totalResources} people are balanced`}
-                icon="lucide:target"
-              />
-              <MetricTile
-                label="Avg utilization"
-                value={`${averageUtilization}%`}
-                detail="Current workload across the team"
-                icon="lucide:activity"
-              />
-              <MetricTile
-                label="High-risk weeks"
-                value={highRiskWeeks}
-                detail="Weeks that may need staffing action"
-                icon="lucide:calendar-alert"
-              />
-            </div>
-            <Separator />
-            <div className="rounded-xl border bg-muted/40">
-              <InsightsSummary result={analysisResult} isLoading={isLoading} />
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {utilizationSignals.map((signal) => (
+                <UtilizationSignalTile
+                  key={signal.id}
+                  signal={signal}
+                  isLoading={isLoading}
+                  comparisonEnabled={comparisonEnabled}
+                  comparisonLoading={utilizationComparisonState.loading}
+                  comparisonUnavailable={utilizationComparisonState.unavailable}
+                />
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -507,6 +641,8 @@ function InsightsDashboardFilters({
   isCustomRangeValid,
   selectedDepartmentId,
   onDepartmentChange,
+  comparisonMode,
+  onComparisonModeChange,
   departments,
   scopeLabel,
   today,
@@ -520,6 +656,8 @@ function InsightsDashboardFilters({
   isCustomRangeValid: boolean;
   selectedDepartmentId: string | null;
   onDepartmentChange: (departmentId: string | null) => void;
+  comparisonMode: DashboardComparisonMode;
+  onComparisonModeChange: (mode: DashboardComparisonMode) => void;
   departments: Array<{ id: string; name: string; color?: string }>;
   scopeLabel: string;
   today: Date;
@@ -575,6 +713,24 @@ function InsightsDashboardFilters({
                     {department.name}
                   </SelectItem>
                 ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            value={comparisonMode}
+            onValueChange={(value) => onComparisonModeChange(value as DashboardComparisonMode)}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-full sm:w-[240px]"
+              aria-label="Compare dashboard metrics"
+            >
+              <SelectValue placeholder="No comparison" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="none">No comparison</SelectItem>
+                <SelectItem value="previous-period">Compare with previous period</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -701,18 +857,6 @@ function indexResourceIdsByProject(
   }
 
   return index;
-}
-
-function getForecastDateRange(): DashboardDateRange {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 28);
-
-  return {
-    startDate: toLocalDateKey(start),
-    endDate: toLocalDateKey(end),
-  };
 }
 
 function useIncrementalList<T>(items: readonly T[], pageSize: number) {
@@ -933,27 +1077,100 @@ function DashboardForecastPanel({
   );
 }
 
-function MetricTile({
-  label,
-  value,
-  detail,
-  icon,
+function UtilizationSignalTile({
+  signal,
+  isLoading,
+  comparisonEnabled,
+  comparisonLoading,
+  comparisonUnavailable,
 }: {
-  label: string;
-  value: string | number;
-  detail: string;
-  icon: string;
+  signal: UtilizationSignal;
+  isLoading: boolean;
+  comparisonEnabled: boolean;
+  comparisonLoading: boolean;
+  comparisonUnavailable: boolean;
 }) {
+  const comparison = getUtilizationComparisonDisplay(signal, {
+    comparisonEnabled,
+    comparisonLoading,
+    comparisonUnavailable,
+  });
+
   return (
-    <div className="rounded-xl border bg-background p-4">
+    <div
+      className={cn(
+        "rounded-xl border border-l-4 p-4 shadow-sm",
+        signal.surfaceClassName,
+        signal.accentClassName
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-          <Icon icon={icon} />
-        </div>
+        <p className="text-sm font-medium text-foreground">{signal.label}</p>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg border border-border/60 outline-none transition focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  signal.iconSurfaceClassName
+                )}
+                aria-label={`${signal.label}: ${signal.description}`}
+              >
+                <Icon icon={signal.icon} className={signal.colorClassName} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-56 text-xs leading-5">
+              <div className="font-medium text-foreground">{signal.label}</div>
+              <div className="text-muted-foreground">{signal.description}</div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      <div className="mt-4 text-3xl font-semibold tabular-nums">{value}</div>
-      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+      {isLoading ? (
+        <Skeleton className="mt-4 h-9 w-20" />
+      ) : (
+        <div className={cn("mt-4 text-3xl font-semibold tabular-nums", signal.colorClassName)}>
+          {signal.percentage}%
+        </div>
+      )}
+      <p className="mt-1 text-xs text-muted-foreground">
+        {signal.count} of {signal.totalCount} {signal.totalCount === 1 ? "person" : "people"}
+      </p>
+      <ComparisonIndicator comparison={comparison} className="mt-3" />
+    </div>
+  );
+}
+
+function ComparisonIndicator({
+  comparison,
+  className,
+}: {
+  comparison?: UtilizationComparisonDisplay | null;
+  className?: string;
+}) {
+  if (!comparison) return null;
+
+  const toneClassName =
+    comparison.tone === "positive"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+      : comparison.tone === "negative"
+        ? "border-destructive/30 bg-destructive/10 text-destructive"
+        : "border-border bg-muted/50 text-muted-foreground";
+
+  return (
+    <div
+      className={cn(
+        "inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium tabular-nums",
+        toneClassName,
+        className
+      )}
+    >
+      <Icon
+        icon={comparison.icon}
+        className={cn("size-3.5", comparison.icon === "lucide:loader-circle" && "animate-spin")}
+      />
+      <span>{comparison.label}</span>
     </div>
   );
 }

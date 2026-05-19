@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
+import type { Employee } from "./useEmployees";
 
 // Types
 export interface Assignment {
@@ -152,10 +153,14 @@ async function deleteAssignment(id: string): Promise<void> {
 }
 
 // Hooks
-export function useAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }) {
+export function useAssignments(
+  params?: { startDate?: string; endDate?: string; projectIds?: string[] },
+  options: { enabled?: boolean } = {}
+) {
   return useQuery({
     queryKey: [...queryKeys.assignments, params],
     queryFn: () => fetchAssignments(params),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -308,7 +313,7 @@ export function useUpdateAssignment() {
       });
 
       // Update employees cache (assignments nested within)
-      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
@@ -357,7 +362,7 @@ export function useUpdateAssignment() {
       });
 
       // Update employees cache with server response
-      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
@@ -425,7 +430,7 @@ export function useDeleteAssignment() {
       console.log('[useDeleteAssignment] Updated', updateCount, 'assignment queries');
 
       // Remove from employees cache (nested assignments)
-      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,

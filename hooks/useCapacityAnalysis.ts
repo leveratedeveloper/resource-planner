@@ -22,11 +22,17 @@ type UseCapacityAnalysisOptions = {
   debounceMs?: number;
   /** Enable analysis */
   enabled?: boolean;
+  /** Cache namespace for independent analysis contexts */
+  cacheKey?: string;
 };
 
 type UseCapacityAnalysisReturn = {
   /** Latest analysis result */
   result: AnalysisResult | null;
+  /** Fingerprint used to produce the latest result */
+  resultFingerprint: string | null;
+  /** Whether the latest result matches the current input fingerprint */
+  isResultFresh: boolean;
   /** Whether analysis is currently running */
   isAnalyzing: boolean;
   /** Error if analysis failed */
@@ -36,6 +42,23 @@ type UseCapacityAnalysisReturn = {
   /** Time of last successful analysis */
   lastAnalyzedAt: Date | null;
 };
+
+export function getAnalysisDateRangeKeys(dateRange: { start: Date; end: Date }) {
+  return {
+    startKey: toLocalDateKey(dateRange.start),
+    endKey: toLocalDateKey(dateRange.end),
+  };
+}
+
+export function isAnalysisResultFresh({
+  resultFingerprint,
+  inputFingerprint,
+}: {
+  resultFingerprint: string | null;
+  inputFingerprint: string;
+}) {
+  return resultFingerprint === inputFingerprint;
+}
 
 /**
  * Hook for performing capacity analysis in a Web Worker
@@ -48,9 +71,10 @@ export function useCapacityAnalysis(
   dateRange: { start: Date; end: Date },
   options: UseCapacityAnalysisOptions = {}
 ): UseCapacityAnalysisReturn {
-  const { debounceMs = 300, enabled = true } = options;
+  const { debounceMs = 300, enabled = true, cacheKey = "main" } = options;
 
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [resultFingerprint, setResultFingerprint] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<Date | null>(null);
@@ -61,6 +85,7 @@ export function useCapacityAnalysis(
   
   // Track current request for cancellation support
   const currentRequestIdRef = useRef<string | null>(null);
+  const { startKey, endKey } = getAnalysisDateRangeKeys(dateRange);
 
   // Memoize input to detect changes
   const analysisInput = useMemo<AnalysisInput>(
@@ -70,11 +95,11 @@ export function useCapacityAnalysis(
       projects,
       brands,
       dateRange: {
-        start: toLocalDateKey(dateRange.start),
-        end: toLocalDateKey(dateRange.end),
+        start: startKey,
+        end: endKey,
       },
     }),
-    [resources, assignments, projects, brands, dateRange.start, dateRange.end]
+    [resources, assignments, projects, brands, startKey, endKey]
   );
 
   // Create content-hash fingerprint for smarter change detection (Fix 2)
@@ -115,10 +140,11 @@ export function useCapacityAnalysis(
 
     // Check cache first (Fix 1)
     if (!forceRefresh) {
-      const cachedResult = analysisResultCache.get('main', inputFingerprint);
+      const cachedResult = analysisResultCache.get(cacheKey, inputFingerprint);
       if (cachedResult) {
         console.log("[useCapacityAnalysis] Cache hit - using cached result");
         setResult(cachedResult as AnalysisResult);
+        setResultFingerprint(inputFingerprint);
         return;
       }
     }
@@ -137,9 +163,10 @@ export function useCapacityAnalysis(
       // Only update state if this is still the current request (Fix 5)
       if (currentRequestIdRef.current === requestId) {
         setResult(analysisResult);
+        setResultFingerprint(inputFingerprint);
         setLastAnalyzedAt(new Date());
         // Cache the result (Fix 1)
-        analysisResultCache.set('main', analysisResult, inputFingerprint);
+        analysisResultCache.set(cacheKey, analysisResult, inputFingerprint);
         console.log("[useCapacityAnalysis] Analysis complete", analysisResult.summary);
       } else {
         console.log("[useCapacityAnalysis] Stale result ignored");
@@ -149,6 +176,7 @@ export function useCapacityAnalysis(
       if (currentRequestIdRef.current === requestId) {
         console.error("[useCapacityAnalysis] Analysis failed:", err);
         setError(err instanceof Error ? err : new Error("Analysis failed"));
+        setResultFingerprint(null);
       }
     } finally {
       // Only update loading state if this is still the current request
@@ -156,7 +184,7 @@ export function useCapacityAnalysis(
         setIsAnalyzing(false);
       }
     }
-  }, [analysisInput, enabled, inputFingerprint]);
+  }, [analysisInput, cacheKey, enabled, inputFingerprint]);
 
   // Auto-run analysis when input changes (debounced)
   useEffect(() => {
@@ -186,6 +214,8 @@ export function useCapacityAnalysis(
 
   return {
     result,
+    resultFingerprint,
+    isResultFresh: isAnalysisResultFresh({ resultFingerprint, inputFingerprint }),
     isAnalyzing,
     error,
     refresh,

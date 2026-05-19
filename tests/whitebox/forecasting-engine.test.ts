@@ -49,6 +49,34 @@ describe("generateForecast", () => {
     expect(result).toHaveProperty("bottleneckDates");
     expect(Array.isArray(result.bottleneckDates)).toBe(true);
   });
+
+  it("counts Monday assignments when forecast generation starts mid-week", () => {
+    const result = generateForecast(
+      [{ id: "r-1", name: "Alice", department: "Eng", role: "Dev", capacity: 40 }],
+      [
+        {
+          id: "assignment-1",
+          resourceId: "r-1",
+          projectId: "project-1",
+          projectName: "Launch",
+          startDate: new Date(2026, 4, 11),
+          endDate: new Date(2026, 4, 11),
+          hoursPerDay: 8,
+          isTimeOff: false,
+          isBillable: true,
+        },
+      ],
+      1,
+      new Date(2026, 4, 13)
+    );
+
+    expect(result.weeks[0]).toMatchObject({
+      weekStart: "2026-05-11",
+      weekEnd: "2026-05-17",
+      averageUtilization: 20,
+      peakUtilization: 100,
+    });
+  });
 });
 
 describe("calculateMovingAverage", () => {
