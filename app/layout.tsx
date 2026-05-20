@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query/QueryProvider";
-import { AppProvider } from "@/context/AppContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/components/ui/toast";
 
@@ -33,10 +32,8 @@ export default function RootLayout({
       >
         <QueryProvider>
           <AuthProvider>
-            <AppProvider>
-              {children}
-              <ToastProvider />
-            </AppProvider>
+            {children}
+            <ToastProvider />
           </AuthProvider>
         </QueryProvider>
       </body>

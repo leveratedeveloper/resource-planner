@@ -124,10 +124,11 @@ export function useActualAssignments(params?: {
   project_uuid?: string;
   start_date?: string;
   end_date?: string;
-}) {
+}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["actual", params],
     queryFn: () => fetchActualAssignments(params),
+    enabled: options?.enabled ?? true,
   });
 }
 

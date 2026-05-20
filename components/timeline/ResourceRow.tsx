@@ -6,7 +6,7 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { differenceInDays, isWithinInterval, startOfDay, addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
-import { useActualAssignments, useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
+import { useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { calculatePlannedHoursForMonth, calculateActualHoursForMonth } from "@/lib/utils/actual-hours-validation";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import type { Project } from "@/lib/query/hooks/useProjects";
@@ -54,6 +54,15 @@ interface ResourceRowProps {
   cellWidth?: number;
   isWeekView?: boolean;
   assignments: Assignment[]; // Pre-filtered assignments for this employee
+  actualAssignments: ActualAssignment[]; // Pre-filtered actual assignments for this employee
+  isExpanded: boolean;
+  setIsExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedProjectIds: Set<string>;
+  setSelectedProjectIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  isProjectsInitialized: boolean;
+  setIsProjectsInitialized: React.Dispatch<React.SetStateAction<boolean>>;
+  isFilterOpen: boolean;
+  setIsFilterOpen: React.Dispatch<React.SetStateAction<boolean>>;
   viewMode?: 'week' | 'month' | 'quarter' | 'halfYear' | 'year';
 }
 
@@ -652,7 +661,24 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
 });
 
 
-export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments, viewMode = 'week' }) => {
+export const ResourceRow: React.FC<ResourceRowProps> = ({
+  resource,
+  days,
+  brandId,
+  cellWidth = 100,
+  isWeekView = false,
+  assignments: resourceAssignments,
+  actualAssignments,
+  isExpanded,
+  setIsExpanded,
+  selectedProjectIds,
+  setSelectedProjectIds,
+  isProjectsInitialized,
+  setIsProjectsInitialized,
+  isFilterOpen,
+  setIsFilterOpen,
+  viewMode = 'week'
+}) => {
   // Determine if this is MonthRange view (Quarter/HalfYear/Year)
   // These views show monthly columns instead of weekly columns
   const isMonthRangeView = viewMode === 'quarter' || viewMode === 'halfYear' || viewMode === 'year';
@@ -661,33 +687,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const { session } = useAuth();
   const queryClient = useQueryClient();
 
-  // Debug: Log resource.id vs session.employee.uuid for actual assignment button visibility
-  console.log('[ResourceRow] Permission check for actual assignment:', {
-    resourceName: resource.name,
-    resourceId: resource.id,
-    sessionEmployeeUuid: session?.employee?.uuid,
-    canCreateActual: resource.id === session?.employee?.uuid,
-    areEqual: resource.id === session?.employee?.uuid
-  });
   const createAssignment = useCreateAssignment();
   const updateAssignmentMutation = useUpdateAssignment();
   const deleteAssignmentMutation = useDeleteAssignment();
 
-  // Actual assignments hooks - fetch for the resource being displayed, not just logged-in user
-  const { data: actualAssignments = [], isLoading: actualsLoading } = useActualAssignments({
-    employee_uuid: resource.id,  // ← FIXED: Use resource.id instead of session?.employee.uuid
-    start_date: toLocalDateString(days[0]),
-    end_date: toLocalDateString(days[days.length - 1]),
-  });
-
-  // Debug: log actual assignments
-  // console.log('[ResourceRow] actualAssignments:', actualAssignments);
-  // console.log('[ResourceRow] actualsLoading:', actualsLoading);
   const createActualAssignment = useCreateActualAssignment();
   const updateActualAssignment = useUpdateActualAssignment();
   const deleteActualAssignment = useDeleteActualAssignment();
 
-  const [isExpanded, setIsExpanded] = useState(false);
   const PROJECT_DISPLAY_LIMIT = 5;
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
@@ -697,10 +704,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const [hoveredRowType, setHoveredRowType] = useState<'plan' | 'actual' | null>(null);
 
   // State untuk fitur Select Project
-  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
-  const [isProjectsInitialized, setIsProjectsInitialized] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-
   // Drag state - using refs for immediate synchronous access
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -2678,21 +2681,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             onClose={() => setMonthlyAllocationModal(null)}
             onSave={handleSaveMonthlyAllocation}
             onDelete={monthlyAllocationModal.existingAssignment ? (() => {
-              const assignmentId = monthlyAllocationModal.existingAssignment!.id;
               const projectId = monthlyAllocationModal.existingAssignment!.projectId;
               const monthStart = monthlyAllocationModal.monthStart;
               const monthEnd = monthlyAllocationModal.monthEnd;
 
-              console.log('[ResourceRow] Creating delete handler for monthly allocation:', {
-                id: assignmentId,
-                projectId,
-                monthStart: monthStart.toISOString(),
-                monthEnd: monthEnd.toISOString()
-              });
-
               return () => {
-                console.log('[ResourceRow] Delete handler called, finding all assignments in month range...');
-
                 // Find ALL assignments for this project that fall within the month range
                 const assignmentsInMonth = resourceAssignments.filter((a) => {
                   if (a.isTimeOff) return false;
@@ -2703,11 +2696,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
                   // Check if assignment falls within the month range
                   return assignEnd >= monthStart && assignStart <= monthEnd;
-                });
-
-                console.log('[ResourceRow] Found assignments to delete:', {
-                  count: assignmentsInMonth.length,
-                  ids: assignmentsInMonth.map(a => a.id)
                 });
 
                 // Delete all assignments in parallel
@@ -2723,7 +2711,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
 
                 Promise.all(deletePromises)
                   .then(() => {
-                    console.log('[ResourceRow] All assignments deleted successfully');
                     setMonthlyAllocationModal(null);
                     // Invalidate queries to refresh the data
                     queryClient.invalidateQueries({ queryKey: ["assignments"] });

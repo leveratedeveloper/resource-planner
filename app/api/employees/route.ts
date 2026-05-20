@@ -31,8 +31,6 @@ export async function GET(request: Request) {
       search: search || undefined,
     });
 
-    console.log('[Employees API] Raw MySQL response:', JSON.stringify(response, null, 2));
-
     // Check for API errors from the client
     if (response.error) {
       console.error('[Employees API] MySQL API returned an error:', response.error);
@@ -50,15 +48,6 @@ export async function GET(request: Request) {
     // Handle double-wrapped response: response.data.data instead of response.data
     let actualData = response?.data?.data || response?.data || [];
 
-    // Debug: Log all fields to find a match
-    console.log('[Employees API] Session employee full data:', session.employee);
-    console.log('[Employees API] MySQL employees (first 3):', actualData.slice(0, 3).map((e: any) => ({
-      uuid: e.uuid,
-      nik: e.nik,
-      full_name: e.full_name,
-      email: e.email,
-    })));
-
     // Apply access level filtering
     // If user has restricted access, only show their own employee record
     if (!session.access.can_view_all) {
@@ -75,7 +64,6 @@ export async function GET(request: Request) {
 
       // If not found in current page, search specifically for this employee
       if (!match && (session.employee?.nik || session.employee?.full_name)) {
-        console.log('[Employees API] Not in current page, searching by NIK/name...');
         try {
           const searchQuery = session.employee.nik || session.employee.full_name;
           const searchResponse = await client.getEmployees({
@@ -92,21 +80,12 @@ export async function GET(request: Request) {
             return false;
           });
 
-          if (match) {
-            console.log('[Employees API] Found via search:', match.full_name, '(' + match.nik + ')');
-          } else {
-            console.log('[Employees API] Still not found after search for:', searchQuery);
-          }
         } catch (searchError) {
           console.error('[Employees API] Search failed:', searchError);
         }
-      } else if (match) {
-        console.log('[Employees API] Found in current page:', match.full_name);
       }
 
       actualData = match ? [match] : [];
-    } else {
-      console.log('[Employees API] Full access granted, showing all employees');
     }
 
     // Get pagination metadata from MySQL response
