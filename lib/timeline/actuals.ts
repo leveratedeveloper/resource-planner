@@ -31,11 +31,8 @@ export function getActualAssignmentsForEmployee(
 }
 
 export function getTimelineActualQueryParams(
-  days: Date[],
-  employeeCount = 0
+  days: Date[]
 ): TimelineActualQueryParams | undefined {
-  void employeeCount;
-
   if (days.length === 0) {
     return undefined;
   }

@@ -55,6 +55,14 @@ interface ResourceRowProps {
   isWeekView?: boolean;
   assignments: Assignment[]; // Pre-filtered assignments for this employee
   actualAssignments: ActualAssignment[]; // Pre-filtered actual assignments for this employee
+  isExpanded: boolean;
+  setIsExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedProjectIds: Set<string>;
+  setSelectedProjectIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  isProjectsInitialized: boolean;
+  setIsProjectsInitialized: React.Dispatch<React.SetStateAction<boolean>>;
+  isFilterOpen: boolean;
+  setIsFilterOpen: React.Dispatch<React.SetStateAction<boolean>>;
   viewMode?: 'week' | 'month' | 'quarter' | 'halfYear' | 'year';
 }
 
@@ -653,7 +661,24 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
 });
 
 
-export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandId, cellWidth = 100, isWeekView = false, assignments: resourceAssignments, actualAssignments, viewMode = 'week' }) => {
+export const ResourceRow: React.FC<ResourceRowProps> = ({
+  resource,
+  days,
+  brandId,
+  cellWidth = 100,
+  isWeekView = false,
+  assignments: resourceAssignments,
+  actualAssignments,
+  isExpanded,
+  setIsExpanded,
+  selectedProjectIds,
+  setSelectedProjectIds,
+  isProjectsInitialized,
+  setIsProjectsInitialized,
+  isFilterOpen,
+  setIsFilterOpen,
+  viewMode = 'week'
+}) => {
   // Determine if this is MonthRange view (Quarter/HalfYear/Year)
   // These views show monthly columns instead of weekly columns
   const isMonthRangeView = viewMode === 'quarter' || viewMode === 'halfYear' || viewMode === 'year';
@@ -670,7 +695,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const updateActualAssignment = useUpdateActualAssignment();
   const deleteActualAssignment = useDeleteActualAssignment();
 
-  const [isExpanded, setIsExpanded] = useState(false);
   const PROJECT_DISPLAY_LIMIT = 5;
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
@@ -680,10 +704,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const [hoveredRowType, setHoveredRowType] = useState<'plan' | 'actual' | null>(null);
 
   // State untuk fitur Select Project
-  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
-  const [isProjectsInitialized, setIsProjectsInitialized] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-
   // Drag state - using refs for immediate synchronous access
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);

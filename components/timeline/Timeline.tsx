@@ -15,6 +15,12 @@ import {
   getLoadedTimelineEmployees,
   shouldUseCompleteEmployeeList,
 } from "@/lib/timeline/employees";
+import {
+  getEmployeeFilterSelection,
+  hasEmployeeFlag,
+  setEmployeeFilterSelection,
+  setEmployeeFlag,
+} from "@/lib/timeline/row-state";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
@@ -30,6 +36,8 @@ interface TimelineProps {
   category: string | null;
   status: string | null;
 }
+
+const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
 
 export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
@@ -372,6 +380,10 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   });
 
   const virtualRows = rowVirtualizer.getVirtualItems();
+  const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Set<string>>(new Set());
+  const [selectedProjectIdsByEmployee, setSelectedProjectIdsByEmployee] = useState<Map<string, Set<string>>>(new Map());
+  const [initializedProjectFiltersByEmployee, setInitializedProjectFiltersByEmployee] = useState<Set<string>>(new Set());
+  const [openProjectFilterEmployeeIds, setOpenProjectFilterEmployeeIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) {
@@ -564,6 +576,19 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                  const employee = visibleEmployees[virtualRow.index];
                  if (!employee) return null;
 
+                 const employeeSelectedProjectIds =
+                   getEmployeeFilterSelection(selectedProjectIdsByEmployee, employee.id) ??
+                   EMPTY_SELECTED_PROJECT_IDS;
+                 const employeeIsExpanded = hasEmployeeFlag(expandedEmployeeIds, employee.id);
+                 const employeeProjectsInitialized = hasEmployeeFlag(
+                   initializedProjectFiltersByEmployee,
+                   employee.id
+                 );
+                 const employeeFilterOpen = hasEmployeeFlag(
+                   openProjectFilterEmployeeIds,
+                   employee.id
+                 );
+
                  return (
                    <div
                      key={employee.id}
@@ -586,6 +611,58 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                        isWeekView={isWeekView}
                        assignments={assignmentsByEmployee.get(employee.id) || []}
                        actualAssignments={getActualAssignmentsForEmployee(actualAssignmentsByEmployee, employee.id)}
+                       isExpanded={employeeIsExpanded}
+                       setIsExpanded={(value) =>
+                         setExpandedEmployeeIds((prev) =>
+                           setEmployeeFlag(
+                             prev,
+                             employee.id,
+                             typeof value === "function" ? value(hasEmployeeFlag(prev, employee.id)) : value
+                           )
+                         )
+                       }
+                       selectedProjectIds={employeeSelectedProjectIds}
+                       setSelectedProjectIds={(value) =>
+                         setSelectedProjectIdsByEmployee((prev) => {
+                           const previousSelection =
+                             getEmployeeFilterSelection(prev, employee.id) ??
+                             EMPTY_SELECTED_PROJECT_IDS;
+                           const nextSelection =
+                             typeof value === "function"
+                               ? value(new Set(previousSelection))
+                               : value;
+
+                           return setEmployeeFilterSelection(
+                             prev,
+                             employee.id,
+                             nextSelection
+                           );
+                         })
+                       }
+                       isProjectsInitialized={employeeProjectsInitialized}
+                       setIsProjectsInitialized={(value) =>
+                         setInitializedProjectFiltersByEmployee((prev) =>
+                           setEmployeeFlag(
+                             prev,
+                             employee.id,
+                             typeof value === "function"
+                               ? value(hasEmployeeFlag(prev, employee.id))
+                               : value
+                           )
+                         )
+                       }
+                       isFilterOpen={employeeFilterOpen}
+                       setIsFilterOpen={(value) =>
+                         setOpenProjectFilterEmployeeIds((prev) =>
+                           setEmployeeFlag(
+                             prev,
+                             employee.id,
+                             typeof value === "function"
+                               ? value(hasEmployeeFlag(prev, employee.id))
+                               : value
+                           )
+                         )
+                       }
                        viewMode={viewMode}
                      />
                    </div>

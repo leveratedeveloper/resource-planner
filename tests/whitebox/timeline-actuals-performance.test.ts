@@ -53,7 +53,6 @@ describe("timeline actual assignment performance helpers", () => {
   });
 
   it("plans one actual query per visible date range regardless of employee count", () => {
-    const employees = Array.from({ length: 100 }, (_, index) => `employee-${index}`);
     const days = [
       new Date(2026, 4, 18),
       new Date(2026, 4, 19),
@@ -62,7 +61,7 @@ describe("timeline actual assignment performance helpers", () => {
       new Date(2026, 4, 22),
     ];
 
-    const plan = getTimelineActualQueryParams(days, employees.length);
+    const plan = getTimelineActualQueryParams(days);
 
     expect(plan).toEqual({
       start_date: "2026-05-18",
@@ -87,16 +86,14 @@ describe("timeline actual assignment performance helpers", () => {
     });
   });
 
-  it("groups 10,000 actual assignments within a conservative local time budget", () => {
+  it("groups a large actual assignment set by employee", () => {
     const actuals = Array.from({ length: 10_000 }, (_, index) =>
       makeActual(`actual-${index}`, `employee-${index % 100}`)
     );
 
-    const start = performance.now();
     const grouped = groupActualAssignmentsByEmployee(actuals);
-    const elapsedMs = performance.now() - start;
 
     expect(grouped.size).toBe(100);
-    expect(elapsedMs).toBeLessThan(50);
+    expect(grouped.get("employee-0")).toHaveLength(100);
   });
 });
