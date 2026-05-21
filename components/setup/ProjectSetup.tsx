@@ -4,9 +4,10 @@ import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { startOfMonth, endOfMonth, startOfDay, format, isSameMonth, eachMonthOfInterval } from "date-fns";
+import { startOfMonth, endOfMonth, startOfDay, format, eachMonthOfInterval } from "date-fns";
 import { type DateRange } from "react-day-picker";
 import { useProjects, useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
+import { queryKeys } from "@/lib/query/queryKeys";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
@@ -40,7 +41,6 @@ import {
   PopoverTrigger,
   PopoverClose,
 } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -123,8 +123,9 @@ export const ProjectSetup = () => {
   const [isSaving, setIsSaving] = useState(false);
   // Track initial deliverable selections to detect changes
   const [initialDeliverablesByEmployee, setInitialDeliverablesByEmployee] = useState<Record<string, string[]>>({});
-  // Track initial date range for change detection
-  const [initialDateRange, setInitialDateRange] = useState<DateRange | undefined>(undefined);
+  // Track initial project period for change detection
+  const [initialStartDate, setInitialStartDate] = useState("");
+  const [initialEndDate, setInitialEndDate] = useState("");
 
   const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
   const { data: allAssignments = [] } = useAssignments();
@@ -258,9 +259,6 @@ export const ProjectSetup = () => {
         return monthDate >= rangeStart && monthDate <= rangeEnd;
       };
 
-      const hasDateRange = dateRange?.from && dateRange?.to;
-      const isSingleMonth = hasDateRange && isSameMonth(dateRange.from!, dateRange.to!);
-
       const monthlyPercentages = Object.entries(monthlyPcts)
         .filter(([monthKey]) => isInDateRange(monthKey))
         .map(([monthKey, totalHours]) => {
@@ -302,6 +300,12 @@ export const ProjectSetup = () => {
     });
   }, [projectAssignments, pendingAssignments, employeeMap, dateRange]);
 
+  // Resolve brand name for the currently selected project/pitch
+  const brandName = useMemo(() => {
+    if (!brandId || !brands.length) return "";
+    return brands.find((b) => b.id === brandId)?.name || "";
+  }, [brandId, brands]);
+
   // Detect unsaved deliverable changes for existing team members
   const unsavedDeliverableChanges = useMemo(() => {
     const changes: Array<{ employeeId: string; deliverableIds: string[] }> = [];
@@ -331,18 +335,24 @@ export const ProjectSetup = () => {
     return changes;
   }, [teamMembers, selectedDeliverablesByEmployee, pendingAssignments, initialDeliverablesByEmployee]);
 
-  // Check if date range has changed from initial
-  const hasDateRangeChanged = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return false;
-    if (!initialDateRange?.from || !initialDateRange?.to) return true;
-    return dateRange.from.getTime() !== initialDateRange.from.getTime()
-      || dateRange.to.getTime() !== initialDateRange.to.getTime();
-  }, [dateRange, initialDateRange]);
+  // Check if project period has changed from initial
+  const hasProjectPeriodChanged = useMemo(() => {
+    return startDate !== initialStartDate || endDate !== initialEndDate;
+  }, [startDate, endDate, initialStartDate, initialEndDate]);
 
-  // Check if there are any unsaved changes (pending assignments, deliverable changes, or date range)
+  // Check if there are any unsaved changes (pending assignments, deliverable changes, or project period)
   const hasUnsavedChanges = useMemo(() => {
-    return pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0 || hasDateRangeChanged;
-  }, [pendingAssignments, unsavedDeliverableChanges, hasDateRangeChanged]);
+    return pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0 || hasProjectPeriodChanged;
+  }, [pendingAssignments, unsavedDeliverableChanges, hasProjectPeriodChanged]);
+
+  const hasValidProjectPeriod = useMemo(() => {
+    if (!startDate || !endDate) return false;
+    return new Date(endDate) >= new Date(startDate);
+  }, [startDate, endDate]);
+
+  const canPersistProjectPeriod = useMemo(() => {
+    return !hasProjectPeriodChanged || projectAssignments.length > 0 || pendingAssignments.length > 0;
+  }, [hasProjectPeriodChanged, projectAssignments.length, pendingAssignments.length]);
 
   // Check if all pending/changed employees have deliverables selected
   const allHaveDeliverables = useMemo(() => {
@@ -355,6 +365,14 @@ export const ProjectSetup = () => {
     return true;
   }, [pendingAssignments, selectedDeliverablesByEmployee]);
 
+  const canEditProjectDetails = !!session?.access.can_view_all;
+  const isSaveDisabled = isSaving
+    || !hasUnsavedChanges
+    || !allHaveDeliverables
+    || !hasValidProjectPeriod
+    || !canPersistProjectPeriod
+    || !canEditProjectDetails;
+
   // Auto-calculate grand total when budget or asf changes
   useEffect(() => {
     const budgetNum = parseFloat(budget) || 0;
@@ -366,6 +384,33 @@ export const ProjectSetup = () => {
   const getDeliverablesForChannel = (channelId: string) => {
     return allDeliverables.filter(d => d.channelId === channelId);
   };
+
+  const ensureSuccessfulSaveResponse = async (response: Response) => {
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || "Failed to save pitch details");
+    }
+    return response;
+  };
+
+  const applyProjectPeriod = useCallback((nextStartDate: string, nextEndDate: string, markInitial = false) => {
+    setStartDate(nextStartDate);
+    setEndDate(nextEndDate);
+
+    if (nextStartDate && nextEndDate && new Date(nextEndDate) >= new Date(nextStartDate)) {
+      setDateRange({
+        from: startOfDay(new Date(nextStartDate)),
+        to: startOfDay(new Date(nextEndDate)),
+      });
+    } else {
+      setDateRange(undefined);
+    }
+
+    if (markInitial) {
+      setInitialStartDate(nextStartDate);
+      setInitialEndDate(nextEndDate);
+    }
+  }, []);
 
   const handleOpenView = (project: Project) => {
     setViewingProject(project);
@@ -383,8 +428,9 @@ export const ProjectSetup = () => {
     setGrandTotal(project.grandTotal || "");
     setQuotationReference(project.quotationReference || "");
     setIoFile(project.ioFile || "");
-    setStartDate(project.startDate || "");
-    setEndDate(project.endDate || "");
+    const projectStartDate = project.startDate || "";
+    const projectEndDate = project.endDate || "";
+    applyProjectPeriod(projectStartDate, projectEndDate, true);
     setDescription(project.description || "");
     setNotes(project.notes || "");
     setFlag(project.flag || "");
@@ -401,17 +447,6 @@ export const ProjectSetup = () => {
       channelBudget: pc.channelBudget || pc.channel_budget || "",
       manHours: pc.manHours || pc.man_hours || "",
     })));
-    if (project.startDate && project.endDate) {
-      const range = {
-        from: startOfDay(new Date(project.startDate)),
-        to: startOfDay(new Date(project.endDate)),
-      };
-      setDateRange(range);
-      setInitialDateRange(range);
-    } else {
-      setDateRange(undefined);
-      setInitialDateRange(undefined);
-    }
     setPendingAssignments([]);
     // Don't reset deliverables here - let the useEffect handle loading from existing assignments
     // Only reset if not already tracking this project
@@ -467,24 +502,21 @@ export const ProjectSetup = () => {
     }
   }, [isDialogOpen, viewingProject?.id, projectAssignments, allDeliverables, initialDeliverablesByEmployee]);
 
-  // Initialize dateRange from projectAssignments when project has no saved dates
+  // Initialize project period from projectAssignments when project has no saved dates
   useEffect(() => {
     if (!isDialogOpen || !viewingProject || projectAssignments.length === 0) return;
-    // Only run if dateRange hasn't been initialized yet (from project dates)
-    if (initialDateRange !== undefined) return;
+    // Only run if the period hasn't been initialized yet (from project dates or assignment fallback)
+    if (initialStartDate || initialEndDate || startDate || endDate) return;
 
     const startDates = projectAssignments.map(a => new Date(a.startDate).getTime()).filter(Boolean);
     const endDates = projectAssignments.map(a => new Date(a.endDate).getTime()).filter(Boolean);
 
     if (startDates.length > 0 && endDates.length > 0) {
-      const range = {
-        from: startOfDay(new Date(Math.min(...startDates))),
-        to: startOfDay(new Date(Math.max(...endDates))),
-      };
-      setDateRange(range);
-      setInitialDateRange(range);
+      const fallbackStartDate = format(startOfDay(new Date(Math.min(...startDates))), "yyyy-MM-dd");
+      const fallbackEndDate = format(startOfDay(new Date(Math.max(...endDates))), "yyyy-MM-dd");
+      applyProjectPeriod(fallbackStartDate, fallbackEndDate, true);
     }
-  }, [isDialogOpen, viewingProject?.id, projectAssignments, initialDateRange]);
+  }, [isDialogOpen, viewingProject?.id, projectAssignments, initialStartDate, initialEndDate, startDate, endDate, applyProjectPeriod]);
 
   // Group projects by brand
   // In default state: show all brands even if they have no projects
@@ -510,12 +542,20 @@ export const ProjectSetup = () => {
     return CURRENCIES.find((c) => c.code === code)?.symbol || code;
   };
 
-  // Handler for saving team assignments
-  const handleSaveTeamAssignments = async () => {
+  // Handler for saving editable pitch details and team assignments
+  const handleSavePitchDetails = async (closeAfterSave = false) => {
     setIsSaving(true);
     try {
-      const assignmentStartDate = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-      const assignmentEndDate = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : assignmentStartDate;
+      if (!hasValidProjectPeriod) {
+        throw new Error("Project period requires a valid start date and end date.");
+      }
+
+      if (!canPersistProjectPeriod) {
+        throw new Error("Project period cannot be saved until this project has at least one team assignment.");
+      }
+
+      const assignmentStartDate = startDate;
+      const assignmentEndDate = endDate;
 
       // 1. Create new assignments for pending employees
       const createPromises = pendingAssignments.map((pending) => {
@@ -548,7 +588,7 @@ export const ProjectSetup = () => {
             note,
             createdById: null,
           }),
-        });
+        }).then(ensureSuccessfulSaveResponse);
       });
 
       // 2. Update existing assignments with changed deliverables
@@ -573,21 +613,21 @@ export const ProjectSetup = () => {
           body: JSON.stringify({
             note,
           }),
-        });
+        }).then(ensureSuccessfulSaveResponse);
       });
 
-      // 3. Update existing assignments with new date range
-      const dateRangeUpdatePromises = hasDateRangeChanged
+      // 3. Update existing assignments with new project period
+      const projectPeriodUpdatePromises = hasProjectPeriodChanged
         ? projectAssignments.map((a) =>
             fetch(`/api/assignments/${a.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ startDate: assignmentStartDate, endDate: assignmentEndDate }),
-            })
+            }).then(ensureSuccessfulSaveResponse)
           )
         : [];
 
-      await Promise.all([...createPromises, ...updatePromises, ...dateRangeUpdatePromises]);
+      await Promise.all([...createPromises, ...updatePromises, ...projectPeriodUpdatePromises]);
 
       // Update initial deliverables to match current selections (mark as saved)
       const newInitialDeliverables: Record<string, string[]> = { ...initialDeliverablesByEmployee };
@@ -607,19 +647,23 @@ export const ProjectSetup = () => {
 
       setInitialDeliverablesByEmployee(newInitialDeliverables);
 
-      // Reset initial date range after save
-      if (hasDateRangeChanged && dateRange?.from && dateRange?.to) {
-        setInitialDateRange({ from: dateRange.from, to: dateRange.to });
-      }
+      setInitialStartDate(startDate);
+      setInitialEndDate(endDate);
 
       // Clear pending assignments after successful save
       setPendingAssignments([]);
 
       // Invalidate queries to refetch data
-      queryClient.invalidateQueries({ queryKey: ["assignments"] });
-      queryClient.invalidateQueries({ queryKey: ["assignmentsByProject", viewingProject!.id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectsInfinite });
+      queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
+      queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(viewingProject!.id) });
+
+      if (closeAfterSave) {
+        setIsDialogOpen(false);
+      }
     } catch (error) {
-      console.error("Failed to save assignments:", error);
+      console.error("Failed to save pitch details:", error);
     } finally {
       setIsSaving(false);
     }
@@ -753,8 +797,21 @@ export const ProjectSetup = () => {
                           </div>
                           <div>
                             <div className="font-medium text-sm">{project.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "h-5 px-1.5 text-[10px]",
+                                  project.projectType === "campaign"
+                                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                                    : "border-amber-200 bg-amber-50 text-amber-700"
+                                )}
+                              >
+                                {project.projectType === "campaign" ? "Campaign" : "Pitch"}
+                              </Badge>
+                              <span>
+                                {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -801,17 +858,19 @@ export const ProjectSetup = () => {
           }
           setIsDialogOpen(open);
         }}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0 gap-0">
+            <DialogHeader className="px-6 pt-6 pb-4 border-b bg-background shrink-0 pr-12">
               <DialogTitle>
                 {projectType === 'pitch' ? 'Pitch Details' : 'Project Details'}
+                {brandName ? ` - ${brandName}` : ""}
               </DialogTitle>
               <DialogDescription>
                 View {projectType} information
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-6 py-4">
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="grid gap-6 py-4">
               {/* Basic Information Section */}
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-foreground border-b pb-2">Basic Information</h3>
@@ -1212,37 +1271,33 @@ export const ProjectSetup = () => {
 
               {/* Manage Team Section */}
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Project Periode</label>
-                  <div className="flex items-center gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 text-xs gap-2">
-                          <Icon icon="lucide:calendar" className="h-3.5 w-3.5" />
-                          {dateRange?.from && dateRange?.to
-                            ? `${format(dateRange.from, "MMM yyyy")} - ${format(dateRange.to, "MMM yyyy")}`
-                            : "Select date range"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="range"
-                          selected={dateRange}
-                          onSelect={setDateRange}
-                          numberOfMonths={2}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {dateRange?.from && dateRange?.to && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-xs"
-                        onClick={() => setDateRange(undefined)}
-                      >
-                        Clear
-                      </Button>
-                    )}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">Project Period</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="projectStartDate" className="text-sm font-medium">
+                        Start Date <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="projectStartDate"
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => applyProjectPeriod(e.target.value, endDate)}
+                        disabled={!canEditProjectDetails}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="projectEndDate" className="text-sm font-medium">
+                        End Date <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="projectEndDate"
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => applyProjectPeriod(startDate, e.target.value)}
+                        disabled={!canEditProjectDetails}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="border-b pb-2">
@@ -1447,45 +1502,60 @@ export const ProjectSetup = () => {
                   </table>
                 </div>
 
-                {/* Save button for pending/changed assignments */}
                 {hasUnsavedChanges && (
                   <div className="flex flex-col items-end gap-2">
-                    <div className="flex justify-end pt-4 border-t w-full">
-                      <Button
-                        onClick={handleSaveTeamAssignments}
-                        disabled={isSaving || !allHaveDeliverables || !dateRange?.from || !dateRange?.to}
-                      >
-                        {isSaving ? (
-                          <>
-                            <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Icon icon="lucide:save" className="h-4 w-4 mr-1" />
-                            Save Team Assignments
-                          </>
-                        )}
-                      </Button>
-                    </div>
                     {!allHaveDeliverables && (
                       <p className="text-xs text-amber-600">
                         Please select deliverables for all pending employees
                       </p>
                     )}
-                    {(!dateRange?.from || !dateRange?.to) && (
+                    {!hasValidProjectPeriod && (
                       <p className="text-xs text-amber-600">
-                        Please select a project periode date range
+                        Please select a valid project period date range
+                      </p>
+                    )}
+                    {!canPersistProjectPeriod && (
+                      <p className="text-xs text-amber-600">
+                        Project period changes require at least one team assignment
                       </p>
                     )}
                   </div>
                 )}
               </div>
             </div>
+            </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <DialogFooter className="px-6 py-4 border-t bg-background shrink-0 gap-2 sm:justify-end">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
                 Close
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleSavePitchDetails(true)}
+                disabled={isSaveDisabled}
+              >
+                {isSaving ? (
+                  <>
+                    <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : "Save & Close"}
+              </Button>
+              <Button
+                onClick={() => handleSavePitchDetails(false)}
+                disabled={isSaveDisabled}
+              >
+                {isSaving ? (
+                  <>
+                    <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Icon icon="lucide:save" className="h-4 w-4 mr-1" />
+                    Save
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
