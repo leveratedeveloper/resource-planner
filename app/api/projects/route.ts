@@ -53,6 +53,52 @@ type RawPitch = {
   channels?: RawProjectChannel[];
 };
 
+function transformCampaignLikeToProject(campaign: RawCampaign, type: 'campaign' | 'operational' | 'rnd') {
+  if (campaign.channels && campaign.channels.length > 0) {
+    console.log(`[Projects API] ${type} ${campaign.campaign_name} channels:`, campaign.channels.length);
+  }
+  return {
+    id: campaign.uuid,
+    projectNumber: campaign.io_number,
+    name: campaign.campaign_name,
+    brandId: campaign.brand_id !== null && campaign.brand_id !== undefined ? String(campaign.brand_id) : null,
+    companyId: String(campaign.company_id),
+    currency: campaign.currency,
+    budget: campaign.budget,
+    asf: campaign.asf,
+    grandTotal: campaign.grand_total,
+    startDate: campaign.start_date,
+    endDate: campaign.end_date,
+    notes: campaign.notes,
+    ioFile: campaign.io_file,
+    state: campaign.state,
+    status: campaign.flag === 'active' ? 'active' : campaign.flag === 'inactive' ? 'completed' : 'planning',
+    quotationReference: campaign.quotation_reference,
+    createdAt: campaign.created_at,
+    updatedAt: campaign.updated_at,
+    businessUnitId: null,
+    projectCategoryId: null,
+    projectTypeId: null,
+    projectType: type,
+    entity: null,
+    description: null,
+    color: '#' + Math.floor(Math.random()*16777215).toString(16),
+    createdById: null,
+    region: null,
+    submitDate: null,
+    pitchStatus: null,
+    valueTotalEstimate: null,
+    hsDealId: null,
+    brand: campaign.brand ? {
+      id: String(campaign.brand_id),
+      name: campaign.brand.brand_name,
+      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+    } : undefined,
+    company: campaign.company,
+    channels: campaign.channels,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     // Get session for authentication
@@ -77,8 +123,8 @@ export async function GET(request: Request) {
     const perPage = limit ? parseInt(limit, 10) : 50;
     const page = offset ? Math.floor(parseInt(offset, 10) / perPage) + 1 : 1;
 
-    // Fetch both campaigns and pitches in parallel (include channels for deliverables)
-    const [campaignsResponse, pitchesResponse] = await Promise.all([
+    // Fetch campaigns, pitches, operationals, and rnds in parallel
+    const [campaignsResponse, pitchesResponse, operationalsResponse, rndsResponse] = await Promise.all([
       client.getCampaigns({
         page,
         per_page: perPage,
@@ -93,86 +139,58 @@ export async function GET(request: Request) {
         brand_id: brandId || undefined,
         include: 'channels',
       }),
+      client.getOperationals({
+        page,
+        per_page: perPage,
+        search: search || undefined,
+        brand_id: brandId || undefined,
+        include: 'channels',
+      }),
+      client.getRnds({
+        page,
+        per_page: perPage,
+        search: search || undefined,
+        brand_id: brandId || undefined,
+        include: 'channels',
+      }),
     ]);
 
-    // Check for error responses - return early if both failed
-    if (campaignsResponse?.error && pitchesResponse?.error) {
-      console.error('[Projects API] Both campaigns and pitches failed');
+    // Check for error responses - return early if all failed
+    if (campaignsResponse?.error && pitchesResponse?.error && operationalsResponse?.error && rndsResponse?.error) {
+      console.error('[Projects API] All project types failed');
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to fetch campaigns and pitches',
-          campaignsError: campaignsResponse.error.message,
-          pitchesError: pitchesResponse.error.message,
+          error: 'Failed to fetch all project types',
           data: [],
         },
         { status: 500 }
       );
     }
 
-    // Get actual data from responses - handle various possible response structures
-    // MySQL API might return: { success: true, data: [...] } or { success: true, data: { data: [...], meta: {...} } }
+    // Get actual data from responses
     const campaignsData = ((campaignsResponse?.data?.data || campaignsResponse?.data || []) as RawCampaign[]);
     const pitchesData = ((pitchesResponse?.data?.data || pitchesResponse?.data || []) as RawPitch[]);
+    const operationalsData = ((operationalsResponse?.data?.data || operationalsResponse?.data || []) as RawCampaign[]);
+    const rndsData = ((rndsResponse?.data?.data || rndsResponse?.data || []) as RawCampaign[]);
 
     console.log('[Projects API] Fetched projects:', {
       campaigns: campaignsData.length,
       pitches: pitchesData.length,
+      operationals: operationalsData.length,
+      rnds: rndsData.length,
       page,
       perPage,
       search: Boolean(search),
       brandId: brandId || null,
     });
 
-    // Transform campaigns to projects
-    const campaignProjects = campaignsData.map((campaign) => {
-      if (campaign.channels && campaign.channels.length > 0) {
-        console.log(`[Projects API] Campaign ${campaign.campaign_name} channels:`, campaign.channels.length);
-      }
-      return {
-        id: campaign.uuid,
-        projectNumber: campaign.io_number,
-        name: campaign.campaign_name,
-        brandId: campaign.brand_id !== null && campaign.brand_id !== undefined ? String(campaign.brand_id) : null,
-        companyId: String(campaign.company_id),
-        currency: campaign.currency,
-        budget: campaign.budget,
-        asf: campaign.asf,
-        grandTotal: campaign.grand_total,
-        startDate: campaign.start_date,
-        endDate: campaign.end_date,
-        notes: campaign.notes,
-        ioFile: campaign.io_file,
-        state: campaign.state,
-        status: campaign.flag === 'active' ? 'active' : campaign.flag === 'inactive' ? 'completed' : 'planning',
-        quotationReference: campaign.quotation_reference,
-        createdAt: campaign.created_at,
-        updatedAt: campaign.updated_at,
-        businessUnitId: null,
-        projectCategoryId: null,
-        projectTypeId: null,
-        projectType: 'campaign' as const,
-        entity: null,
-        description: null,
-        color: '#' + Math.floor(Math.random()*16777215).toString(16),
-        createdById: null,
-        // Pitch-specific fields (null for campaigns)
-        region: null,
-        submitDate: null,
-        pitchStatus: null,
-        valueTotalEstimate: null,
-        hsDealId: null,
-        brand: campaign.brand ? {
-          id: String(campaign.brand_id),
-          name: campaign.brand.brand_name,
-          color: '#' + Math.floor(Math.random()*16777215).toString(16),
-        } : undefined,
-        company: campaign.company,
-        channels: campaign.channels,
-      };
-    });
+    // Transform campaigns, operationals, and rnds using shared helper
+    const campaignProjects = campaignsData.map((c) => transformCampaignLikeToProject(c, 'campaign'));
+    const operationalProjects = operationalsData.map((o) => transformCampaignLikeToProject(o, 'operational'));
+    const rndProjects = rndsData.map((r) => transformCampaignLikeToProject(r, 'rnd'));
 
-    // Transform pitches to projects
+    // Transform pitches to projects (different data model)
     const pitchProjects = pitchesData.map((pitch) => ({
       id: pitch.uuid,
       projectNumber: pitch.pitch_number,
@@ -215,23 +233,30 @@ export async function GET(request: Request) {
       channels: pitch.channels,
     }));
 
-    // Combine both project types
-    const data = [...campaignProjects, ...pitchProjects];
+    // Combine all project types
+    const data = [...campaignProjects, ...pitchProjects, ...operationalProjects, ...rndProjects];
 
     // No client-side filtering needed - MySQL API handles it
     const filteredData = data;
 
-    // Combine totals from both responses
+    // Combine totals from all responses
     const campaignsMeta = campaignsResponse?.data?.meta || campaignsResponse?.meta;
     const pitchesMeta = pitchesResponse?.data?.meta || pitchesResponse?.meta;
-    const total = (campaignsMeta?.total || 0) + (pitchesMeta?.total || 0);
+    const operationalsMeta = operationalsResponse?.data?.meta || operationalsResponse?.meta;
+    const rndsMeta = rndsResponse?.data?.meta || rndsResponse?.meta;
+    const total = (campaignsMeta?.total || 0) + (pitchesMeta?.total || 0) + (operationalsMeta?.total || 0) + (rndsMeta?.total || 0);
 
     // Calculate hasMore based on combined pagination
-    const lastPage = Math.max(campaignsMeta?.last_page || 1, pitchesMeta?.last_page || 1);
+    const lastPage = Math.max(
+      campaignsMeta?.last_page || 1,
+      pitchesMeta?.last_page || 1,
+      operationalsMeta?.last_page || 1,
+      rndsMeta?.last_page || 1
+    );
     const hasMore = page < lastPage;
 
     return NextResponse.json({
-      success: campaignsResponse.success && pitchesResponse.success,
+      success: campaignsResponse.success && pitchesResponse.success && operationalsResponse.success && rndsResponse.success,
       data: filteredData,
       total: total,
       hasMore: hasMore,

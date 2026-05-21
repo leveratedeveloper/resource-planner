@@ -6,14 +6,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { startOfMonth, endOfMonth, startOfDay, format, isSameMonth, eachMonthOfInterval } from "date-fns";
 import { type DateRange } from "react-day-picker";
-import { useProjects, useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
-import { useBrands } from "@/lib/query/hooks/useBrands";
+import { useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
+import { useBrands, useInfiniteBrands, type Brand } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
 import { useChannelClassifications } from "@/lib/query/hooks/useChannelClassifications";
 import { useDeliverables } from "@/lib/query/hooks/useDeliverables";
 import { useAssignments, useAssignmentsByProject, useDeleteAssignment, type Assignment } from "@/lib/query/hooks/useAssignments";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +60,16 @@ const CURRENCIES = [
   { code: "GBP", symbol: "£", name: "British Pound" },
   { code: "SGD", symbol: "S$", name: "Singapore Dollar" },
 ];
+
+const fetchProjectsByBrandId = async (brandId: string): Promise<Project[]> => {
+  const response = await fetch(`/api/projects?brandId=${encodeURIComponent(brandId)}&limit=1000&offset=0`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch projects by brand");
+  }
+
+  const result = await response.json();
+  return (result.data || []).filter((project: Project) => project.brandId === brandId);
+};
 
 type ProjectChannelFormValue = {
   channelId?: string;
@@ -110,10 +120,56 @@ export const ProjectSetup = () => {
     fetchNextPage,
   } = useInfiniteProjects(debouncedSearch || undefined);
   const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const { data: brandSearchData, isLoading: brandSearchLoading } = useInfiniteBrands(debouncedSearch || undefined);
   const { data: businessUnits = [] } = useBusinessUnits();
   const { data: projectCategories = [] } = useProjectCategories();
   const { data: channels = [] } = useChannelClassifications();
   const { data: allDeliverables = [] } = useDeliverables();
+
+  const allBrands = useMemo(() => {
+    if (!debouncedSearch || !brandSearchData?.pages) return brands;
+
+    const searchBrands = brandSearchData.pages.flatMap((page) => page.data);
+    const brandMap = new Map<string, Brand>();
+
+    for (const brand of searchBrands) brandMap.set(brand.id, brand);
+    for (const brand of brands) {
+      if (!brandMap.has(brand.id)) brandMap.set(brand.id, brand);
+    }
+
+    return Array.from(brandMap.values());
+  }, [brands, brandSearchData, debouncedSearch]);
+
+  const matchingBrandIds = useMemo(() => {
+    if (!debouncedSearch) return [];
+
+    const normalizedSearch = debouncedSearch.toLowerCase();
+    return allBrands
+      .filter((brand) => (brand.name ?? "").toLowerCase().includes(normalizedSearch))
+      .map((brand) => brand.id);
+  }, [allBrands, debouncedSearch]);
+
+  const brandProjectsQueries = useQueries({
+    queries: matchingBrandIds.map((brandId) => ({
+      queryKey: ["projects", "brand-search", brandId],
+      queryFn: () => fetchProjectsByBrandId(brandId),
+      enabled: !!debouncedSearch,
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    })),
+  });
+
+  const brandProjectsByBrand = useMemo(() => {
+    const projectMap = new Map<string, Project[]>();
+
+    matchingBrandIds.forEach((brandId, index) => {
+      projectMap.set(brandId, brandProjectsQueries[index]?.data ?? []);
+    });
+
+    return projectMap;
+  }, [matchingBrandIds, brandProjectsQueries]);
+
+  const brandProjectsLoading = brandProjectsQueries.some((query) => query.isLoading);
 
   // Flatten all pages into a single array of projects
   const projects = useMemo(() => {
@@ -172,7 +228,7 @@ export const ProjectSetup = () => {
 
 
   // Form State - Project Type
-  const [projectType, setProjectType] = useState<"pitch" | "campaign">("campaign");
+  const [projectType, setProjectType] = useState<"pitch" | "campaign" | "operational" | "rnd">("campaign");
 
   // Form State - Basic Information
   const [name, setName] = useState("");
@@ -519,17 +575,28 @@ export const ProjectSetup = () => {
   // Group projects by brand
   // In default state: show all brands even if they have no projects
   // In search state: show brands that match the search OR have matching projects
-  const projectsByBrand = brands
-    .map((brand) => ({
-      brand,
-      projects: projects.filter((p) => p.brandId === brand.id),
-    }))
-    .filter(({ brand, projects: brandProjects }) => {
+  const projectsByBrand = allBrands
+    .map((brand) => {
+      const brandName = brand.name ?? "";
+      const brandNameMatches = debouncedSearch
+        ? brandName.toLowerCase().includes(debouncedSearch.toLowerCase())
+        : false;
+      const searchedProjects = projects.filter((p) => p.brandId === brand.id);
+      const brandProjects = brandNameMatches
+        ? brandProjectsByBrand.get(brand.id) ?? searchedProjects
+        : searchedProjects;
+
+      return {
+        brand,
+        brandNameMatches,
+        projects: brandProjects,
+      };
+    })
+    .filter(({ brandNameMatches, projects: brandProjects }) => {
       // If there's no search, show all brands
       if (!debouncedSearch) return true;
 
       // If searching, show brands that match the search or have matching projects
-      const brandNameMatches = brand.name.toLowerCase().includes(debouncedSearch.toLowerCase());
       const hasMatchingProjects = brandProjects.length > 0;
 
       return brandNameMatches || hasMatchingProjects;
@@ -718,7 +785,7 @@ export const ProjectSetup = () => {
 
         {/* Projects List grouped by Brand */}
         <div className="space-y-6">
-          {projectsByBrand.length === 0 && !projectsLoading && debouncedSearch ? (
+          {projectsByBrand.length === 0 && !projectsLoading && !brandSearchLoading && !brandProjectsLoading && debouncedSearch ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:search-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">No projects or brands found matching &quot;{debouncedSearch}&quot;</p>
@@ -729,7 +796,7 @@ export const ProjectSetup = () => {
               <p className="text-sm">No brands yet. Create one in the Brands tab first.</p>
             </div>
           ) : (
-            projectsByBrand.map(({ brand, projects: brandProjects }) => (
+            projectsByBrand.map(({ brand, brandNameMatches, projects: brandProjects }) => (
               <div key={brand.id} className="space-y-3">
                 <div className="flex items-center gap-2">
                   <div
@@ -743,7 +810,7 @@ export const ProjectSetup = () => {
                 </div>
 
                 {brandProjects.length === 0 ? (
-                  projectsLoading ? (
+                  projectsLoading || (brandNameMatches && brandProjectsLoading) ? (
                     <div className="grid gap-2 pl-5">
                       {[1, 2].map((i) => (
                         <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-white">
@@ -834,10 +901,10 @@ export const ProjectSetup = () => {
           <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {projectType === 'pitch' ? 'Pitch Details' : 'Project Details'}
+                {projectType === 'pitch' ? 'Pitch Details' : projectType === 'operational' ? 'Operational Details' : projectType === 'rnd' ? 'R&D Details' : 'Project Details'}
               </DialogTitle>
               <DialogDescription>
-                View {projectType} information
+                View {projectType === 'pitch' ? 'pitch' : projectType === 'operational' ? 'operational' : projectType === 'rnd' ? 'R&D' : 'project'} information
               </DialogDescription>
             </DialogHeader>
 
@@ -849,17 +916,17 @@ export const ProjectSetup = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label htmlFor="name" className="text-sm font-medium">
-                      {projectType === 'pitch' ? 'Pitch Name' : 'Project Name'} <span className="text-red-500">*</span>
+                      {projectType === 'pitch' ? 'Pitch Name' : projectType === 'operational' ? 'Operational Name' : projectType === 'rnd' ? 'R&D Name' : 'Project Name'} <span className="text-red-500">*</span>
                     </label>
                     <Input
                       id="name"
                       value={name}
                       disabled
-                      placeholder={projectType === 'pitch' ? "e.g., Nike Q1 2026 Pitch" : "e.g., Website Redesign"}
+                      placeholder={projectType === 'pitch' ? "e.g., Nike Q1 2026 Pitch" : projectType === 'operational' ? "e.g., Monthly Operations" : projectType === 'rnd' ? "e.g., Research Project" : "e.g., Website Redesign"}
                     />
                   </div>
 
-                  {projectType === 'campaign' && (
+                  {projectType !== 'pitch' && (
                     <div className="space-y-2">
                       <label htmlFor="projectNumber" className="text-sm font-medium">
                         Project Number <span className="text-xs text-muted-foreground">(Auto-generated)</span>
@@ -1056,7 +1123,7 @@ export const ProjectSetup = () => {
                     </div>
                   </div>
 
-                  {projectType === 'campaign' && (
+                  {projectType !== 'pitch' && (
                     <>
                       <div className="space-y-2">
                         <label htmlFor="asf" className="text-sm font-medium">
@@ -1140,8 +1207,8 @@ export const ProjectSetup = () => {
 
 
 
-              {/* Channels & Deliverables Section (PITCH & CAMPAIGN) */}
-              {(projectType === 'pitch' || projectType === 'campaign') && (
+              {/* Channels & Deliverables Section (PITCH, CAMPAIGN, OPERATIONAL & RND) */}
+              {(projectType === 'pitch' || projectType === 'campaign' || projectType === 'operational' || projectType === 'rnd') && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b pb-2">
                     <h3 className="text-sm font-semibold text-foreground">Channels & Deliverables</h3>

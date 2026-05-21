@@ -90,9 +90,96 @@ const FilterBarComponent = ({
     projectId,
   ].filter(Boolean).length;
 
+  const renderFilterControls = (isMenuContent = false) => (
+    <div
+      className="flex flex-col gap-3 xl:flex-row xl:items-center xl:gap-2"
+      data-testid={isMenuContent ? "filter-menu-content" : undefined}
+    >
+      <div className="relative xl:w-[280px]">
+        <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          data-testid="filter-search-input"
+          placeholder="Search name, position, project, brand..."
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      <Select
+        value={selectedBrandId || "all"}
+        onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
+      >
+        <SelectTrigger
+          className="w-full xl:w-[170px]"
+          data-testid="filter-brand-trigger"
+          aria-label="Filter by brand"
+        >
+          <SelectValue placeholder="All Brands" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem key="all" value="all">All Brands</SelectItem>
+          {brands.map((brand) => (
+            <SelectItem key={brand.id} value={brand.id}>
+              <span className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color }} />
+                {brand.name}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={selectedDepartment || "all"}
+        onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
+      >
+        <SelectTrigger
+          className="w-full xl:w-[180px]"
+          data-testid="filter-department-trigger"
+          aria-label="Filter by department"
+        >
+          <SelectValue placeholder="All Departments" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem key="all" value="all">All Departments</SelectItem>
+          {departments.map((dept) => (
+            <SelectItem key={dept.id} value={dept.id}>
+              <span className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
+                {dept.name}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={projectId || "all"}
+        onValueChange={(val) => onProjectChange(val === "all" ? null : val)}
+      >
+        <SelectTrigger
+          className="w-full xl:w-[180px]"
+          data-testid="filter-project-trigger"
+          aria-label="Filter by project"
+        >
+          <SelectValue placeholder="All Projects" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem key="all" value="all">All Projects</SelectItem>
+          {projects.map((project) => (
+            <SelectItem key={project.id} value={project.id}>
+              {project.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+    <div className="flex items-center justify-between gap-3 p-4 border-b bg-card" data-testid="filter-bar">
+      <div className="flex min-w-0 shrink-0 items-center gap-2 xl:flex-1">
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -100,7 +187,7 @@ const FilterBarComponent = ({
               size="icon"
               aria-label="Open filters"
               data-testid="filter-menu-trigger"
-              className="relative"
+              className="relative xl:hidden"
             >
               <Icon icon="lucide:menu" className="h-4 w-4" />
               {activeFilterCount > 0 && (
@@ -111,99 +198,22 @@ const FilterBarComponent = ({
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-[min(calc(100vw-2rem),360px)] p-3">
-            <div className="flex flex-col gap-3" data-testid="filter-menu-content">
+            <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 px-1">
                 <Icon icon="lucide:filter" className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filters</span>
               </div>
-
-              {/* Search Input */}
-              <div className="relative">
-                <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  data-testid="filter-search-input"
-                  placeholder="Search name, position, project, brand..."
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-
-              <Select
-                value={selectedBrandId || "all"}
-                onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
-              >
-                <SelectTrigger
-                  className="w-full"
-                  data-testid="filter-brand-trigger"
-                  aria-label="Filter by brand"
-                >
-                  <SelectValue placeholder="All Brands" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem key="all" value="all">All Brands</SelectItem>
-                  {brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.id}>
-                      <span className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color }} />
-                        {brand.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={selectedDepartment || "all"}
-                onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
-              >
-                <SelectTrigger
-                  className="w-full"
-                  data-testid="filter-department-trigger"
-                  aria-label="Filter by department"
-                >
-                  <SelectValue placeholder="All Departments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem key="all" value="all">All Departments</SelectItem>
-                  {departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.id}>
-                      <span className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
-                        {dept.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Project Filter */}
-              <Select
-                value={projectId || "all"}
-                onValueChange={(val) => onProjectChange(val === "all" ? null : val)}
-              >
-                <SelectTrigger
-                  className="w-full"
-                  data-testid="filter-project-trigger"
-                  aria-label="Filter by project"
-                >
-                  <SelectValue placeholder="All Projects" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem key="all" value="all">All Projects</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {renderFilterControls(true)}
             </div>
           </PopoverContent>
         </Popover>
+
+        <div className="hidden min-w-0 xl:flex">
+          {renderFilterControls()}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto xl:flex-none xl:shrink-0 [&>*]:shrink-0">
         <ImportButton />
         <ExportButton
           filters={{

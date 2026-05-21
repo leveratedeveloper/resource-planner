@@ -28,7 +28,7 @@ export interface Project {
   businessUnitId: string | null;
   projectCategoryId: string | null;
   projectTypeId: string | null;
-  projectType: 'pitch' | 'campaign';
+  projectType: 'pitch' | 'campaign' | 'operational' | 'rnd';
   entity: string | null;
   name: string;
   projectNumber: string | null;
@@ -90,7 +90,7 @@ export interface Project {
 export type NewProject = {
   name: string;
   brandId: string;
-  projectType?: 'pitch' | 'campaign';
+  projectType?: 'pitch' | 'campaign' | 'operational' | 'rnd';
   entity?: string | null;
   color?: string;
   status?: "planning" | "active" | "on_hold" | "completed" | "cancelled";

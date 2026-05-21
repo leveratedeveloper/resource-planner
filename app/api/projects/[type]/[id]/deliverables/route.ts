@@ -19,11 +19,29 @@ export async function GET(
     // Await params (Next.js 15 requirement)
     const { type, id } = await params;
 
+    // Validate project type
+    const validTypes = ['campaign', 'pitch', 'operational', 'rnd'];
+    if (!validTypes.includes(type)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid project type: ${type}` },
+        { status: 400 }
+      );
+    }
+
     // Get API client with session token
     const client = getMySqlApiClient(async () => session.access_token);
 
+    // Map singular project type to plural API endpoint
+    const typeToEndpoint: Record<string, string> = {
+      campaign: 'campaigns',
+      pitch: 'pitches',
+      operational: 'operationals',
+      rnd: 'rnds',
+    };
+    const endpoint = typeToEndpoint[type] || type;
+
     // Call MySQL API endpoint for project deliverables
-    const response = await client.request<any>(`/${type}/${id}/deliverables`);
+    const response = await client.request<any>(`/${endpoint}/${id}/deliverables`);
 
     console.log('[Project Deliverables API] Raw MySQL response:', JSON.stringify(response, null, 2));
 

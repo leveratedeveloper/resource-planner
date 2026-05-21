@@ -68,15 +68,17 @@ export async function POST(request: Request) {
     const apiClient = getMySqlApiClient(async () => session.access_token);
 
     console.log("[Import] Fetching entities from API...");
-    const [employees, campaigns, pitches, brands, channelsData] = await Promise.all([
+    const [employees, campaigns, pitches, operationals, rnds, brands, channelsData] = await Promise.all([
       fetchAllPages((p) => apiClient.getEmployees(p)),
       fetchAllPages((p) => apiClient.getCampaigns({ ...p, include: 'channels' })),
       fetchAllPages((p) => apiClient.getPitches({ ...p, include: 'channels' })),
+      fetchAllPages((p) => apiClient.getOperationals({ ...p, include: 'channels' })),
+      fetchAllPages((p) => apiClient.getRnds({ ...p, include: 'channels' })),
       fetchAllPages((p) => apiClient.getBrands(p)),
       fetchAllPages((p) => apiClient.getChannelClassifications(p)),
     ]);
 
-    console.log(`[Import] API Stats: Employees=${employees.length}, Campaigns=${campaigns.length}, Pitches=${pitches.length}, Brands=${brands.length}, Channels=${channelsData.length}`);
+    console.log(`[Import] API Stats: Employees=${employees.length}, Campaigns=${campaigns.length}, Pitches=${pitches.length}, Operationals=${operationals.length}, RnDs=${rnds.length}, Brands=${brands.length}, Channels=${channelsData.length}`);
 
     // Map channel IDs to names
     const channelMap = new Map<string, string>();
@@ -85,7 +87,7 @@ export async function POST(request: Request) {
       if (name) channelMap.set(String(c.id), String(name).toLowerCase().trim());
     });
 
-    const allProjects = [...campaigns, ...pitches].map(p => ({
+    const allProjects = [...campaigns, ...pitches, ...operationals, ...rnds].map(p => ({
       id: p.uuid || p.id,
       name: p.campaign_name || p.pitch_name,
       brandId: p.brand_id ? String(p.brand_id) : null,

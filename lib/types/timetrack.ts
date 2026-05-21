@@ -319,7 +319,7 @@ export interface TimetrackProjectWebhook {
   data: {
     id: number;
     rp_project_id?: string;
-    entity_type: 'campaign' | 'pitch';
+    entity_type: 'campaign' | 'pitch' | 'operational' | 'rnd';
     changes?: Record<string, { old: any; new: any }>;
   };
   signature: string; // HMAC-SHA256 signature for verification

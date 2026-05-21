@@ -337,6 +337,20 @@ class MySqlApiClient {
   }
 
   /**
+   * Get operationals with pagination
+   */
+  getOperationals(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
+    return this.request<any>('/operationals', params);
+  }
+
+  /**
+   * Get rnds with pagination
+   */
+  getRnds(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
+    return this.request<any>('/rnds', params);
+  }
+
+  /**
    * Get pitches with pagination
    */
   async getPitches(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
@@ -390,6 +404,20 @@ class MySqlApiClient {
    */
   getCampaign(uuid: string): Promise<MySqlApiResponse<MySqlCampaign>> {
     return this.request<MySqlCampaign>(`/campaigns/${uuid}`);
+  }
+
+  /**
+   * Get single operational by UUID
+   */
+  getOperational(uuid: string): Promise<MySqlApiResponse<MySqlCampaign>> {
+    return this.request<MySqlCampaign>(`/operationals/${uuid}`);
+  }
+
+  /**
+   * Get single rnd by UUID
+   */
+  getRnd(uuid: string): Promise<MySqlApiResponse<MySqlCampaign>> {
+    return this.request<MySqlCampaign>(`/rnds/${uuid}`);
   }
 
   /**
