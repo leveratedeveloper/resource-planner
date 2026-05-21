@@ -51,6 +51,10 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate');
     const status = searchParams.get('status');
     const projectIds = searchParams.getAll('projectIds');
+    const limit = searchParams.get('limit');
+    const offset = searchParams.get('offset');
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    const offsetNum = offset ? parseInt(offset, 10) : undefined;
 
     // For restricted access, force filter to current user's employee UUID
     let effectiveEmployeeId = employeeId;
@@ -59,15 +63,19 @@ export async function GET(request: Request) {
       console.log('[Assignments API] Restricted access, filtering to employee:', session.employee.uuid);
     }
 
-    // Fetch from MySQL assignments database
-    const assignments = await getAssignments({
+    const filterParams = {
       employee_uuid: effectiveEmployeeId || undefined,
       project_uuid: projectId || undefined,
       project_uuids: projectIds.length > 0 ? projectIds : undefined,
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       status: status || undefined,
-    }) as any[];
+      limit: limitNum,
+      offset: offsetNum,
+    };
+
+    // Fetch from MySQL assignments database
+    const assignments = await getAssignments(filterParams) as any[];
 
     // Transform to frontend format
     const transformedAssignments = assignments.map(transformMySqlAssignmentToFrontend);
@@ -76,7 +84,9 @@ export async function GET(request: Request) {
       success: true,
       data: transformedAssignments,
       total: transformedAssignments.length,
-      hasMore: false,
+      hasMore: limitNum
+        ? transformedAssignments.length >= limitNum
+        : false,
     });
   } catch (error) {
     console.error("[API /assignments] Failed to fetch assignments:", error);

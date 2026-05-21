@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Icon } from "@iconify/react";
 import {
   DropdownMenu,
@@ -82,96 +83,124 @@ const FilterBarComponent = ({
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
   const hasDashboardAccess = canAccessDashboard(session);
+  const activeFilterCount = [
+    searchQuery.trim(),
+    selectedBrandId,
+    selectedDepartment,
+    projectId,
+  ].filter(Boolean).length;
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <Icon icon="lucide:filter" className="text-muted-foreground" />
-          <span className="font-medium">Filters:</span>
-        </div>
-
-        {/* Search Input */}
-        <div className="relative">
-          <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            data-testid="filter-search-input"
-            placeholder="Search name, position, project, brand..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 w-full sm:w-auto min-w-[200px]"
-          />
-        </div>
-
-        <Select
-          value={selectedBrandId || "all"}
-          onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
-        >
-          <SelectTrigger
-            className="w-full sm:w-auto min-w-[140px] max-w-[200px]"
-            data-testid="filter-brand-trigger"
-            aria-label="Filter by brand"
-          >
-            <SelectValue placeholder="All Brands" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem key="all" value="all">All Brands</SelectItem>
-            {brands.map((brand) => (
-              <SelectItem key={brand.id} value={brand.id}>
-                <span className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color }} />
-                  {brand.name}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Open filters"
+              data-testid="filter-menu-trigger"
+              className="relative"
+            >
+              <Icon icon="lucide:menu" className="h-4 w-4" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                  {activeFilterCount}
                 </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[min(calc(100vw-2rem),360px)] p-3">
+            <div className="flex flex-col gap-3" data-testid="filter-menu-content">
+              <div className="flex items-center gap-2 px-1">
+                <Icon icon="lucide:filter" className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Filters</span>
+              </div>
 
-        <Select
-          value={selectedDepartment || "all"}
-          onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
-        >
-          <SelectTrigger
-            className="w-full sm:w-auto min-w-[140px] max-w-[200px]"
-            data-testid="filter-department-trigger"
-            aria-label="Filter by department"
-          >
-            <SelectValue placeholder="All Departments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem key="all" value="all">All Departments</SelectItem>
-            {departments.map((dept) => (
-              <SelectItem key={dept.id} value={dept.id}>
-                <span className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
-                  {dept.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              {/* Search Input */}
+              <div className="relative">
+                <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  data-testid="filter-search-input"
+                  placeholder="Search name, position, project, brand..."
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
 
-        {/* Project Filter */}
-        <Select
-          value={projectId || "all"}
-          onValueChange={(val) => onProjectChange(val === "all" ? null : val)}
-        >
-          <SelectTrigger
-            className="w-full sm:w-auto min-w-[140px] max-w-[200px]"
-            data-testid="filter-project-trigger"
-            aria-label="Filter by project"
-          >
-            <SelectValue placeholder="All Projects" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem key="all" value="all">All Projects</SelectItem>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>
-                {project.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              <Select
+                value={selectedBrandId || "all"}
+                onValueChange={(val) => onBrandChange(val === "all" ? null : val)}
+              >
+                <SelectTrigger
+                  className="w-full"
+                  data-testid="filter-brand-trigger"
+                  aria-label="Filter by brand"
+                >
+                  <SelectValue placeholder="All Brands" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem key="all" value="all">All Brands</SelectItem>
+                  {brands.map((brand) => (
+                    <SelectItem key={brand.id} value={brand.id}>
+                      <span className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color }} />
+                        {brand.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={selectedDepartment || "all"}
+                onValueChange={(val) => onDepartmentChange(val === "all" ? null : val)}
+              >
+                <SelectTrigger
+                  className="w-full"
+                  data-testid="filter-department-trigger"
+                  aria-label="Filter by department"
+                >
+                  <SelectValue placeholder="All Departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem key="all" value="all">All Departments</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      <span className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
+                        {dept.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Project Filter */}
+              <Select
+                value={projectId || "all"}
+                onValueChange={(val) => onProjectChange(val === "all" ? null : val)}
+              >
+                <SelectTrigger
+                  className="w-full"
+                  data-testid="filter-project-trigger"
+                  aria-label="Filter by project"
+                >
+                  <SelectValue placeholder="All Projects" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem key="all" value="all">All Projects</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">

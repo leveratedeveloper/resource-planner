@@ -61,20 +61,34 @@ export type NewAssignment = Omit<
 > & { isAdjustment?: boolean };
 
 // API Functions
+const ASSIGNMENT_PAGE_SIZE = 3000;
+
 async function fetchAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }): Promise<Assignment[]> {
-  const url = new URL("/api/assignments", window.location.origin);
-  if (params?.startDate) url.searchParams.set("startDate", params.startDate);
-  if (params?.endDate) url.searchParams.set("endDate", params.endDate);
-  if (params?.projectIds) {
-    params.projectIds.forEach(id => url.searchParams.append("projectIds", id));
+  const allAssignments: Assignment[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const url = new URL("/api/assignments", window.location.origin);
+    if (params?.startDate) url.searchParams.set("startDate", params.startDate);
+    if (params?.endDate) url.searchParams.set("endDate", params.endDate);
+    if (params?.projectIds) {
+      params.projectIds.forEach(id => url.searchParams.append("projectIds", id));
+    }
+    url.searchParams.set("limit", String(ASSIGNMENT_PAGE_SIZE));
+    url.searchParams.set("offset", String(offset));
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      throw new Error("Failed to fetch assignments");
+    }
+    const data = await response.json();
+    allAssignments.push(...(data.data || []));
+    hasMore = data.hasMore;
+    offset += ASSIGNMENT_PAGE_SIZE;
   }
 
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error("Failed to fetch assignments");
-  }
-  const data = await response.json();
-  return data.data;
+  return allAssignments;
 }
 
 async function fetchAssignment(id: string): Promise<Assignment> {

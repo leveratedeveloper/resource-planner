@@ -75,6 +75,8 @@ export async function getAssignments(filters?: {
   start_date?: string;
   end_date?: string;
   status?: string;
+  limit?: number;
+  offset?: number;
 }) {
   let query = 'SELECT * FROM assignments WHERE 1=1';
   const params: any[] = [];
@@ -108,8 +110,61 @@ export async function getAssignments(filters?: {
 
   query += ' ORDER BY created_at DESC';
 
+  if (filters?.limit) {
+    query += ' LIMIT ?';
+    params.push(filters.limit);
+    if (filters?.offset) {
+      query += ' OFFSET ?';
+      params.push(filters.offset);
+    }
+  }
+
   const [rows] = await assignmentsDb.execute(query, params);
   return rows;
+}
+
+/**
+ * Get assignments count with the same filters as getAssignments
+ */
+export async function getAssignmentsCount(filters?: {
+  employee_uuid?: string;
+  project_uuid?: string;
+  project_uuids?: string[];
+  start_date?: string;
+  end_date?: string;
+  status?: string;
+}) {
+  let query = 'SELECT COUNT(*) as count FROM assignments WHERE 1=1';
+  const params: any[] = [];
+
+  if (filters?.employee_uuid) {
+    query += ' AND employee_uuid = ?';
+    params.push(filters.employee_uuid);
+  }
+  if (filters?.project_uuid) {
+    query += ' AND project_uuid = ?';
+    params.push(filters.project_uuid);
+  }
+  if (filters?.project_uuids && filters.project_uuids.length > 0) {
+    const placeholders = filters.project_uuids.map(() => '?').join(',');
+    query += ` AND project_uuid IN (${placeholders})`;
+    params.push(...filters.project_uuids);
+  }
+  if (filters?.start_date) {
+    query += ' AND end_date >= ?';
+    params.push(filters.start_date);
+  }
+  if (filters?.end_date) {
+    query += ' AND start_date <= ?';
+    params.push(filters.end_date);
+  }
+  if (filters?.status) {
+    query += ' AND status = ?';
+    params.push(filters.status);
+  }
+
+  const [rows] = await assignmentsDb.execute(query, params);
+  return (rows as any[])[0]?.count || 0;
 }
 
 /**
