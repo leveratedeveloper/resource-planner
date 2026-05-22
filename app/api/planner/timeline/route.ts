@@ -6,6 +6,7 @@ import {
   type PlannerTimelineFilters,
   type TimelineViewMode,
 } from "@/lib/timeline/planner-loading";
+import { createRequestTiming } from "@/lib/observability/request-timing";
 
 const VIEW_MODES = new Set<TimelineViewMode>([
   "week",
@@ -16,9 +17,12 @@ const VIEW_MODES = new Set<TimelineViewMode>([
 ]);
 
 export async function GET(request: NextRequest) {
+  const timing = createRequestTiming("planner_timeline_api");
+
   try {
     const session = await getSession();
     if (!session) {
+      timing.total({ result: "unauthenticated" });
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
@@ -27,6 +31,7 @@ export async function GET(request: NextRequest) {
     const endDate = request.nextUrl.searchParams.get("endDate");
 
     if (!viewParam || !VIEW_MODES.has(viewParam as TimelineViewMode) || !startDate || !endDate) {
+      timing.total({ result: "invalid_request" });
       return NextResponse.json(
         { error: "viewMode, startDate, and endDate are required" },
         { status: 400 }
@@ -48,9 +53,16 @@ export async function GET(request: NextRequest) {
       endDate,
       filters,
     });
+    timing.phase("timeline_fetch", {
+      viewMode,
+      assignmentCount: data.assignments.length,
+      actualAssignmentCount: data.actualAssignments.length,
+    });
+    timing.total({ result: "success" });
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    timing.total({ result: "error" });
     console.error("[API /planner/timeline] Failed to load planner timeline:", error);
     return NextResponse.json(
       {

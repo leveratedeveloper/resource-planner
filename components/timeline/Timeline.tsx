@@ -32,6 +32,7 @@ import {
   setEmployeeFilterSelection,
   setEmployeeFlag,
 } from "@/lib/timeline/row-state";
+import { getTimelineHeaderLayout } from "@/lib/timeline/header-layout";
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
@@ -41,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface TimelineProps {
   initialTimelineAnchor: string;
+  criticalStartupPending?: boolean;
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
@@ -53,6 +55,7 @@ const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
 
 export const Timeline: React.FC<TimelineProps> = ({
   initialTimelineAnchor,
+  criticalStartupPending = false,
   brandId,
   department,
   searchQuery,
@@ -63,7 +66,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   // Fetch data using React Query (assignments fetched after date range is calculated)
   const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, searchQuery });
   const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
-    enabled: useCompleteEmployeeList,
+    enabled: useCompleteEmployeeList && !criticalStartupPending,
   });
   const {
     data: incrementalEmployeePages,
@@ -72,7 +75,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     isFetchingNextPage: isFetchingNextEmployeePage,
     fetchNextPage: fetchNextEmployeePage,
   } = useInfiniteEmployees(searchQuery, {
-    enabled: !useCompleteEmployeeList,
+    enabled: !useCompleteEmployeeList && !criticalStartupPending,
   });
   const employees = useCompleteEmployeeList
     ? completeEmployees
@@ -205,6 +208,11 @@ export const Timeline: React.FC<TimelineProps> = ({
     const calculatedWidth = containerWidth / dayCount;
     return calculatedWidth;
   }, [days.length, containerWidth]);
+  const headerLayout = getTimelineHeaderLayout({
+    columnCount: days.length,
+    cellWidth,
+    criticalStartupPending,
+  });
 
   // Determine if we're in week view mode (where each cell = 1 month)
   // Month view now shows daily columns like week view, so it's not included here
@@ -241,7 +249,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     data: plannerTimeline,
     isLoading: isLoadingPlannerTimeline,
   } = usePlannerTimeline(plannerRequest, {
-    enabled: shouldEnableTimelineAssignments(assignmentDateRange),
+    enabled: !criticalStartupPending && shouldEnableTimelineAssignments(assignmentDateRange),
   });
   const dateFilteredAssignments = plannerTimeline?.assignments ?? [];
   const visibleActualAssignments = plannerTimeline?.actualAssignments ?? [];
@@ -478,7 +486,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   }, []);
 
   const isInitialTimelineLoading =
-    isLoadingEmployees || isLoadingPlannerTimeline;
+    criticalStartupPending || isLoadingEmployees || isLoadingPlannerTimeline;
 
   return (
     <div ref={timelineRootRef} className="flex flex-col h-full" data-testid="timeline-root">
@@ -506,7 +514,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           tabIndex={0}
           aria-label="Timeline day headers"
         >
-          <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
+          <div className="flex relative" style={{ width: headerLayout.headerWidth }}>
             {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
               const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
@@ -525,7 +533,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     today && "border-b-2 border-b-primary bg-muted/30",
                     isMonthRangeView && currentMonth && "border-b-2 border-b-primary bg-muted/30"
                   )}
-                  style={{ width: `${cellWidth}px` }}
+                  style={{ width: headerLayout.columnWidth }}
                   data-testid="timeline-day-cell"
                   data-date={format(day, "yyyy-MM-dd")}
                   data-weekend={String(isWeekend)}

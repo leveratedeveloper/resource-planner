@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff } from 'lucide-react';
-import { shouldDisableLoginSubmit } from '@/lib/auth/login-loading';
+import {
+  shouldDisableLoginSubmit,
+} from '@/lib/auth/login-loading';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,10 +48,10 @@ export default function LoginPage() {
       }
 
       // Use full page reload to ensure session cookie is available
+      setIsLoading(true);
       window.location.href = '/';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
       setIsLoading(false);
     }
   };

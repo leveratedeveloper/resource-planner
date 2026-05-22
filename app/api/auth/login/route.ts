@@ -3,8 +3,11 @@ import { login, getUserWithProfile, getDepartment } from '@/lib/api/timetrack-cl
 import { determineAccessLevel } from '@/lib/auth/access-level';
 import { createSession, SessionData } from '@/lib/auth/session';
 import { getMySqlApiClient } from '@/lib/mysql/api-client';
+import { createRequestTiming } from '@/lib/observability/request-timing';
 
 export async function POST(request: NextRequest) {
+  const timing = createRequestTiming("login_api");
+
   try {
     const { email, password } = await request.json();
 
@@ -12,6 +15,7 @@ export async function POST(request: NextRequest) {
 
     // Validate input
     if (!email || !password) {
+      timing.total({ result: "invalid_input" });
       return NextResponse.json(
         { error: 'Email and password are required' },
         { status: 400 }
@@ -20,6 +24,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Call timetrack login API
     const loginResult = await login(email, password);
+    timing.phase("credential_exchange", { result: loginResult.success ? "success" : "failure" });
 
     console.log('[Login API] Login result:', {
       success: loginResult.success,
@@ -28,6 +33,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!loginResult.success || !loginResult.data) {
+      timing.total({ result: "invalid_credentials" });
       return NextResponse.json(
         { error: loginResult.message || 'Invalid credentials' },
         { status: 401 }
@@ -38,9 +44,11 @@ export async function POST(request: NextRequest) {
 
     // 2. Fetch user with profile (employee data)
     const userProfile = await getUserWithProfile(access_token, user.id);
+    timing.phase("profile_lookup", { result: userProfile.data?.profile ? "success" : "missing" });
 
     if (!userProfile.data || !userProfile.data.profile) {
       console.log('[Login API] No employee profile found for user');
+      timing.total({ result: "missing_profile" });
       return NextResponse.json(
         { error: 'No employee profile found for this user' },
         { status: 404 }
@@ -57,6 +65,7 @@ export async function POST(request: NextRequest) {
         department_name = deptResult.data.department_name;
       }
     }
+    timing.phase("department_lookup", { found: department_name !== "Unknown" });
 
     console.log('[Login API] Employee data:', {
       id: employee.id,
@@ -85,7 +94,12 @@ export async function POST(request: NextRequest) {
         });
 
         if (!mysqlResponse.error && mysqlResponse.data?.data) {
-          const mysqlEmployee = mysqlResponse.data.data.find((emp: any) =>
+          const mysqlEmployees = mysqlResponse.data.data as Array<{
+            nik?: string;
+            full_name?: string;
+            uuid?: string;
+          }>;
+          const mysqlEmployee = mysqlEmployees.find((emp) =>
             emp.nik === employee.nik || emp.full_name === employee.full_name
           );
           if (mysqlEmployee?.uuid) {
@@ -100,6 +114,7 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error('[Login API] Error fetching from MySQL API:', error);
       }
+      timing.phase("uuid_fallback", { found: !!employeeUuid });
     }
 
     // 4. Determine access level
@@ -135,16 +150,23 @@ export async function POST(request: NextRequest) {
 
     // 6. Set session cookie
     await createSession(session);
+    timing.phase("session_creation");
 
     // Return session data (without sensitive token in response body)
-    const { access_token: _, ...sessionResponse } = session;
+    const sessionResponse = {
+      user: session.user,
+      employee: session.employee,
+      access: session.access,
+    };
 
+    timing.total({ result: "success" });
     return NextResponse.json({
       success: true,
       data: sessionResponse
     });
 
   } catch (error) {
+    timing.total({ result: "error" });
     console.error('[Login API] Login error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

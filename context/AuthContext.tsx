@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 
 export interface SessionData {
@@ -39,6 +39,21 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+export function shouldFetchAuthSession({
+  hasInitialSession,
+  hasResolvedInitialSession,
+}: {
+  hasInitialSession: boolean;
+  hasResolvedInitialSession: boolean;
+}): boolean {
+  return !hasInitialSession && !hasResolvedInitialSession;
+}
+
+export function clearAuthSessionAfterLogout(queryClient: QueryClient): void {
+  queryClient.clear();
+  queryClient.setQueryData(["session"], null);
+}
+
 async function fetchSession(): Promise<PublicSessionData | null> {
   const response = await fetch('/api/auth/me');
   if (!response.ok) return null;
@@ -53,9 +68,11 @@ async function logoutUser(): Promise<void> {
 export function AuthProvider({
   children,
   initialSession,
+  hasResolvedInitialSession = false,
 }: {
   children: ReactNode;
   initialSession?: PublicSessionData | null;
+  hasResolvedInitialSession?: boolean;
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -64,6 +81,10 @@ export function AuthProvider({
     queryKey: ['session'],
     queryFn: fetchSession,
     initialData: initialSession,
+    enabled: shouldFetchAuthSession({
+      hasInitialSession: initialSession !== undefined,
+      hasResolvedInitialSession,
+    }),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -71,8 +92,9 @@ export function AuthProvider({
   const logoutMutation = useMutation({
     mutationFn: logoutUser,
     onSuccess: () => {
-      queryClient.clear();
-      router.push('/login');
+      clearAuthSessionAfterLogout(queryClient);
+      router.replace('/login');
+      router.refresh();
     },
   });
 
