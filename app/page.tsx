@@ -1,64 +1,114 @@
-"use client";
+import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+import { HomeClient } from "@/app/HomeClient";
+import { getSession } from "@/lib/auth/session";
+import {
+  DEFAULT_TIMELINE_VIEW,
+  getInitialTimelineAnchor,
+  getInitialTimelineDateRange,
+} from "@/lib/timeline/initial-load";
+import { queryKeys } from "@/lib/query/queryKeys";
+import {
+  fetchInitialEmployeePage,
+  fetchPlannerBrands,
+  fetchPlannerDepartments,
+  fetchPlannerProjects,
+  fetchPlannerTimeline,
+  toPublicSession,
+} from "@/lib/query/server/planner-prefetch";
+import {
+  getPlannerTimelineQueryKey,
+  getTimelineResolution,
+} from "@/lib/timeline/planner-loading";
 
-import { useState } from "react";
-import { FilterBar } from "@/components/filters/FilterBar";
-import { SetupManager } from "@/components/setup/SetupManager";
-import { Timeline } from "@/components/timeline/Timeline";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useDebounce } from "@/hooks/use-debounce";
+type PrefetchResult<T> =
+  | { ok: true; data: T }
+  | { ok: false };
 
-export default function Home() {
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearch = useDebounce(searchQuery, 300);
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
+async function safePrefetch<T>(promise: Promise<T>): Promise<PrefetchResult<T>> {
+  try {
+    return { ok: true, data: await promise };
+  } catch (error) {
+    console.error("[Home Prefetch] Failed to prefetch initial data:", error);
+    return { ok: false };
+  }
+}
 
-  // Assignment filters
-  const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+async function prefetchHomeData(queryClient: QueryClient, initialTimelineAnchor: string) {
+  const session = await getSession();
+  const publicSession = toPublicSession(session);
+
+  queryClient.setQueryData(["session"], publicSession);
+
+  if (!session) {
+    return;
+  }
+
+  const initialDateRange = getInitialTimelineDateRange(
+    initialTimelineAnchor,
+    DEFAULT_TIMELINE_VIEW
+  );
+  const initialPlannerRequest = {
+    viewMode: DEFAULT_TIMELINE_VIEW,
+    resolution: getTimelineResolution(DEFAULT_TIMELINE_VIEW),
+    startDate: initialDateRange.startDate,
+    endDate: initialDateRange.endDate,
+    filters: {
+      brandId: null,
+      department: null,
+      projectId: null,
+      category: null,
+      status: null,
+    },
+  };
+
+  const results = await Promise.all([
+    safePrefetch(fetchInitialEmployeePage(session)),
+    safePrefetch(fetchPlannerBrands(session)),
+    safePrefetch(fetchPlannerDepartments(session)),
+    safePrefetch(fetchPlannerProjects(session)),
+    safePrefetch(fetchPlannerTimeline(session, initialPlannerRequest)),
+  ]);
+
+  const [
+    initialEmployeePage,
+    brands,
+    departments,
+    projects,
+    plannerTimeline,
+  ] = results;
+
+  if (initialEmployeePage.ok) {
+    queryClient.setQueryData([...queryKeys.employeesInfinite, undefined], {
+      pages: [initialEmployeePage.data],
+      pageParams: [0],
+    });
+  }
+  if (brands.ok) {
+    queryClient.setQueryData(queryKeys.brands, brands.data);
+  }
+  if (departments.ok) {
+    queryClient.setQueryData(queryKeys.departments, departments.data);
+  }
+  if (projects.ok) {
+    queryClient.setQueryData(queryKeys.projects, projects.data);
+  }
+  if (plannerTimeline.ok) {
+    queryClient.setQueryData(
+      getPlannerTimelineQueryKey(initialPlannerRequest),
+      plannerTimeline.data
+    );
+  }
+}
+
+export default async function Home() {
+  const initialTimelineAnchor = getInitialTimelineAnchor();
+  const queryClient = new QueryClient();
+
+  await prefetchHomeData(queryClient, initialTimelineAnchor);
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <FilterBar
-        selectedBrandId={selectedBrandId}
-        onBrandChange={setSelectedBrandId}
-        selectedDepartment={selectedDepartment}
-        onDepartmentChange={setSelectedDepartment}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onOpenSetup={() => setIsSetupOpen(true)}
-        projectId={filterProjectId}
-        onProjectChange={setFilterProjectId}
-        category={filterCategory}
-        onCategoryChange={setFilterCategory}
-        status={filterStatus}
-        onStatusChange={setFilterStatus}
-      />
-
-      <main className="flex-1 overflow-hidden">
-        <Timeline
-          brandId={selectedBrandId}
-          department={selectedDepartment}
-          searchQuery={debouncedSearch}
-          projectId={filterProjectId}
-          category={filterCategory}
-          status={filterStatus}
-        />
-      </main>
-
-      <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
-        <DialogContent className="w-full h-[90vh] overflow-y-auto">
-          <div className="sr-only">
-            <DialogTitle>Setup</DialogTitle>
-            <DialogDescription>
-              Manage your brands and team resources.
-            </DialogDescription>
-          </div>
-          <SetupManager />
-        </DialogContent>
-      </Dialog>
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <HomeClient initialTimelineAnchor={initialTimelineAnchor} />
+    </HydrationBoundary>
   );
 }

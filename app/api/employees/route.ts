@@ -1,6 +1,35 @@
 import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
+import { sortEmployeeRecordsByName } from "@/lib/timeline/employees";
+
+const UPSTREAM_EMPLOYEE_PAGE_SIZE = 100;
+
+type TimetrackEmployeeRecord = {
+  uuid?: string;
+  nik?: string;
+  full_name?: string;
+  nickname?: string | null;
+  photo?: string | null;
+  position?: string;
+  dept_id?: string | number;
+  direct_supervisor?: string | number | null;
+  work_start_date?: string | null;
+  dob?: string | null;
+  flag?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  department?: {
+    id?: string | number;
+    department_name?: string;
+  };
+  supervisor?: {
+    uuid?: string;
+    full_name?: string;
+    position?: string;
+  };
+};
 
 export async function GET(request: Request) {
   try {
@@ -21,38 +50,57 @@ export async function GET(request: Request) {
     // Get API client with session token
     const client = getMySqlApiClient(async () => session.access_token);
 
-    // MySQL API uses page-based pagination, convert offset to page
     const perPage = limit ? parseInt(limit, 10) : 50;
-    const page = offset ? Math.floor(parseInt(offset, 10) / perPage) + 1 : 1;
+    const requestedOffset = offset ? parseInt(offset, 10) : 0;
 
-    const response = await client.getEmployees({
-      page,
-      per_page: perPage,
+    const firstResponse = await client.getEmployees({
+      page: 1,
+      per_page: UPSTREAM_EMPLOYEE_PAGE_SIZE,
       search: search || undefined,
     });
 
     // Check for API errors from the client
-    if (response.error) {
-      console.error('[Employees API] MySQL API returned an error:', response.error);
+    if (firstResponse.error) {
+      console.error('[Employees API] MySQL API returned an error:', firstResponse.error);
       return NextResponse.json(
         {
           success: false,
-          error: response.error.message,
-          errorType: response.error.type,
+          error: firstResponse.error.message,
+          errorType: firstResponse.error.type,
           data: [],
         },
-        { status: response.status === 200 ? 500 : response.status }
+        { status: firstResponse.status === 200 ? 500 : firstResponse.status }
       );
     }
 
     // Handle double-wrapped response: response.data.data instead of response.data
-    let actualData = response?.data?.data || response?.data || [];
+    const firstPageData = (firstResponse?.data?.data || firstResponse?.data || []) as TimetrackEmployeeRecord[];
+    const firstMeta = firstResponse?.data?.meta || firstResponse?.meta || {};
+    const lastPage = firstMeta.last_page || 1;
+
+    const remainingResponses = await Promise.all(
+      Array.from({ length: Math.max(0, lastPage - 1) }, (_, index) =>
+        client.getEmployees({
+          page: index + 2,
+          per_page: UPSTREAM_EMPLOYEE_PAGE_SIZE,
+          search: search || undefined,
+        })
+      )
+    );
+
+    const remainingData = remainingResponses.flatMap((employeeResponse): TimetrackEmployeeRecord[] =>
+      employeeResponse?.error
+        ? []
+        : (employeeResponse?.data?.data || employeeResponse?.data || []) as TimetrackEmployeeRecord[]
+    );
+
+    let actualData = sortEmployeeRecordsByName([...firstPageData, ...remainingData]);
 
     // Apply access level filtering
     // If user has restricted access, only show their own employee record
     if (!session.access.can_view_all) {
       // Try multiple matching strategies in current page
-      let match = actualData.find((emp: any) => {
+      let match = actualData.find((emp) => {
         // Try matching by UUID (from MySQL API)
         if (emp.uuid === session.employee?.uuid) return true;
         // Try matching by NIK
@@ -72,8 +120,8 @@ export async function GET(request: Request) {
             search: searchQuery
           });
 
-          const searchData = searchResponse?.data?.data || searchResponse?.data || [];
-          match = searchData.find((emp: any) => {
+          const searchData = (searchResponse?.data?.data || searchResponse?.data || []) as TimetrackEmployeeRecord[];
+          match = searchData.find((emp) => {
             if (emp.uuid === session.employee?.uuid) return true;
             if (emp.nik === session.employee?.nik) return true;
             if (emp.full_name === session.employee?.full_name) return true;
@@ -88,16 +136,13 @@ export async function GET(request: Request) {
       actualData = match ? [match] : [];
     }
 
-    // Get pagination metadata from MySQL response
-    const meta = response?.data?.meta || response?.meta || {};
-    const mysqlTotal = meta.total || actualData.length;
-    const currentPage = meta.current_page || page;
-    const lastPage = meta.last_page || 1;
+    const mysqlTotal = actualData.length;
+    const paginatedData = actualData.slice(requestedOffset, requestedOffset + perPage);
 
     // Transform MySQL response to match expected format
     return NextResponse.json({
-      success: response.success,
-      data: actualData.map((emp: any) => ({
+      success: firstResponse.success,
+      data: paginatedData.map((emp) => ({
         id: emp.uuid,
         employeeNumber: emp.nik,
         fullName: emp.full_name,
@@ -149,7 +194,7 @@ export async function GET(request: Request) {
       // Use MySQL total count for full access, filtered count for restricted access
       total: !session.access.can_view_all ? actualData.length : mysqlTotal,
       // Check if there are more pages (only relevant for full access)
-      hasMore: !session.access.can_view_all ? false : currentPage < lastPage,
+      hasMore: !session.access.can_view_all ? false : requestedOffset + perPage < mysqlTotal,
     });
   } catch (error) {
     console.error("Failed to fetch employees:", error);
@@ -164,7 +209,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   // Check authentication
   const session = await getSession();
   if (!session) {

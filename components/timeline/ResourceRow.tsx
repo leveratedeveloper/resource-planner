@@ -13,6 +13,10 @@ import type { Project } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
+import {
+  shouldLoadPlannerActualDetail,
+  shouldLoadPlannerAssignmentDetail,
+} from "@/lib/timeline/planner-loading";
 import { AssignmentBlock } from "./AssignmentBlock";
 import { ActualAssignmentBlock } from "./ActualAssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
@@ -744,6 +748,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     project: Project;
     existingAssignment?: Assignment; // For edit mode
     adjustmentAssignments?: Assignment[]; // adjustment records yang sudah ada
+    detailAssignments?: Assignment[];
     monthlyTotalHours?: number; // Total hours for this month (plan+adj combined)
     planTotalHours?: number; // Plan-only hours (excluding adjustments)
     adjustmentTotalHours?: number; // Adjustment-only hours for this month
@@ -761,6 +766,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     monthEnd: Date;
     project: Project;
     existingActualAssignment?: ActualAssignment;
+    detailActualAssignments?: ActualAssignment[];
     monthlyTotalHours?: number;
     plannedHoursLimit?: number;
     currentActualHours?: number;
@@ -1427,26 +1433,51 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
       totalHours: clickedAssignment.totalHours
     } : 'No assignment (create mode)');
 
-    // Find adjustment assignments for this project+employee in this month range
-    const adjustmentAssignments = resourceAssignments.filter(
-      a => a.projectId === project.id
-        && !a.isTimeOff
-        && a.isAdjustment
-        && startOfDay(new Date(a.endDate)) >= monthStart
-        && startOfDay(new Date(a.startDate)) <= monthEnd
-    );
+    const openModal = (detailAssignments: Assignment[] = resourceAssignments) => {
+      const projectDetailAssignments = detailAssignments.filter(
+        a => a.projectId === project.id
+          && !a.isTimeOff
+          && startOfDay(new Date(a.endDate)) >= monthStart
+          && startOfDay(new Date(a.startDate)) <= monthEnd
+      );
+      const existingAssignment = shouldLoadPlannerAssignmentDetail(clickedAssignment)
+        ? projectDetailAssignments.find((a) => !a.isAdjustment) ?? projectDetailAssignments[0]
+        : clickedAssignment;
 
-    setMonthlyAllocationModal({
-      monthStart,
-      monthEnd,
-      project,
-      existingAssignment: clickedAssignment, // undefined = create mode
-      adjustmentAssignments,
-      monthlyTotalHours,
-      planTotalHours,
-      adjustmentTotalHours
-    });
-  }, [isExpanded, isMonthRangeView, resourceAssignments]);
+      setMonthlyAllocationModal({
+        monthStart,
+        monthEnd,
+        project,
+        existingAssignment,
+        adjustmentAssignments: projectDetailAssignments.filter((a) => a.isAdjustment),
+        detailAssignments: projectDetailAssignments,
+        monthlyTotalHours,
+        planTotalHours,
+        adjustmentTotalHours
+      });
+    };
+
+    if (!shouldLoadPlannerAssignmentDetail(clickedAssignment)) {
+      openModal();
+      return;
+    }
+
+    const url = new URL("/api/assignments", window.location.origin);
+    url.searchParams.set("employeeId", resource.id);
+    url.searchParams.set("projectId", project.id);
+    url.searchParams.set("startDate", toLocalDateString(monthStart));
+    url.searchParams.set("endDate", toLocalDateString(monthEnd));
+
+    fetch(url.toString())
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Failed to load monthly assignment detail");
+        const data = await response.json();
+        openModal(data.data ?? []);
+      })
+      .catch((error) => {
+        console.error("[ResourceRow] Failed to load monthly assignment detail:", error);
+      });
+  }, [isExpanded, isMonthRangeView, resource.id, resourceAssignments]);
 
   // Handle monthly actual allocation modal open (click on actual row in month range view)
   const handleActualRowClick = useCallback((
@@ -1495,16 +1526,49 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
       excludeUuids
     );
 
-    setMonthlyActualAllocationModal({
-      monthStart,
-      monthEnd,
-      project,
-      existingActualAssignment: clickedActualAssignment,
-      monthlyTotalHours,
-      plannedHoursLimit: plannedLimit,
-      currentActualHours: currentActual,
-    });
-  }, [isExpanded, isMonthRangeView, resourceAssignments, actualAssignments]);
+    const openModal = (detailActualAssignments: ActualAssignment[] = actualAssignments) => {
+      const projectActuals = detailActualAssignments.filter((assignment) => {
+        if (assignment.isTimeOff || assignment.projectUuid !== project.id) return false;
+        const assignmentStart = new Date(assignment.startDate);
+        const assignmentEnd = new Date(assignment.endDate);
+        return assignmentStart <= monthEnd && assignmentEnd >= monthStart;
+      });
+
+      setMonthlyActualAllocationModal({
+        monthStart,
+        monthEnd,
+        project,
+        existingActualAssignment: shouldLoadPlannerActualDetail(clickedActualAssignment)
+          ? projectActuals[0]
+          : clickedActualAssignment,
+        detailActualAssignments: projectActuals,
+        monthlyTotalHours,
+        plannedHoursLimit: plannedLimit,
+        currentActualHours: currentActual,
+      });
+    };
+
+    if (!shouldLoadPlannerActualDetail(clickedActualAssignment)) {
+      openModal();
+      return;
+    }
+
+    const url = new URL("/api/actual", window.location.origin);
+    url.searchParams.set("employee_uuid", resource.id);
+    url.searchParams.set("project_uuid", project.id);
+    url.searchParams.set("start_date", toLocalDateString(monthStart));
+    url.searchParams.set("end_date", toLocalDateString(monthEnd));
+
+    fetch(url.toString())
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Failed to load monthly actual detail");
+        const data = await response.json();
+        openModal(data.data ?? []);
+      })
+      .catch((error) => {
+        console.error("[ResourceRow] Failed to load monthly actual detail:", error);
+      });
+  }, [isExpanded, isMonthRangeView, resource.id, resourceAssignments, actualAssignments]);
 
   // Handle monthly allocation save from modal
   const handleSaveMonthlyAllocation = useCallback((data: {
@@ -1581,6 +1645,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     if (!stored) return;
 
     const { data, existingAssignment } = stored;
+    const modalDetailAssignments = monthlyAllocationModal?.detailAssignments ?? resourceAssignments;
     const isEditMode = !!existingAssignment;
 
     // Note: No need to filter weekends here - allocation-distributor already does that
@@ -1605,7 +1670,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     if (!onlyAdjustmentChanged) {
     // Find ALL assignments for this project that overlap with the new date range
     // These need to be deleted before creating new ones
-    const overlappingAssignments = resourceAssignments.filter((a) => {
+    const overlappingAssignments = modalDetailAssignments.filter((a) => {
       // Skip time-off assignments
       if (a.isTimeOff) return false;
       // Skip adjustment assignments (handled separately)
@@ -1655,7 +1720,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
             startDate: toLocalDateString(date),
             endDate: toLocalDateString(date),
             hoursPerDay: hours.toString(),
-            totalHours: hours,
             allocationPercentage: null,
             isTimeOff: false,
             timeOffTypeId: null,
@@ -1750,7 +1814,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
               startDate: toLocalDateString(date),
               endDate: toLocalDateString(date),
               hoursPerDay: hours.toString(),
-              totalHours: hours,
               allocationPercentage: null,
               isTimeOff: false,
               timeOffTypeId: null,
@@ -1790,7 +1853,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     // 2. User is replacing with new adjustment distributions
     if (removeAdjustment || adjustmentDistributions) {
       // Find adjustment assignments that overlap with the date range
-      const adjustmentAssignmentsToDelete = resourceAssignments.filter(a => {
+      const adjustmentAssignmentsToDelete = modalDetailAssignments.filter(a => {
         if (!a.isAdjustment || a.isTimeOff) return false;
         if (a.projectId !== data.projectId) return false;
         const assignStart = startOfDay(new Date(a.startDate));
@@ -1825,7 +1888,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
             startDate: toLocalDateString(date),
             endDate: toLocalDateString(date),
             hoursPerDay: hours.toString(),
-            totalHours: hours,
             allocationPercentage: null,
             isTimeOff: false,
             isAdjustment: true,
@@ -1848,7 +1910,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
     // Clean up stored data
     delete (window as any).__monthlyAllocationData;
-  }, [createAssignment, deleteAssignmentMutation, resource.id, resourceAssignments]);
+  }, [createAssignment, deleteAssignmentMutation, monthlyAllocationModal, resource.id, resourceAssignments]);
 
   // Handle monthly actual allocation save from modal
   const handleSaveMonthlyActualAllocation = useCallback((data: {
@@ -1922,7 +1984,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     // Find ALL actual assignments for this project that overlap with the new date range
     const newRangeStart = startOfDay(data.startDate);
     const newRangeEnd = startOfDay(data.endDate);
-    const overlappingActuals = actualAssignments.filter((a) => {
+    const modalDetailActuals = monthlyActualAllocationModal?.detailActualAssignments ?? actualAssignments;
+    const overlappingActuals = modalDetailActuals.filter((a) => {
       if (a.isTimeOff) return false;
       if (a.projectUuid !== data.projectId) return false;
       const assignStart = startOfDay(new Date(a.startDate));
@@ -2013,7 +2076,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
     // Clean up stored data
     delete (window as any).__monthlyActualAllocationData;
-  }, [createActualAssignment, resource.id, actualAssignments, session?.employee?.uuid, queryClient]);
+  }, [
+    createActualAssignment,
+    resource.id,
+    actualAssignments,
+    monthlyActualAllocationModal?.detailActualAssignments,
+    session?.employee?.uuid,
+    queryClient,
+  ]);
 
   // Collapsed row content
   if (!isExpanded) {
@@ -2607,7 +2677,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                            Clear All
                          </Button>
                          <Button 
-                          variant="primary" 
+                          variant="default" 
                           size="sm" 
                           className="text-xs h-8 bg-primary text-white"
                           onClick={() => setIsFilterOpen(false)}
@@ -2687,7 +2757,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
               return () => {
                 // Find ALL assignments for this project that fall within the month range
-                const assignmentsInMonth = resourceAssignments.filter((a) => {
+                const assignmentsInMonth = (
+                  monthlyAllocationModal.detailAssignments ?? resourceAssignments
+                ).filter((a) => {
                   if (a.isTimeOff) return false;
                   if (a.projectId !== projectId) return false;
 
@@ -2714,12 +2786,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                     setMonthlyAllocationModal(null);
                     // Invalidate queries to refresh the data
                     queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
                   })
                   .catch((error) => {
                     console.error('[ResourceRow] Delete failed:', error);
                     setMonthlyAllocationModal(null);
                     // Force refetch to ensure UI is in sync
                     queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
                   });
               };
             })() : undefined}
@@ -2763,7 +2837,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
               return () => {
                 // Find ALL actual assignments for this project that fall within the month range
-                const actualsInMonth = actualAssignments.filter((a) => {
+                const actualsInMonth = (
+                  monthlyActualAllocationModal.detailActualAssignments ?? actualAssignments
+                ).filter((a) => {
                   if (a.isTimeOff) return false;
                   if (a.projectUuid !== projectUuid) return false;
 
@@ -2786,10 +2862,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                   .then(() => {
                     setMonthlyActualAllocationModal(null);
                     queryClient.invalidateQueries({ queryKey: ["actual"] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
                   })
                   .catch(() => {
                     setMonthlyActualAllocationModal(null);
                     queryClient.invalidateQueries({ queryKey: ["actual"] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
                   });
               };
             })() : undefined}

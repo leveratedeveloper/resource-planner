@@ -262,6 +262,7 @@ export function useCreateAssignment() {
     onSettled: async () => {
       // Invalidate all assignments queries (including those with params)
       await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
@@ -317,7 +318,7 @@ export function useUpdateAssignment() {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
-          assignments: employee.assignments?.map((assignment: Assignment) =>
+          assignments: employee.assignments?.map((assignment) =>
             assignment.id === id ? { ...assignment, ...updates } : assignment
           ),
         }));
@@ -366,11 +367,15 @@ export function useUpdateAssignment() {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
-          assignments: employee.assignments?.map((a: Assignment) =>
+          assignments: employee.assignments?.map((a) =>
             a.id === data.id ? data : a
           ),
         }));
       });
+    },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
     },
   });
 }
@@ -434,12 +439,13 @@ export function useDeleteAssignment() {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
-          assignments: employee.assignments?.filter((a: Assignment) => a.id !== id),
+          assignments: employee.assignments?.filter((a) => a.id !== id),
         }));
       });
 
       // Force immediate UI update by invalidating queries without refetch
       queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'none' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'none' });
       queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'none' });
 
       return { previousAssignments, previousEmployees };
@@ -456,6 +462,7 @@ export function useDeleteAssignment() {
         console.log('[useDeleteAssignment] Assignment already deleted, keeping optimistic update');
         // Force invalidate to ensure UI is in sync
         queryClient.invalidateQueries({ queryKey: ["assignments"] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
         return;
       }
 
@@ -477,6 +484,7 @@ export function useDeleteAssignment() {
       console.log('[useDeleteAssignment] Invalidating queries for refetch');
       // Invalidate all assignments queries (including those with params)
       await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },

@@ -4,7 +4,7 @@ import React, { createContext, useContext, ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 
-interface SessionData {
+export interface SessionData {
   access_token: string;
   user: {
     id: number;
@@ -13,9 +13,11 @@ interface SessionData {
   employee: {
     id: number;
     uuid: string;
+    nik?: string;
     full_name: string;
     nickname: string;
     position: string;
+    dept_id?: number;
     department_name: string;
     photo: string;
   };
@@ -26,8 +28,10 @@ interface SessionData {
   };
 }
 
+export type PublicSessionData = Omit<SessionData, 'access_token'>;
+
 interface AuthContextType {
-  session: SessionData | null;
+  session: PublicSessionData | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   logout: () => void;
@@ -35,7 +39,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function fetchSession(): Promise<SessionData | null> {
+async function fetchSession(): Promise<PublicSessionData | null> {
   const response = await fetch('/api/auth/me');
   if (!response.ok) return null;
   const data = await response.json();
@@ -46,13 +50,20 @@ async function logoutUser(): Promise<void> {
   await fetch('/api/auth/logout', { method: 'POST' });
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+  initialSession,
+}: {
+  children: ReactNode;
+  initialSession?: PublicSessionData | null;
+}) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
   const { data: session, isLoading } = useQuery({
     queryKey: ['session'],
     queryFn: fetchSession,
+    initialData: initialSession,
     staleTime: 5 * 60 * 1000,
     retry: false,
   });

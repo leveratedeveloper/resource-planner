@@ -1,20 +1,31 @@
 "use client";
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
-import { useAuth } from "@/context/AuthContext";
-import { useEmployees, useInfiniteEmployees, useBrands, useProjects } from "@/lib/query/hooks";
+import {
+  useBrands,
+  useEmployees,
+  useInfiniteEmployees,
+  usePlannerTimeline,
+  useProjects,
+} from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
-import { useActualAssignments } from "@/lib/query/hooks/useActualAssignments";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   getActualAssignmentsForEmployee,
-  getTimelineActualQueryParams,
   groupActualAssignmentsByEmployee,
 } from "@/lib/timeline/actuals";
 import {
   getLoadedTimelineEmployees,
+  sortTimelineEmployees,
   shouldUseCompleteEmployeeList,
 } from "@/lib/timeline/employees";
+import {
+  DEFAULT_TIMELINE_VIEW,
+  getInitialTimelineDateRange,
+  shouldEnableTimelineAssignments,
+  type TimelineAssignmentDateRange,
+} from "@/lib/timeline/initial-load";
+import { getTimelineResolution } from "@/lib/timeline/planner-loading";
 import {
   getEmployeeFilterSelection,
   hasEmployeeFlag,
@@ -24,11 +35,12 @@ import {
 import { ResourceRow } from "./ResourceRow";
 import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
-import { addDays, addWeeks, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, endOfWeek, differenceInDays, startOfDay, isToday, getMonth, getYear } from "date-fns";
+import { addDays, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfDay, isToday, getMonth, getYear } from "date-fns";
 import { cn, toLocalDateString } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface TimelineProps {
+  initialTimelineAnchor: string;
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
@@ -39,7 +51,15 @@ interface TimelineProps {
 
 const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
 
-export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
+export const Timeline: React.FC<TimelineProps> = ({
+  initialTimelineAnchor,
+  brandId,
+  department,
+  searchQuery,
+  projectId,
+  category,
+  status,
+}) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
   const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, searchQuery });
   const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
@@ -62,7 +82,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     : isLoadingIncrementalEmployees;
   const { data: brands = [] } = useBrands();
   const { data: projects = [] } = useProjects();
-  const { session } = useAuth();
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -72,15 +91,14 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const [assignModalResourceId, setAssignModalResourceId] = useState<string | null>(null);
 
   // Timeline state
-  const [currentDate, setCurrentDate] = useState<Date | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("week");
+  const [currentDate, setCurrentDate] = useState<Date>(
+    () => new Date(`${initialTimelineAnchor}T00:00:00`)
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_TIMELINE_VIEW);
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
   const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
 
-  // Initialize dates client-side to avoid hydration mismatch
   useEffect(() => {
-    setCurrentDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
-
     // Load weekend preference from localStorage
     const savedShowWeekends = localStorage.getItem('showWeekends');
     if (savedShowWeekends !== null) {
@@ -122,8 +140,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   // Calculate days/weeks based on view mode and current date
   const allDays = useMemo(() => {
-    if (!currentDate) return [];
-
     switch (viewMode) {
       case "week": {
         // Show 7 days (Mon-Sun) - start from Monday of current week
@@ -196,16 +212,39 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   // PERFORMANCE: Calculate date range for assignments API filtering.
   // Brand visibility still uses allAssignments below when it needs cross-range context.
-  const assignmentDateRange = useMemo(() => {
+  const assignmentDateRange = useMemo<TimelineAssignmentDateRange | undefined>(() => {
     if (days.length === 0) return undefined;
-    return {
-      startDate: toLocalDateString(days[0]),
-      endDate: toLocalDateString(days[days.length - 1]),
-    };
-  }, [days]);
+    return getInitialTimelineDateRange(toLocalDateString(currentDate), viewMode);
+  }, [currentDate, days.length, viewMode]);
 
-  // Fetch assignments with date filtering for display
-  const { data: dateFilteredAssignments = [] } = useAssignments(assignmentDateRange);
+  const plannerRequest = useMemo(() => {
+    if (!assignmentDateRange || !shouldEnableTimelineAssignments(assignmentDateRange)) {
+      return undefined;
+    }
+
+    return {
+      viewMode,
+      resolution: getTimelineResolution(viewMode),
+      startDate: assignmentDateRange.startDate,
+      endDate: assignmentDateRange.endDate,
+      filters: {
+        brandId,
+        department,
+        projectId,
+        category,
+        status,
+      },
+    };
+  }, [assignmentDateRange, brandId, category, department, projectId, status, viewMode]);
+
+  const {
+    data: plannerTimeline,
+    isLoading: isLoadingPlannerTimeline,
+  } = usePlannerTimeline(plannerRequest, {
+    enabled: shouldEnableTimelineAssignments(assignmentDateRange),
+  });
+  const dateFilteredAssignments = plannerTimeline?.assignments ?? [];
+  const visibleActualAssignments = plannerTimeline?.actualAssignments ?? [];
 
   // Fetch ALL assignments (no date filter) for employee filtering by brand
   // This ensures employees with assignments outside the visible date range are still shown
@@ -222,16 +261,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const { data: allAssignments = [] } = useAssignments(
     brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined,
     { enabled: shouldFetchBrandAssignments }
-  );
-
-  const actualQueryParams = useMemo(
-    () => getTimelineActualQueryParams(days),
-    [days]
-  );
-
-  const { data: visibleActualAssignments = [] } = useActualAssignments(
-    actualQueryParams,
-    { enabled: !!actualQueryParams }
   );
 
   const actualAssignmentsByEmployee = useMemo(
@@ -356,21 +385,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
       });
     }
 
-    // Sort: current user first, then alphabetically by name
-    const sorted = [...filtered].sort((a, b) => {
-      // Current user (logged-in employee) always first
-      const aIsCurrentUser = a.id === session?.employee?.uuid;
-      const bIsCurrentUser = b.id === session?.employee?.uuid;
-
-      if (aIsCurrentUser && !bIsCurrentUser) return -1;
-      if (!aIsCurrentUser && bIsCurrentUser) return 1;
-
-      // Otherwise, sort alphabetically by full name
-      return a.fullName.localeCompare(b.fullName);
-    });
-
-    return sorted;
-  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects, session]);
+    return sortTimelineEmployees(filtered);
+  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEmployees.length,
@@ -461,14 +477,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     });
   }, []);
 
-  // Show loading while days initializes
-  if (!currentDate || days.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading timeline...</div>
-      </div>
-    );
-  }
+  const isInitialTimelineLoading =
+    isLoadingEmployees || isLoadingPlannerTimeline;
 
   return (
     <div ref={timelineRootRef} className="flex flex-col h-full" data-testid="timeline-root">
@@ -497,9 +507,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
           aria-label="Timeline day headers"
         >
           <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
-            {days.map((day, index) => {
+            {days.map((day) => {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const isMonthView = viewMode === "month";
               const isMonthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
               const today = isToday(day);
               const currentMonth = getMonth(day) === getMonth(new Date()) && getYear(day) === getYear(new Date());
@@ -546,7 +555,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         className="flex-1 overflow-auto"
       >
         <div className="flex flex-col w-full">
-          {isLoadingEmployees ? (
+          {isInitialTimelineLoading ? (
              <div className="space-y-0">
                {[1, 2, 3, 4, 5].map((i) => (
                  <div key={i} className="flex border-b">
