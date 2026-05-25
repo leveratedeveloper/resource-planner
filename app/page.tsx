@@ -1,64 +1,34 @@
-"use client";
+import { Suspense } from "react";
+import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+import { HomeClient, HomePlannerTimeline } from "@/app/HomeClient";
+import { TimelineStartupFallback } from "@/components/timeline/TimelineStartupFallback";
+import { prefetchCriticalPlannerStartup } from "@/lib/query/server/planner-startup";
+import { getInitialTimelineAnchor } from "@/lib/timeline/initial-load";
 
-import { useState } from "react";
-import { FilterBar } from "@/components/filters/FilterBar";
-import { SetupManager } from "@/components/setup/SetupManager";
-import { Timeline } from "@/components/timeline/Timeline";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useDebounce } from "@/hooks/use-debounce";
+async function CriticalPlannerTimeline({
+  initialTimelineAnchor,
+}: {
+  initialTimelineAnchor: string;
+}) {
+  const queryClient = new QueryClient();
 
-export default function Home() {
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearch = useDebounce(searchQuery, 300);
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
-
-  // Assignment filters
-  const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  await prefetchCriticalPlannerStartup(queryClient, initialTimelineAnchor);
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <FilterBar
-        selectedBrandId={selectedBrandId}
-        onBrandChange={setSelectedBrandId}
-        selectedDepartment={selectedDepartment}
-        onDepartmentChange={setSelectedDepartment}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onOpenSetup={() => setIsSetupOpen(true)}
-        projectId={filterProjectId}
-        onProjectChange={setFilterProjectId}
-        category={filterCategory}
-        onCategoryChange={setFilterCategory}
-        status={filterStatus}
-        onStatusChange={setFilterStatus}
-      />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <HomePlannerTimeline initialTimelineAnchor={initialTimelineAnchor} />
+    </HydrationBoundary>
+  );
+}
 
-      <main className="flex-1 overflow-hidden">
-        <Timeline
-          brandId={selectedBrandId}
-          department={selectedDepartment}
-          searchQuery={debouncedSearch}
-          projectId={filterProjectId}
-          category={filterCategory}
-          status={filterStatus}
-        />
-      </main>
+export default async function Home() {
+  const initialTimelineAnchor = getInitialTimelineAnchor();
 
-      <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
-        <DialogContent className="w-full h-[90vh] overflow-y-auto">
-          <div className="sr-only">
-            <DialogTitle>Setup</DialogTitle>
-            <DialogDescription>
-              Manage your brands and team resources.
-            </DialogDescription>
-          </div>
-          <SetupManager />
-        </DialogContent>
-      </Dialog>
-    </div>
+  return (
+    <HomeClient initialTimelineAnchor={initialTimelineAnchor}>
+      <Suspense fallback={<TimelineStartupFallback initialTimelineAnchor={initialTimelineAnchor} />}>
+        <CriticalPlannerTimeline initialTimelineAnchor={initialTimelineAnchor} />
+      </Suspense>
+    </HomeClient>
   );
 }

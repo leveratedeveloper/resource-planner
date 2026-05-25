@@ -4,6 +4,7 @@ import "./globals.css";
 import { QueryProvider } from "@/lib/query/QueryProvider";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/components/ui/toast";
+import { getSession } from "@/lib/auth/session";
 
 const geistSans = localFont({
   src: "../public/fonts/geist/geist-latin.woff2",
@@ -20,18 +21,27 @@ export const metadata: Metadata = {
   description: "Resource planning and scheduling application",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getSession();
+  const initialSession = session
+    ? {
+        user: session.user,
+        employee: session.employee,
+        access: session.access,
+      }
+    : null;
+
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <QueryProvider>
-          <AuthProvider>
+          <AuthProvider initialSession={initialSession} hasResolvedInitialSession>
             {children}
             <ToastProvider />
           </AuthProvider>

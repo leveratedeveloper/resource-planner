@@ -5,6 +5,7 @@ export * from "./useBrands";
 export * from "./useEmployees";
 export * from "./useProjects";
 export * from "./useAssignments";
+export * from "./usePlannerTimeline";
 
 // MySQL API hooks
 export {
