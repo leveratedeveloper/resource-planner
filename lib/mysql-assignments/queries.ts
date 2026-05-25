@@ -108,8 +108,6 @@ export async function getAssignments(filters?: {
     params.push(filters.status);
   }
 
-  query += ' ORDER BY created_at DESC';
-
   if (filters?.limit) {
     query += ' LIMIT ?';
     params.push(filters.limit);

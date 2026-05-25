@@ -31,6 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_assignments_dates ON assignments(start_date, end_
 CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status);
 CREATE INDEX IF NOT EXISTS idx_assignments_employee_dates ON assignments(employee_uuid, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_assignments_adjustment ON assignments(is_adjustment);
+CREATE INDEX IF NOT EXISTS idx_assignments_created_at ON assignments(created_at DESC);
 
 -- Function to auto-update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

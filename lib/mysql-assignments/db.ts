@@ -40,6 +40,7 @@ async function getPostgresClient(): Promise<PostgreSQLClient> {
   const client = new PostgreSQLClient({
     connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    statement_timeout: 15000, // 15 seconds - prevent runaway queries
   });
   await client.connect();
   return client;
