@@ -17,10 +17,7 @@ export function getLoadedTimelineEmployees(pages?: EmployeePage[]): Employee[] {
   return pages.flatMap((page) => page.data);
 }
 
-export function sortTimelineEmployees(
-  employees: Employee[],
-  _currentEmployeeId?: string | null
-): Employee[] {
+export function sortTimelineEmployees(employees: Employee[]): Employee[] {
   return sortEmployeeRecordsByName(employees);
 }
 

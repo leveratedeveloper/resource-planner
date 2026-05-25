@@ -41,6 +41,7 @@ import { cn, toLocalDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "@/hooks/use-toast";
 
 // Helper to extract deliverables from assignment notes
 const extractDeliverables = (note: string | null): string[] => {
@@ -50,6 +51,29 @@ const extractDeliverables = (note: string | null): string[] => {
   if (!match) return [];
   return match[1].split(',').map(d => d.trim()).filter(Boolean);
 };
+
+type MonthlyDetailRequest = {
+  key: string;
+  controller: AbortController;
+};
+
+function getMonthlyDetailKey(
+  resourceId: string,
+  projectId: string,
+  monthStart: Date,
+  monthEnd: Date
+): string {
+  return [
+    resourceId,
+    projectId,
+    toLocalDateString(monthStart),
+    toLocalDateString(monthEnd),
+  ].join(":");
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
 
 interface ResourceRowProps {
   resource: Resource;
@@ -777,6 +801,17 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     data: MonthlyAllocationData;
     isEditMode: boolean;
   } | null>(null);
+  const [loadingMonthlyPlanDetailKey, setLoadingMonthlyPlanDetailKey] = useState<string | null>(null);
+  const [loadingMonthlyActualDetailKey, setLoadingMonthlyActualDetailKey] = useState<string | null>(null);
+  const monthlyPlanDetailRequestRef = useRef<MonthlyDetailRequest | null>(null);
+  const monthlyActualDetailRequestRef = useRef<MonthlyDetailRequest | null>(null);
+
+  useEffect(() => {
+    return () => {
+      monthlyPlanDetailRequestRef.current?.controller.abort();
+      monthlyActualDetailRequestRef.current?.controller.abort();
+    };
+  }, []);
 
   // Get projects this resource is assigned to
   const resourceProjects = useMemo(() => {
@@ -1467,15 +1502,43 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     url.searchParams.set("projectId", project.id);
     url.searchParams.set("startDate", toLocalDateString(monthStart));
     url.searchParams.set("endDate", toLocalDateString(monthEnd));
+    const requestKey = getMonthlyDetailKey(resource.id, project.id, monthStart, monthEnd);
+    const existingRequest = monthlyPlanDetailRequestRef.current;
 
-    fetch(url.toString())
+    if (existingRequest?.key === requestKey) {
+      return;
+    }
+
+    existingRequest?.controller.abort();
+    const controller = new AbortController();
+    monthlyPlanDetailRequestRef.current = { key: requestKey, controller };
+    setLoadingMonthlyPlanDetailKey(requestKey);
+
+    fetch(url.toString(), { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Failed to load monthly assignment detail");
         const data = await response.json();
+        if (monthlyPlanDetailRequestRef.current?.key !== requestKey) {
+          return;
+        }
         openModal(data.data ?? []);
       })
       .catch((error) => {
+        if (isAbortError(error)) {
+          return;
+        }
         console.error("[ResourceRow] Failed to load monthly assignment detail:", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to load assignment detail",
+          description: "Try opening this monthly allocation again.",
+        });
+      })
+      .finally(() => {
+        if (monthlyPlanDetailRequestRef.current?.key === requestKey) {
+          monthlyPlanDetailRequestRef.current = null;
+          setLoadingMonthlyPlanDetailKey(null);
+        }
       });
   }, [isExpanded, isMonthRangeView, resource.id, resourceAssignments]);
 
@@ -1558,15 +1621,43 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     url.searchParams.set("project_uuid", project.id);
     url.searchParams.set("start_date", toLocalDateString(monthStart));
     url.searchParams.set("end_date", toLocalDateString(monthEnd));
+    const requestKey = getMonthlyDetailKey(resource.id, project.id, monthStart, monthEnd);
+    const existingRequest = monthlyActualDetailRequestRef.current;
 
-    fetch(url.toString())
+    if (existingRequest?.key === requestKey) {
+      return;
+    }
+
+    existingRequest?.controller.abort();
+    const controller = new AbortController();
+    monthlyActualDetailRequestRef.current = { key: requestKey, controller };
+    setLoadingMonthlyActualDetailKey(requestKey);
+
+    fetch(url.toString(), { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Failed to load monthly actual detail");
         const data = await response.json();
+        if (monthlyActualDetailRequestRef.current?.key !== requestKey) {
+          return;
+        }
         openModal(data.data ?? []);
       })
       .catch((error) => {
+        if (isAbortError(error)) {
+          return;
+        }
         console.error("[ResourceRow] Failed to load monthly actual detail:", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to load actual detail",
+          description: "Try opening this monthly actual allocation again.",
+        });
+      })
+      .finally(() => {
+        if (monthlyActualDetailRequestRef.current?.key === requestKey) {
+          monthlyActualDetailRequestRef.current = null;
+          setLoadingMonthlyActualDetailKey(null);
+        }
       });
   }, [isExpanded, isMonthRangeView, resource.id, resourceAssignments, actualAssignments]);
 
@@ -2139,6 +2230,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
         )}
         data-testid="resource-row"
         data-resource-id={resource.id}
+        data-actual-detail-loading={loadingMonthlyActualDetailKey ?? undefined}
       >
         {/* Main Row Header */}
         <div className="flex hover:bg-accent/5 transition-colors group">
@@ -2460,6 +2552,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                       const cellPercentage = 100 / days.length;
                                       const leftOffset = monthIndex * cellPercentage;
                                       const width = cellPercentage;
+                                      const detailKey = getMonthlyDetailKey(resource.id, project.id, monthStart, monthEnd);
+                                      const isLoadingDetail =
+                                        loadingMonthlyPlanDetailKey === detailKey &&
+                                        shouldLoadPlannerAssignmentDetail(representative);
 
                                       blocks.push(
                                         <div
@@ -2480,9 +2576,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                             const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
                                             handleProjectRowClick(ms, me, project, e.clientX, e.clientY, representative, monthlyTotal, originalTotal, adjustmentTotal);
                                           }}
+                                          aria-busy={isLoadingDetail}
                                         >
                                           {adjustmentTotal > 0 && (
                                             <div className="absolute top-0 right-0 rounded-r" style={{ width: `${(adjustmentTotal / monthlyTotal) * 100}%`, height: '100%', backgroundColor: 'rgba(147, 197, 253, 0.4)' }} />
+                                          )}
+                                          {isLoadingDetail && (
+                                            <div className="absolute inset-0 bg-blue-950/35 flex items-center justify-center z-20">
+                                              <Icon icon="lucide:loader-2" className="h-3.5 w-3.5 animate-spin" />
+                                            </div>
                                           )}
                                           <div className="flex-1 px-1.5 py-0.5 min-w-0 pointer-events-none flex flex-col justify-center relative z-10">
                                             <div className="font-bold truncate">{project.name}</div>

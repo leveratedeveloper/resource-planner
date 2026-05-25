@@ -1,5 +1,4 @@
 import {
-  differenceInCalendarDays,
   eachMonthOfInterval,
   endOfMonth,
   max,
@@ -16,8 +15,6 @@ export type TimelineViewMode = "week" | "month" | "quarter" | "halfYear" | "year
 export type PlannerTimelineResolution = "day" | "month";
 
 export type PlannerTimelineFilters = {
-  brandId?: string | null;
-  department?: string | null;
   projectId?: string | null;
   category?: string | null;
   status?: string | null;
@@ -94,9 +91,10 @@ export function summarizeMonthlyAssignments(
   for (const assignment of assignments) {
     const assignmentStart = startOfDay(new Date(`${assignment.startDate}T00:00:00`));
     const assignmentEnd = startOfDay(new Date(`${assignment.endDate}T00:00:00`));
-    const assignmentDays = Math.max(1, differenceInCalendarDays(assignmentEnd, assignmentStart) + 1);
-    const sourceTotalHours =
-      assignment.totalHours ?? Number.parseFloat(assignment.hoursPerDay || "0") * countWeekdays(assignmentStart, assignmentEnd);
+    const assignmentHoursPerDay =
+      assignment.totalHours !== null && assignment.totalHours !== undefined
+        ? assignment.totalHours / countWeekdays(assignmentStart, assignmentEnd)
+        : Number.parseFloat(assignment.hoursPerDay || "0");
 
     for (const month of getMonthSlices(range)) {
       const overlapStart = max([assignmentStart, month.start]);
@@ -106,8 +104,7 @@ export function summarizeMonthlyAssignments(
         continue;
       }
 
-      const overlapDays = Math.max(1, differenceInCalendarDays(overlapEnd, overlapStart) + 1);
-      const monthTotalHours = sourceTotalHours * (overlapDays / assignmentDays);
+      const monthTotalHours = assignmentHoursPerDay * countWeekdays(overlapStart, overlapEnd);
       const key = [
         assignment.employeeId,
         assignment.projectId ?? "time-off",

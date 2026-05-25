@@ -57,7 +57,7 @@ describe("timeline employee loading helpers", () => {
       { ...makeEmployee("employee-current"), fullName: "Current User" },
     ];
 
-    expect(sortTimelineEmployees(employees, "employee-current").map((employee) => employee.id)).toEqual([
+    expect(sortTimelineEmployees(employees).map((employee) => employee.id)).toEqual([
       "employee-a",
       "employee-b",
       "employee-current",
@@ -74,11 +74,11 @@ describe("timeline employee loading helpers", () => {
       { ...makeEmployee("employee-a"), fullName: "Alpha Person" },
     ];
 
-    expect(sortTimelineEmployees(firstPage, null).map((employee) => employee.id)).toEqual([
+    expect(sortTimelineEmployees(firstPage).map((employee) => employee.id)).toEqual([
       "employee-b",
       "employee-d",
     ]);
-    expect(sortTimelineEmployees(withNextPage, null).map((employee) => employee.id)).toEqual([
+    expect(sortTimelineEmployees(withNextPage).map((employee) => employee.id)).toEqual([
       "employee-a",
       "employee-b",
       "employee-d",

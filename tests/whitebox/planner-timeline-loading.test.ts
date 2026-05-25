@@ -47,8 +47,6 @@ describe("planner timeline loading contract", () => {
         startDate: "2026-01-01",
         endDate: "2026-12-31",
         filters: {
-          brandId: "brand-1",
-          department: "department-1",
           projectId: "project-1",
           category: "Development",
           status: "confirmed",
@@ -62,8 +60,6 @@ describe("planner timeline loading contract", () => {
         startDate: "2026-01-01",
         endDate: "2026-12-31",
         filters: {
-          brandId: "brand-1",
-          department: "department-1",
           projectId: "project-1",
           category: "Development",
           status: "confirmed",
@@ -92,6 +88,34 @@ describe("planner timeline loading contract", () => {
         month: "2026-02-01",
         totalHours: 16,
         detailIds: ["assignment-1"],
+      },
+    ]);
+  });
+
+  it("splits planned monthly summaries by weekday overlap instead of calendar days", () => {
+    const blocks = summarizeMonthlyAssignments([
+      makeAssignment({
+        startDate: "2026-01-26",
+        endDate: "2026-02-04",
+        hoursPerDay: "8",
+        totalHours: null,
+      }),
+    ], {
+      startDate: "2026-01-01",
+      endDate: "2026-02-28",
+    });
+
+    expect(blocks.map((block) => ({
+      month: block.startDate,
+      totalHours: block.totalHours,
+    }))).toEqual([
+      {
+        month: "2026-01-01",
+        totalHours: 40,
+      },
+      {
+        month: "2026-02-01",
+        totalHours: 24,
       },
     ]);
   });

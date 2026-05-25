@@ -40,8 +40,6 @@ export async function GET(request: NextRequest) {
 
     const viewMode = viewParam as TimelineViewMode;
     const filters: PlannerTimelineFilters = {
-      brandId: request.nextUrl.searchParams.get("brandId"),
-      department: request.nextUrl.searchParams.get("department"),
       projectId: request.nextUrl.searchParams.get("projectId"),
       category: request.nextUrl.searchParams.get("category"),
       status: request.nextUrl.searchParams.get("status"),

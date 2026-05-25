@@ -42,7 +42,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface TimelineProps {
   initialTimelineAnchor: string;
-  criticalStartupPending?: boolean;
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
@@ -55,7 +54,6 @@ const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
 
 export const Timeline: React.FC<TimelineProps> = ({
   initialTimelineAnchor,
-  criticalStartupPending = false,
   brandId,
   department,
   searchQuery,
@@ -66,7 +64,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   // Fetch data using React Query (assignments fetched after date range is calculated)
   const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, searchQuery });
   const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
-    enabled: useCompleteEmployeeList && !criticalStartupPending,
+    enabled: useCompleteEmployeeList,
   });
   const {
     data: incrementalEmployeePages,
@@ -75,7 +73,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     isFetchingNextPage: isFetchingNextEmployeePage,
     fetchNextPage: fetchNextEmployeePage,
   } = useInfiniteEmployees(searchQuery, {
-    enabled: !useCompleteEmployeeList && !criticalStartupPending,
+    enabled: !useCompleteEmployeeList,
   });
   const employees = useCompleteEmployeeList
     ? completeEmployees
@@ -211,7 +209,6 @@ export const Timeline: React.FC<TimelineProps> = ({
   const headerLayout = getTimelineHeaderLayout({
     columnCount: days.length,
     cellWidth,
-    criticalStartupPending,
   });
 
   // Determine if we're in week view mode (where each cell = 1 month)
@@ -236,20 +233,18 @@ export const Timeline: React.FC<TimelineProps> = ({
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
       filters: {
-        brandId,
-        department,
         projectId,
         category,
         status,
       },
     };
-  }, [assignmentDateRange, brandId, category, department, projectId, status, viewMode]);
+  }, [assignmentDateRange, category, projectId, status, viewMode]);
 
   const {
     data: plannerTimeline,
     isLoading: isLoadingPlannerTimeline,
   } = usePlannerTimeline(plannerRequest, {
-    enabled: !criticalStartupPending && shouldEnableTimelineAssignments(assignmentDateRange),
+    enabled: shouldEnableTimelineAssignments(assignmentDateRange),
   });
   const dateFilteredAssignments = plannerTimeline?.assignments ?? [];
   const visibleActualAssignments = plannerTimeline?.actualAssignments ?? [];
@@ -486,7 +481,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   }, []);
 
   const isInitialTimelineLoading =
-    criticalStartupPending || isLoadingEmployees || isLoadingPlannerTimeline;
+    isLoadingEmployees || isLoadingPlannerTimeline;
 
   return (
     <div ref={timelineRootRef} className="flex flex-col h-full" data-testid="timeline-root">
