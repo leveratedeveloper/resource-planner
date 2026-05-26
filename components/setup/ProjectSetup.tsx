@@ -4,7 +4,6 @@ import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { format } from "date-fns";
 import { type DateRange } from "react-day-picker";
 import { useProjects, useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
 import { queryKeys } from "@/lib/query/queryKeys";
@@ -32,12 +31,6 @@ import {
 import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
@@ -49,8 +42,13 @@ import {
   buildPendingAssignmentPayloads,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
+  getProjectAssignmentDateRange,
 } from "@/lib/setup/project-assignment-save";
-import { updateProjectChannelManHours } from "@/lib/setup/project-channel-editor";
+import {
+  hasProjectChannelManHoursChanges,
+  updateProjectChannelManHours,
+  type EditableProjectChannel,
+} from "@/lib/setup/project-channel-editor";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -144,7 +142,6 @@ export const ProjectSetup = () => {
   const [isSaving, setIsSaving] = useState(false);
   // Track initial deliverable selections to detect changes
   const [initialDeliverablesByEmployee, setInitialDeliverablesByEmployee] = useState<Record<string, string[]>>({});
-  const [initialDateRange, setInitialDateRange] = useState<DateRange | undefined>(undefined);
 
   const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
   const { data: allAssignments = [] } = useAssignments();
@@ -207,13 +204,8 @@ export const ProjectSetup = () => {
   const [hsDealId, setHsDealId] = useState("");
 
   // Form State - Project Channels (for pitches)
-  const [projectChannels, setProjectChannels] = useState<Array<{
-    channelId: string;
-    deliverableId: string;
-    quantity: string;
-    channelBudget: string;
-    manHours: string;
-  }>>([]);
+  const [projectChannels, setProjectChannels] = useState<EditableProjectChannel[]>([]);
+  const [initialProjectChannels, setInitialProjectChannels] = useState<EditableProjectChannel[]>([]);
 
   const projectDeliverables = useMemo(() => {
     const deliverableIds = new Set(
@@ -313,10 +305,15 @@ export const ProjectSetup = () => {
     });
   }, []);
 
+  const hasAssignmentChanges = pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0;
+  const hasManHoursChanges = useMemo(() => {
+    return hasProjectChannelManHoursChanges(projectChannels, initialProjectChannels);
+  }, [projectChannels, initialProjectChannels]);
+
   // Date range is assignment-planning state. It does not make pitch details dirty by itself.
   const hasUnsavedChanges = useMemo(() => {
-    return pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0;
-  }, [pendingAssignments, unsavedDeliverableChanges]);
+    return hasAssignmentChanges || hasManHoursChanges;
+  }, [hasAssignmentChanges, hasManHoursChanges]);
 
   const hasCompleteAssignmentDateRange = !!dateRange?.from && !!dateRange?.to;
 
@@ -335,7 +332,7 @@ export const ProjectSetup = () => {
   const isSaveDisabled = isSaving
     || !hasUnsavedChanges
     || !allHaveDeliverables
-    || !hasCompleteAssignmentDateRange
+    || (hasAssignmentChanges && !hasCompleteAssignmentDateRange)
     || !canEditProjectDetails;
 
   // Auto-calculate grand total when budget or asf changes
@@ -374,16 +371,7 @@ export const ProjectSetup = () => {
     setGrandTotal(project.grandTotal || "");
     setQuotationReference(project.quotationReference || "");
     setIoFile(project.ioFile || "");
-    if (project.startDate && project.endDate) {
-      const range = getFallbackAssignmentDateRange([
-        { startDate: project.startDate, endDate: project.endDate },
-      ]);
-      setDateRange(range);
-      setInitialDateRange(range);
-    } else {
-      setDateRange(undefined);
-      setInitialDateRange(undefined);
-    }
+    setDateRange(getProjectAssignmentDateRange(project));
     setDescription(project.description || "");
     setNotes(project.notes || "");
     setFlag(project.flag || "");
@@ -394,13 +382,15 @@ export const ProjectSetup = () => {
     setHsDealId(project.hsDealId || "");
     const projectWithChannels = project as ProjectWithRawChannels;
     const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
-    setProjectChannels(channelsData.map((pc) => ({
+    const nextProjectChannels = channelsData.map((pc) => ({
       channelId: pc.channelId || pc.channel_id || "",
       deliverableId: pc.deliverableId || pc.deliverable_id || "",
       quantity: pc.quantity || "",
       channelBudget: pc.channelBudget || pc.channel_budget || "",
       manHours: pc.manHours || pc.man_hours || "",
-    })));
+    }));
+    setProjectChannels(nextProjectChannels);
+    setInitialProjectChannels(nextProjectChannels);
     setPendingAssignments([]);
     // Don't reset deliverables here - let the useEffect handle loading from existing assignments
     // Only reset if not already tracking this project
@@ -454,19 +444,18 @@ export const ProjectSetup = () => {
       setSelectedDeliverablesByEmployee(deliverablesByEmployee);
       setInitialDeliverablesByEmployee(deliverablesByEmployee);
     }
-  }, [isDialogOpen, viewingProject?.id, projectAssignments, allDeliverables, initialDeliverablesByEmployee]);
+  }, [isDialogOpen, viewingProject, projectAssignments, allDeliverables, initialDeliverablesByEmployee]);
 
   // Initialize assignment planning range from existing assignments when project has no saved dates
   useEffect(() => {
     if (!isDialogOpen || !viewingProject || projectAssignments.length === 0) return;
-    if (initialDateRange !== undefined) return;
+    if (dateRange !== undefined) return;
 
     const range = getFallbackAssignmentDateRange(projectAssignments);
     if (range) {
       setDateRange(range);
-      setInitialDateRange(range);
     }
-  }, [isDialogOpen, viewingProject?.id, projectAssignments, initialDateRange]);
+  }, [isDialogOpen, viewingProject, projectAssignments, dateRange]);
 
   // Group projects by brand
   // In default state: show all brands even if they have no projects
@@ -496,7 +485,7 @@ export const ProjectSetup = () => {
   const handleSaveTeamAssignments = async (closeAfterSave = false) => {
     setIsSaving(true);
     try {
-      if (!hasCompleteAssignmentDateRange) {
+      if (hasAssignmentChanges && !hasCompleteAssignmentDateRange) {
         throw new Error("Assignment planning requires a complete date range.");
       }
 
@@ -563,15 +552,18 @@ export const ProjectSetup = () => {
       }
 
       setInitialDeliverablesByEmployee(newInitialDeliverables);
+      setInitialProjectChannels(projectChannels);
 
       // Clear pending assignments after successful save
       setPendingAssignments([]);
 
-      // Invalidate queries to refetch data
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectsInfinite });
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
-      queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(viewingProject!.id) });
+      if (hasAssignmentChanges) {
+        // Invalidate queries to refetch persisted assignment data
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectsInfinite });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(viewingProject!.id) });
+      }
 
       if (closeAfterSave) {
         setIsDialogOpen(false);
@@ -1198,39 +1190,47 @@ export const ProjectSetup = () => {
 
                 {/* Manage Team Section */}
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Project Period</label>
-                    <div className="flex items-center gap-2">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-8 text-xs gap-2">
-                            <Icon icon="lucide:calendar" className="h-3.5 w-3.5" />
-                            {dateRange?.from && dateRange?.to
-                              ? `${format(dateRange.from, "MMM yyyy")} - ${format(dateRange.to, "MMM yyyy")}`
-                              : "Select date range"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="range"
-                            selected={dateRange}
-                            onSelect={setDateRange}
-                            numberOfMonths={2}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      {dateRange?.from && dateRange?.to && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs"
-                          onClick={() => setDateRange(undefined)}
-                        >
-                          Clear
-                        </Button>
-                      )}
+                  {projectType === "pitch" ? (
+                    <div className="space-y-2">
+                      <label htmlFor="submissionDate" className="text-sm font-medium">
+                        Submission Date
+                      </label>
+                      <Input
+                        id="submissionDate"
+                        value={submitDate}
+                        readOnly
+                        disabled
+                        placeholder="No submission date"
+                      />
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label htmlFor="campaignStartDate" className="text-sm font-medium">
+                          Start Date
+                        </label>
+                        <Input
+                          id="campaignStartDate"
+                          value={viewingProject?.startDate || ""}
+                          readOnly
+                          disabled
+                          placeholder="No start date"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="campaignEndDate" className="text-sm font-medium">
+                          End Date
+                        </label>
+                        <Input
+                          id="campaignEndDate"
+                          value={viewingProject?.endDate || ""}
+                          readOnly
+                          disabled
+                          placeholder="No end date"
+                        />
+                      </div>
+                    </div>
+                  )}
                   <div className="border-b pb-2">
                     <h3 className="text-sm font-semibold text-foreground">Manage Team</h3>
                   </div>

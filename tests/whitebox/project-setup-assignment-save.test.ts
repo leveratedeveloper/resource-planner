@@ -3,6 +3,7 @@ import {
   buildPendingAssignmentPayloads,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
+  getProjectAssignmentDateRange,
 } from "@/lib/setup/project-assignment-save";
 
 describe("project setup assignment save helpers", () => {
@@ -80,6 +81,32 @@ describe("project setup assignment save helpers", () => {
     expect(range).toEqual({
       from: new Date(2026, 1, 2),
       to: new Date(2026, 3, 15),
+    });
+  });
+
+  it("uses campaign start and end dates for assignment planning", () => {
+    const range = getProjectAssignmentDateRange({
+      startDate: "2026-05-04",
+      endDate: "2026-05-29",
+      submitDate: null,
+    });
+
+    expect(range).toEqual({
+      from: new Date(2026, 4, 4),
+      to: new Date(2026, 4, 29),
+    });
+  });
+
+  it("uses pitch submit date as a single-day assignment planning fallback", () => {
+    const range = getProjectAssignmentDateRange({
+      startDate: null,
+      endDate: null,
+      submitDate: "2026-06-12",
+    });
+
+    expect(range).toEqual({
+      from: new Date(2026, 5, 12),
+      to: new Date(2026, 5, 12),
     });
   });
 });

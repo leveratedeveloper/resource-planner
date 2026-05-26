@@ -61,6 +61,29 @@ export function getFallbackAssignmentDateRange(
   };
 }
 
+export function getProjectAssignmentDateRange(project: {
+  startDate?: string | Date | null;
+  endDate?: string | Date | null;
+  submitDate?: string | Date | null;
+}): DateRange | undefined {
+  if (project.startDate && project.endDate) {
+    return {
+      from: startOfDay(parseDateLike(project.startDate)),
+      to: startOfDay(parseDateLike(project.endDate)),
+    };
+  }
+
+  if (project.submitDate) {
+    const submitDate = startOfDay(parseDateLike(project.submitDate));
+    return {
+      from: submitDate,
+      to: submitDate,
+    };
+  }
+
+  return undefined;
+}
+
 export function buildPendingAssignmentPayloads(params: {
   projectId: string;
   pendingAssignments: PendingProjectAssignment[];

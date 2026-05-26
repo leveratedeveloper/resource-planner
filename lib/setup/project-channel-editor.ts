@@ -18,6 +18,17 @@ export function updateProjectChannelManHours<T extends EditableProjectChannel>(
   );
 }
 
+export function hasProjectChannelManHoursChanges(
+  currentChannels: EditableProjectChannel[],
+  initialChannels: EditableProjectChannel[]
+): boolean {
+  if (currentChannels.length !== initialChannels.length) return true;
+
+  return currentChannels.some((channel, index) => {
+    return channel.manHours !== initialChannels[index]?.manHours;
+  });
+}
+
 export function sanitizeManHoursInput(value: string): string {
   let hasDecimal = false;
 
