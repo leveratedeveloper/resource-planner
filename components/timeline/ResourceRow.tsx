@@ -7,7 +7,6 @@ import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { differenceInDays, isWithinInterval, startOfDay, addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
-import { useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { calculatePlannedHoursForMonth, calculateActualHoursForMonth } from "@/lib/utils/actual-hours-validation";
 import { useProjects } from "@/lib/query/hooks/useProjects";
 import type { Project } from "@/lib/query/hooks/useProjects";
@@ -699,6 +698,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
   const [hoveredRowType, setHoveredRowType] = useState<'plan' | 'actual' | null>(null);
 
   // State untuk fitur Select Project
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [isProjectsInitialized, setIsProjectsInitialized] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
+
   // Drag state - using refs for immediate synchronous access
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -2270,9 +2274,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
             {isWeekView ? (
               // For Quarter/HalfYear/Year view, use WeeklyTimeOffBlock
               // Note: Month view now shows daily columns like week view
-              resourceAssignments.filter(a => a.isTimeOff).map((assignment) => (
+              resourceAssignments.filter(a => a.isTimeOff).map((assignment, idx) => (
                 <WeeklyTimeOffBlock
-                  key={assignment.id}
+                  key={`${assignment.id}-${idx}`}
                   assignment={assignment}
                   days={days}
                   cellWidth={cellWidth}
@@ -2281,9 +2285,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
               ))
             ) : (
               // For Week view (day view), use regular AssignmentBlock
-              resourceAssignments.filter(a => a.isTimeOff).map((assignment) => (
+              resourceAssignments.filter(a => a.isTimeOff).map((assignment, idx) => (
                 <AssignmentBlock
-                  key={assignment.id}
+                  key={`${assignment.id}-toff-${idx}`}
                   assignment={assignment}
                   project={undefined}
                   days={days}
@@ -2413,9 +2417,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                                   <div key={day.toISOString()} className="shrink-0 h-[40px] border-r border-white/20 bg-gray-100/50" style={{ width: `${cellWidth}px` }} />
                                 ))}
                                 {/* Show plan assignments but disabled */}
-                                {planAssignments.map((assignment) => (
+                                {planAssignments.map((assignment, idx) => (
                                   <AssignmentBlock
-                                    key={assignment.id}
+                                    key={`${assignment.id}-plan-${idx}`}
                                     assignment={assignment}
                                     project={projectMap.get(assignment.projectId ?? '')}
                                     days={days}
@@ -2605,9 +2609,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({ resource, days, brandI
                                       )}
                                   </>
                                 ) : (
-                                  planAssignments.map((assignment) => (
+                                  planAssignments.map((assignment, idx) => (
                                     <AssignmentBlock
-                                      key={assignment.id}
+                                      key={`${assignment.id}-plan2-${idx}`}
                                       assignment={assignment}
                                       project={projectMap.get(assignment.projectId ?? '')}
                                       days={days}

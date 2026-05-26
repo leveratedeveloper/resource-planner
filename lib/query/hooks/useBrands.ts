@@ -78,7 +78,15 @@ async function fetchBrands(): Promise<Brand[]> {
   }
 
   const result = await response.json();
-  return result.data || [];
+  const brands: Brand[] = result.data || [];
+
+  // Deduplicate by ID
+  const seen = new Set<string>();
+  return brands.filter((b) => {
+    if (seen.has(b.id)) return false;
+    seen.add(b.id);
+    return true;
+  });
 }
 
 async function fetchBrand(id: string): Promise<Brand> {

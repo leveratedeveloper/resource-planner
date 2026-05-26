@@ -133,7 +133,15 @@ async function fetchProjects(): Promise<Project[]> {
     throw new Error("Failed to fetch projects");
   }
   const data = await response.json();
-  return data.data;
+  const projects: Project[] = data.data || [];
+
+  // Deduplicate by ID (projects combine campaigns, pitches, operationals, rnds)
+  const seen = new Set<string>();
+  return projects.filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
 }
 
 async function fetchProject(id: string): Promise<Project> {

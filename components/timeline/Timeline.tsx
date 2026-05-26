@@ -24,6 +24,7 @@ import {
   groupAssignmentsByDepartment,
 } from "./timeline-aggregation";
 import { getTimelineDateRange } from "./timeline-date-range";
+import { getTimelineHeaderLayout } from "@/lib/timeline/header-layout";
 
 interface TimelineProps {
   initialTimelineAnchor: string;
@@ -40,10 +41,30 @@ const EMPTY_ACTUAL_ASSIGNMENTS: ActualAssignment[] = [];
 
 export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQuery, projectId, category, status }) => {
   // Fetch data using React Query
-  const { data: employees = [], isLoading: isLoadingEmployees } = useEmployees();
+  const { data: rawEmployees = [], isLoading: isLoadingEmployees } = useEmployees();
   const { data: brands = [], isLoading: isLoadingBrands, isError: isBrandsError } = useBrands();
   const { data: departments = [], isLoading: isLoadingDepartments, isError: isDepartmentsError } = useDepartments();
-  const { data: projects = [] } = useProjects();
+  const { data: rawProjects = [] } = useProjects();
+  const { session } = useAuth();
+
+  // Deduplicate employees and projects by ID to prevent duplicate React keys
+  const employees = useMemo(() => {
+    const seen = new Set<string>();
+    return rawEmployees.filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+  }, [rawEmployees]);
+
+  const projects = useMemo(() => {
+    const seen = new Set<string>();
+    return rawProjects.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [rawProjects]);
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -171,9 +192,33 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     [days, viewMode]
   );
 
-  const { data: dateFilteredAssignments = [] } = useAssignments(assignmentParams, {
+  const { data: rawDateFilteredAssignments = [] } = useAssignments(assignmentParams, {
     enabled: days.length > 0,
   });
+
+  // Deduplicate assignments by ID
+  const dateFilteredAssignments = useMemo(() => {
+    const seen = new Set<string>();
+    return rawDateFilteredAssignments.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
+  }, [rawDateFilteredAssignments]);
+
+  // Diagnostic: log duplicate IDs in data arrays
+  useEffect(() => {
+    const findDupes = (label: string, items: { id: string }[]) => {
+      const seen = new Map<string, number>();
+      items.forEach((item) => seen.set(item.id, (seen.get(item.id) || 0) + 1));
+      const dupes = [...seen.entries()].filter(([, count]) => count > 1);
+      if (dupes.length > 0) console.warn(`[Dedup] ${label} has duplicates:`, dupes);
+    };
+    if (employees.length > 0) findDupes('employees', employees);
+    if (projects.length > 0) findDupes('projects', projects);
+    if (brands.length > 0) findDupes('brands', brands);
+    if (dateFilteredAssignments.length > 0) findDupes('assignments', dateFilteredAssignments);
+  }, [employees, projects, brands, dateFilteredAssignments]);
 
   const actualAssignmentParams = useMemo(() => {
     if (!assignmentParams) return undefined;

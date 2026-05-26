@@ -91,7 +91,15 @@ async function fetchEmployees(): Promise<Employee[]> {
   }
 
   const data = await response.json();
-  return data.data || [];
+  const employees: Employee[] = data.data || [];
+
+  // Deduplicate by ID in case of API or cache issues
+  const seen = new Set<string>();
+  return employees.filter((emp) => {
+    if (seen.has(emp.id)) return false;
+    seen.add(emp.id);
+    return true;
+  });
 }
 
 async function fetchEmployee(id: string): Promise<Employee> {
@@ -140,7 +148,6 @@ async function deleteEmployee(id: string): Promise<void> {
 
 // Hooks
 export function useEmployees(options?: { enabled?: boolean }) {
-  export function useEmployees(options?: { enabled?: boolean }) {
     return useQuery({
       queryKey: queryKeys.employees,
       queryFn: fetchEmployees,

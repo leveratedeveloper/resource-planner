@@ -89,7 +89,13 @@ async function fetchAssignments(params?: { startDate?: string; endDate?: string;
     offset += ASSIGNMENT_PAGE_SIZE;
   }
 
-  return allAssignments;
+  // Deduplicate by ID in case of overlapping pages
+  const seen = new Set<string>();
+  return allAssignments.filter(a => {
+    if (seen.has(a.id)) return false;
+    seen.add(a.id);
+    return true;
+  });
 }
 
 async function fetchAssignment(id: string): Promise<Assignment> {
@@ -167,6 +173,15 @@ async function deleteAssignment(id: string): Promise<void> {
 }
 
 // Hooks
+function dedupAssignments(assignments: Assignment[]): Assignment[] {
+  const seen = new Set<string>();
+  return assignments.filter((a) => {
+    if (seen.has(a.id)) return false;
+    seen.add(a.id);
+    return true;
+  });
+}
+
 export function useAssignments(
   params?: { startDate?: string; endDate?: string; projectIds?: string[] },
   options?: { enabled?: boolean }
@@ -174,6 +189,7 @@ export function useAssignments(
   return useQuery({
     queryKey: [...queryKeys.assignments, params],
     queryFn: () => fetchAssignments(params),
+    select: dedupAssignments,
     enabled: options?.enabled ?? true,
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,

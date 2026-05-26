@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { getMySqlApiClient } from "@/lib/mysql/api-client";
+import { createRequestTiming } from "@/lib/observability/request-timing";
 
 type RawEmployee = {
   uuid?: string;
@@ -224,7 +226,15 @@ export async function GET(request: Request) {
       pages: lastPage,
     });
 
-    const transformedEmployees = actualData.map((emp) => ({
+    // Deduplicate by UUID before transformation (pagination without ORDER BY can overlap)
+    const seenUuids = new Set<string>();
+    const uniqueEmployees = actualData.filter((emp) => {
+      if (!emp.uuid || seenUuids.has(emp.uuid)) return false;
+      seenUuids.add(emp.uuid);
+      return true;
+    });
+
+    const transformedEmployees = uniqueEmployees.map((emp) => ({
       id: emp.uuid,
       employeeNumber: emp.nik,
       fullName: emp.full_name,
