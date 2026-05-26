@@ -3,15 +3,24 @@ import type { NextRequest } from 'next/server';
 import { canAccessDashboard } from '@/lib/auth/access';
 import type { AccessSession } from '@/lib/auth/access';
 
-// Only protect these paths (API routes are generally public except for specific protected ones)
 const PROTECTED_PATHS = ['/'];
-const PUBLIC_PATHS = ['/login', '/api/auth'];
+const PUBLIC_PATHS = ['/login'];
 
+// API routes that do NOT require authentication
+const PUBLIC_API_PREFIXES = ['/api/auth/login', '/api/auth/logout'];
+
+// Parse session from signed cookie format: { payload: "...", signature: "..." }
 function parseSessionCookie(value: string | undefined): AccessSession | null {
   if (!value) return null;
 
   try {
-    return JSON.parse(value) as AccessSession;
+    const parsed = JSON.parse(value);
+    // Signed cookie format (new)
+    if (parsed?.payload) {
+      return JSON.parse(parsed.payload) as AccessSession;
+    }
+    // Legacy format fallback
+    return parsed as AccessSession;
   } catch {
     return null;
   }
@@ -24,13 +33,11 @@ function isDashboardPath(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Debug logging
-  console.log('[Middleware] Path:', pathname, 'Has session:', !!request.cookies.get('session'));
-
-  // Skip middleware for API routes (except auth/me which needs session check)
+  // API route protection: require session cookie for all /api/ routes
+  // except whitelisted public endpoints (login, logout)
   if (pathname.startsWith('/api/')) {
-    // Allow all API routes except /api/auth/me
-    if (pathname === '/api/auth/me') {
+    const isPublicApi = PUBLIC_API_PREFIXES.some(prefix => pathname.startsWith(prefix));
+    if (!isPublicApi) {
       const sessionCookie = request.cookies.get('session');
       if (!sessionCookie) {
         return NextResponse.json(

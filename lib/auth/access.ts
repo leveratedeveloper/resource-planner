@@ -8,8 +8,6 @@ export type AccessSession = {
   } | null;
 } | null | undefined;
 
-export const DASHBOARD_EMAIL_OVERRIDE = "super@timetrack.id";
-
 export function normalizeAccessValue(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
@@ -23,9 +21,7 @@ export function isFullAccess(session: AccessSession): boolean {
 }
 
 export function canAccessDashboard(session: AccessSession): boolean {
-  if (normalizeAccessValue(session?.access?.level) === "admin") {
-    return true;
-  }
-
-  return normalizeAccessValue(session?.user?.email) === DASHBOARD_EMAIL_OVERRIDE;
+  // Dashboard access requires full or admin access level
+  const level = normalizeAccessValue(session?.access?.level);
+  return level === "admin" || level === "full";
 }

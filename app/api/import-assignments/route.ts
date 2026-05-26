@@ -138,6 +138,8 @@ export async function POST(request: Request) {
 
     const connection = await assignmentsDb.getConnection();
     try {
+      await connection.beginTransaction();
+
       for (const sheet of workbook.worksheets) {
         const sheetName = sheet.name.toLowerCase().trim();
         const monthMatch = sheetName.match(/([a-z]{3})/);
@@ -265,6 +267,11 @@ export async function POST(request: Request) {
           totalAssignmentsCreated += batchInsertValues.length;
         }
       }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback().catch(() => {});
+      throw error;
     } finally {
       connection.release();
     }

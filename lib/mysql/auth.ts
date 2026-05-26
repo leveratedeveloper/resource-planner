@@ -20,9 +20,13 @@ export class MySqlAuthManager {
 
   constructor() {
     this.baseUrl = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
-    this.username = process.env.MYSQL_API_USERNAME || 'super@timetrack.id';
+    this.username = process.env.MYSQL_API_USERNAME || '';
     this.password = process.env.MYSQL_API_PASSWORD || '';
     this.tokenExpiryMs = parseInt(process.env.MYSQL_API_TOKEN_EXPIRY_MS || '3600000', 10);
+
+    if (!this.username || !this.password) {
+      console.warn('[MySQL Auth] MYSQL_API_USERNAME or MYSQL_API_PASSWORD not set. Service account login will fail.');
+    }
   }
 
   /**

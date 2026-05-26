@@ -1,4 +1,8 @@
 import { cookies } from 'next/headers';
+import { createHmac, timingSafeEqual } from 'crypto';
+
+const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me-in-production-env-var';
+const HMAC_ALGO = 'sha256';
 
 /**
  * Session data structure
@@ -27,10 +31,28 @@ export interface SessionData {
   };
 }
 
+interface SignedSession {
+  payload: string;
+  signature: string;
+}
+
+function signPayload(payload: string): string {
+  return createHmac(HMAC_ALGO, SESSION_SECRET).update(payload).digest('hex');
+}
+
+function verifySignature(payload: string, signature: string): boolean {
+  const expected = signPayload(payload);
+  try {
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Get the current session from cookies
+ * Get the current session from cookies (with signature verification)
  *
- * @returns Session data or null if not authenticated
+ * @returns Session data or null if not authenticated or tampered
  */
 export async function getSession(): Promise<SessionData | null> {
   const cookieStore = await cookies();
@@ -41,7 +63,14 @@ export async function getSession(): Promise<SessionData | null> {
   }
 
   try {
-    return JSON.parse(sessionCookie.value) as SessionData;
+    const signed = JSON.parse(sessionCookie.value) as SignedSession;
+    if (!signed.payload || !signed.signature) return null;
+
+    if (!verifySignature(signed.payload, signed.signature)) {
+      return null;
+    }
+
+    return JSON.parse(signed.payload) as SessionData;
   } catch {
     return null;
   }
@@ -56,13 +85,16 @@ export async function destroySession(): Promise<void> {
 }
 
 /**
- * Create a session cookie
+ * Create a signed session cookie
  *
  * @param sessionData - The session data to store
  */
 export async function createSession(sessionData: SessionData): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set('session', JSON.stringify(sessionData), {
+  const payload = JSON.stringify(sessionData);
+  const signature = signPayload(payload);
+
+  cookieStore.set('session', JSON.stringify({ payload, signature }), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
