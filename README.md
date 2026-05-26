@@ -6,11 +6,15 @@ A workforce management and resource allocation system for managing employee assi
 
 - **Framework**: Next.js 16.1.1
 - **UI**: React 19, TypeScript, Tailwind CSS v4
-- **Database**: PostgreSQL (Primary) / MySQL
-  - Main data via Timetrack API (employees, brands, projects, campaigns)
-  - Assignments database for employee-project allocations
+- **Component Library**: shadcn/ui, Radix UI (primitives)
+- **Validation**: Zod
+- **Database**: PostgreSQL (Primary) / MySQL (Fallback)
+  - PostgreSQL: Assignments database for employee-project allocations
+  - MySQL: Local development fallback and proxy to Timetrack API
 - **External Integration**: Timetrack API for authentication and employee data
-- **State Management**: Zustand, TanStack Query
+- **State Management**: React Context (auth), TanStack Query (data fetching), Zustand (toast notifications)
+- **Utilities**: date-fns (date handling), ExcelJS (export)
+- **AI**: OpenAI (insights & recommendations)
 - **Testing**: Vitest
 
 ## Architecture Overview
@@ -22,14 +26,14 @@ A workforce management and resource allocation system for managing employee assi
 │  (Next.js)      │
 └────────┬────────┘
          │
-         ├─────────────────┐
-         │                 │
-         ▼                 ▼
-┌─────────────────┐ ┌─────────────────┐
-│  Timetrack API  │ │  PostgreSQL     │
-│  (Auth/Employees)│ │  (Assignments)  │
-│  (Brands/Projects)│ │                 │
-└─────────────────┘ └─────────────────┘
+         ├─────────────────┬─────────────────┐
+         │                 │                 │
+         ▼                 ▼                 ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  Timetrack API  │ │  PostgreSQL     │ │  OpenAI API     │
+│  (Auth/Employees)│ │  (Assignments)  │ │  (AI Insights   │
+│  (Brands/Projects)│ │                 │ │   via gpt-4o)   │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
 ## Features
@@ -45,6 +49,9 @@ A workforce management and resource allocation system for managing employee assi
 - **Project Management**: Handle campaigns and pitches with budget tracking
 - **Employee Management**: Directory with RBAC (Full Access vs Restricted Access)
 - **Reporting & Export**: Excel/CSV exports for assignments, conflicts, projects, and utilization
+- **Project Type Support**: Campaigns, Operational, and R&D project types with type-specific management
+- **Pagination & Incremental Loading**: Efficient data loading for large datasets with infinite scroll
+- **Deliverables Management**: Task-level deliverables per project assignment
 - **HubSpot Integration**: Pitch tracking with deal IDs
 - **Today Marker**: Visual indicator for current date
 - **Weekend Toggle**: Show/hide weekends in timeline views
@@ -117,81 +124,57 @@ This database stores:
 
    ```bash
    # ==========================================
+   # NextAuth Configuration (Legacy - Not Currently Used)
+   # ==========================================
+   # NEXTAUTH_SECRET=
+   # NEXTAUTH_URL=http://localhost:3000/
+
+   # ==========================================
+   # OpenAI Configuration
+   # ==========================================
+   OPENAI_API_KEY=
+
+   # ==========================================
    # Timetrack API Configuration (Required)
    # ==========================================
    TIMETRACK_API_URL=https://demo.timetrack.id/api/v1
 
    # ==========================================
-   # MySQL REST API Configuration
+   # MySQL API Authentication (service account for server-side API calls)
    # ==========================================
-   MYSQL_API_BASE_URL=https://demo.timetrack.id/api/v1
-   MYSQL_API_USERNAME=super@timetrack.id
-   MYSQL_API_PASSWORD=your-mysql-api-password
+   MYSQL_API_USERNAME=
+   MYSQL_API_PASSWORD=
    MYSQL_API_TOKEN_EXPIRY_MS=3600000
 
    # ==========================================
-   # PostgreSQL Assignments Database Connection (Primary)
+   # API Security
    # ==========================================
-   DATABASE_URL=postgres://user:password@localhost:5432/resource_planner_assignments
-   # Alternatively:
-   # POSTGRES_URL=postgres://user:password@localhost:5432/resource_planner_assignments
+   API_SECRET_KEY=
+   INSIGHTS_API_TOKEN=
 
    # ==========================================
-   # MySQL Assignments Database Connection (Fallback)
+   # PostgreSQL Assignments Database (Primary)
    # ==========================================
-   MYSQL_ASSIGNMENTS_HOST=127.0.0.1
-   MYSQL_ASSIGNMENTS_PORT=3306
-   MYSQL_ASSIGNMENTS_USER=root
-   MYSQL_ASSIGNMENTS_PASSWORD=
-   MYSQL_ASSIGNMENTS_DATABASE=resource_planner_assignments
+   DATABASE_URL=
 
    # ==========================================
-   # Email Server Configuration (for authentication)
+   # MySQL Assignments Database (Fallback - for local development)
+   # These are used in code but not in .env.example
    # ==========================================
-   # Option 1: Gmail (Recommended for testing)
-   # 1. Enable 2FA on your Gmail account
-   # 2. Create an App Password: Google Account -> Security -> App Passwords
-   # 3. Use App Password as EMAIL_SERVER_PASSWORD
-   EMAIL_SERVER_HOST=smtp.gmail.com
-   EMAIL_SERVER_PORT=587
-   EMAIL_SERVER_USER=your-email@leverategroup.asia
-   EMAIL_SERVER_PASSWORD=your-gmail-app-password
-   EMAIL_FROM="Resource Planner <your-email@leverategroup.asia>"
-
-   # Option 2: Resend (Recommended for production)
-   # EMAIL_SERVER_HOST=smtp.resend.com
-   # EMAIL_SERVER_PORT=587
-   # EMAIL_SERVER_USER=resend
-   # EMAIL_SERVER_PASSWORD=your-resend-api-key
-   # EMAIL_FROM="Resource Planner <noreply@leverategroup.asia>"
-
-   # Option 3: Company SMTP Server
-   # EMAIL_SERVER_HOST=smtp.your-company.com
-   # EMAIL_SERVER_PORT=587
-   # EMAIL_SERVER_USER=your-smtp-username
-   # EMAIL_SERVER_PASSWORD=your-smtp-password
-   # EMAIL_FROM="Resource Planner <noreply@leverategroup.asia>"
-
-   # ==========================================
-   # NextAuth Configuration (Legacy - Not Currently Used)
-   # ==========================================
-   NEXTAUTH_SECRET=your-nextauth-secret-here-generate-with-openssl-rand-base64-32
-   NEXTAUTH_URL=http://localhost:3000
+   # MYSQL_ASSIGNMENTS_HOST=127.0.0.1
+   # MYSQL_ASSIGNMENTS_PORT=3306
+   # MYSQL_ASSIGNMENTS_USER=root
+   # MYSQL_ASSIGNMENTS_PASSWORD=
+   # MYSQL_ASSIGNMENTS_DATABASE=resource_planner_assignments
    ```
 
-### Step 5: Start Development Server
+### Step 5: Import Existing Data (Optional)
 
-If you have a Timetrack SQL dump and want to import existing data:
+Use the bulk import API endpoint to import assignments from an Excel file:
+- `POST /api/import-assignments` -- accepts an Excel file upload
+- Expected sheet format: sheets named by month (e.g. "Jan 25", "Feb 25")
 
-```bash
-# Import all data
-npx tsx lib/db/import-from-timetrack.ts
-
-# Import with limits (useful for testing)
-npx tsx lib/db/import-from-timetrack.ts --limit-employees 50 --limit-brands 20
-```
-
-### Step 7: Start Development Server
+### Step 6: Start Development Server
 
 ```bash
 npm run dev
@@ -201,6 +184,8 @@ npm run dev
 2. Login with the credentials provided below.
 
 ## Credentials & Login
+
+> **Security Warning**: The credentials listed below are for **local development only**. For staging and production environments, always use environment variables and never commit credentials to source control. Rotate any credentials that have been exposed in documentation or version control.
 
 ### Local Development
 | Environment | Email | Password |
@@ -242,6 +227,10 @@ npm run build        # Build for production
 npm run start        # Start production server
 npm run lint         # Run ESLint
 
+# Database Migrations
+npm run migration:add-total-hours    # Add total_hours column to assignments
+npm run migration:add-is-adjustment  # Add is_adjustment column to assignments
+
 # Testing
 npm run test         # Run tests
 npm run test:watch   # Run tests in watch mode
@@ -259,22 +248,23 @@ npm run test:coverage # Run tests with coverage report
 - Check network/firewall settings
 
 ### Database Connection Errors
-**Problem**: Can't connect to MySQL
+**Problem**: Can't connect to PostgreSQL or MySQL
 
 **Solutions**:
-- Verify MySQL is running: `mysql -u root -p -e "SHOW DATABASES;"`
-- Check database credentials in `.env.local`
+- Verify PostgreSQL is running: `pg_isready` or `psql -U postgres -c "SELECT 1;"`
+- Verify MySQL is running (fallback): `mysql -u root -p -e "SHOW DATABASES;"`
+- Check `DATABASE_URL` (PostgreSQL) and MySQL credentials in `.env.local`
 - Ensure `resource_planner_assignments` database exists
 
 ### Authentication Not Working
-**Problem**: Login fails or magic links not sending
+**Problem**: Login fails or session not persisting
 
 **Solutions**:
-- Check email server settings in `.env.local`
-- For Gmail: Ensure you're using an App Password (not your regular password)
-- Check spam folder for magic link emails
-- Verify email format is correct
-- Check server logs for error messages
+- Verify Timetrack API is reachable: `curl https://demo.timetrack.id/api/v1`
+- Check that `TIMETRACK_API_URL` is set correctly in `.env.local`
+- Verify your credentials work by testing directly against Timetrack API
+- Check browser developer tools for the `session` cookie (httpOnly)
+- Check server logs for authentication error messages
 
 ### Port Already in Use
 **Problem**: Error starting development server
@@ -294,10 +284,21 @@ npm run test:coverage # Run tests with coverage report
 - Pitches (with status tracking: on_going, win, loss)
 - Authentication (login with email/password)
 
-**MySQL** (Operational Data):
-- Assignments (employee-project allocations)
-- Time-off requests
-- Other transactional data
+**PostgreSQL** (Primary - Assignments & Operational Data):
+- Assignments (employee-project allocations with deliverables)
+- Actual time tracking (time spent/allocation records)
+- Deliverables (task-level deliverables per project assignment)
+- Supports operational, campaign, and R&D project types
+
+**MySQL** (Fallback & Proxy):
+- Used as local development fallback when PostgreSQL is unavailable
+- MySQL Bridge API routes proxy requests to Timetrack API
+- Not used for primary data storage in production
+
+**OpenAI API** (AI Insights):
+- Powers capacity analysis, conflict detection, and forecasting
+- Uses GPT-4o model for recommendations
+- Triggered via `/api/insights` endpoint
 
 ### Timetrack API Integration
 
@@ -325,10 +326,11 @@ MYSQL_API_TOKEN_EXPIRY_MS=3600000
 
 #### Authentication Flow
 
-1. **Login**: Resource Planner authenticates with Timetrack using service account credentials
-2. **Token Storage**: Access token is stored and reused for subsequent requests
-3. **Token Refresh**: Token automatically refreshes on expiry (default: 1 hour)
-4. **Request Headers**: All API calls include `Authorization: Bearer {token}` header
+1. **Login**: User submits email/password via `/api/auth/login`, which proxies to Timetrack API `POST /login`
+2. **Session**: On success, an httpOnly cookie named `session` is set containing JSON user data (not JWT, not NextAuth)
+3. **Session Duration**: Cookie expires after 7 days
+4. **Access Level**: Determined by user's department and position via hardcoded rules (Full Access vs Restricted Access)
+5. **Server-side API Calls**: The server uses service account credentials (`MYSQL_API_USERNAME`/`MYSQL_API_PASSWORD`) to obtain a Bearer token for Timetrack API requests; token auto-refreshes on expiry (default: 1 hour)
 
 #### API Response Format
 
@@ -409,7 +411,6 @@ interface ApiResponse<T> {
 - `/api/projects` - Combined campaigns + pitches endpoint
 - `/api/mysql-bridge/brands` - Direct proxy to Timetrack brands API
 - `/api/mysql-bridge/campaigns` - Direct proxy to Timetrack campaigns API
-- `/api/mysql-bridge/pitches` - Direct proxy to Timetrack pitches API
 
 #### Key Implementation Files
 
@@ -417,6 +418,73 @@ interface ApiResponse<T> {
 - `lib/mysql/auth.ts` - Token management and login
 - `app/api/brands/route.ts` - Brands API endpoint
 - `app/api/projects/route.ts` - Projects API endpoint
+
+### API Routes
+
+#### Authentication
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/auth/login` | POST | User authentication with email/password |
+| `/api/auth/logout` | POST | End user session |
+| `/api/auth/me` | GET | Get current authenticated user |
+
+#### Core Data
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/assignments` | GET, POST | List (paginated) and create assignments |
+| `/api/assignments/[id]` | GET, PUT, DELETE | Get, update, or delete a single assignment |
+| `/api/actual` | GET, POST | List and create actual time records |
+| `/api/actual/[uuid]` | GET, PUT, DELETE | Get, update, or delete an actual time record |
+| `/api/projects` | GET | List all projects (campaigns + pitches) |
+| `/api/projects/[type]/[id]/deliverables` | GET, POST | Manage deliverables for a project (campaign/operational/rnd) |
+| `/api/employees` | GET | List employees with RBAC data |
+| `/api/brands` | GET | List brands (1 min cache) |
+| `/api/brands/lookup` | GET | Brand lookup by name or ID |
+| `/api/departments` | GET | List departments |
+| `/api/business-units` | GET | List business units |
+| `/api/deliverables` | GET | List deliverable templates |
+| `/api/project-categories` | GET | List project categories |
+| `/api/channel-classifications` | GET | List channel classifications |
+
+#### MySQL Bridge (Timetrack Proxy)
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/mysql-bridge/brands` | GET | Proxy to Timetrack brands API |
+| `/api/mysql-bridge/campaigns` | GET | Proxy to Timetrack campaigns API |
+| `/api/mysql-bridge/employees` | GET | Proxy to Timetrack employees API |
+| `/api/mysql-bridge/assignments` | GET | Proxy to Timetrack assignments API |
+
+#### Export
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/export/assignments` | GET | Export assignments data |
+| `/api/export/projects` | GET | Export projects data |
+| `/api/export/utilization` | GET | Export utilization report |
+| `/api/export/conflicts` | GET | Export conflict report |
+| `/api/export/assignments/excel` | GET | Excel export for assignments |
+| `/api/export/projects/excel` | GET | Excel export for projects |
+| `/api/export/utilization/excel` | GET | Excel export for utilization |
+| `/api/export/conflicts/excel` | GET | Excel export for conflicts |
+
+> **Note**: Some routes have POST stubs returning 501 Not Implemented: `/api/employees`, `/api/departments`, `/api/business-units`, `/api/project-categories`, `/api/deliverables`.
+>
+> Some test/debug routes exist but are not documented (development only).
+
+#### AI Insights
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/insights` | POST | AI-powered capacity analysis and recommendations |
+
+#### Import
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/import-assignments` | POST | Bulk import assignments from file |
 
 ## Development Workflow
 
@@ -437,7 +505,6 @@ We welcome contributions to the Resource Planner project! Please follow these gu
    git clone https://github.com/hfebri/resource-planner.git
    cd resource-planner
    git checkout develop-sarah
-   ```
 
 2. **Create a Feature Branch**
    ```bash
