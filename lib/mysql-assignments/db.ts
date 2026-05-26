@@ -12,7 +12,7 @@ export type DbClient = 'mysql' | 'postgresql';
 
 // Detect database type from environment
 export const getDbClient = (): DbClient => {
-  // If DATABASE_URL is set (Vercel Postgres), use PostgreSQL
+  // If DATABASE_URL is set, use PostgreSQL (production)
   if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
     return 'postgresql';
   }
@@ -61,7 +61,8 @@ export const assignmentsDb = {
       const result = await getPgPool().query(pgSql, params);
       return [result.rows, result.fields];
     } else {
-      return mysqlPool.query(sql, params);
+      const pool = await getMysqlPool();
+      return pool.query(sql, params);
     }
   },
 
@@ -71,7 +72,8 @@ export const assignmentsDb = {
       const result = await getPgPool().query(pgSql, params);
       return [result.rows, result.fields];
     } else {
-      return mysqlPool.execute(sql, params);
+      const pool = await getMysqlPool();
+      return pool.execute(sql, params);
     }
   },
 
@@ -98,7 +100,8 @@ export const assignmentsDb = {
         ping: async () => client.query('SELECT 1'),
       };
     }
-    return mysqlPool.getConnection();
+    const pool = await getMysqlPool();
+    return pool.getConnection();
   },
 
   async end() {

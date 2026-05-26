@@ -140,89 +140,90 @@ async function deleteEmployee(id: string): Promise<void> {
 
 // Hooks
 export function useEmployees(options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: queryKeys.employees,
-    queryFn: fetchEmployees,
-    enabled: options?.enabled ?? true,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-}
-
-const PAGE_SIZE = 60;
-
-interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  hasMore: boolean;
-}
-
-async function fetchEmployeesPaginated({ pageParam = 0, search }: { pageParam?: number; search?: string }): Promise<PaginatedResponse<Employee>> {
-  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
-  const response = await fetch(`/api/employees?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch employees");
+  export function useEmployees(options?: { enabled?: boolean }) {
+    return useQuery({
+      queryKey: queryKeys.employees,
+      queryFn: fetchEmployees,
+      enabled: options?.enabled ?? true,
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    });
   }
-  const result = await response.json();
-  return {
-    data: result.data,
-    total: result.total,
-    hasMore: result.hasMore,
-  };
-}
 
-export function useInfiniteEmployees(search?: string) {
-  return useInfiniteQuery({
-    queryKey: [...queryKeys.employeesInfinite, search],
-    queryFn: ({ pageParam }) => fetchEmployeesPaginated({ pageParam, search }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      if (!lastPage.hasMore) return undefined;
-      return allPages.reduce((acc, page) => acc + page.data.length, 0);
-    },
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-}
+  const PAGE_SIZE = 60;
 
-export function useEmployee(id: string) {
-  return useQuery({
-    queryKey: queryKeys.employee(id),
-    queryFn: () => fetchEmployee(id),
-    enabled: !!id,
-  });
-}
+  interface PaginatedResponse<T> {
+    data: T[];
+    total: number;
+    hasMore: boolean;
+  }
 
-export function useCreateEmployee() {
-  const queryClient = useQueryClient();
+  async function fetchEmployeesPaginated({ pageParam = 0, search }: { pageParam?: number; search?: string }): Promise<PaginatedResponse<Employee>> {
+    const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+    const response = await fetch(`/api/employees?limit=${PAGE_SIZE}&offset=${pageParam}${searchParam}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch employees");
+    }
+    const result = await response.json();
+    return {
+      data: result.data,
+      total: result.total,
+      hasMore: result.hasMore,
+    };
+  }
 
-  return useMutation({
-    mutationFn: createEmployee,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
-    },
-  });
-}
+  export function useInfiniteEmployees(search?: string, options?: { enabled?: boolean }) {
+    return useInfiniteQuery({
+      queryKey: [...queryKeys.employeesInfinite, search],
+      queryFn: ({ pageParam }) => fetchEmployeesPaginated({ pageParam, search }),
+      initialPageParam: 0,
+      getNextPageParam: (lastPage, allPages) => {
+        if (!lastPage.hasMore) return undefined;
+        return allPages.reduce((acc, page) => acc + page.data.length, 0);
+      },
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    });
+  }
 
-export function useUpdateEmployee() {
-  const queryClient = useQueryClient();
+  export function useEmployee(id: string) {
+    return useQuery({
+      queryKey: queryKeys.employee(id),
+      queryFn: () => fetchEmployee(id),
+      enabled: !!id,
+    });
+  }
 
-  return useMutation({
-    mutationFn: updateEmployee,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
-      queryClient.invalidateQueries({ queryKey: queryKeys.employee(data.id) });
-    },
-  });
-}
+  export function useCreateEmployee() {
+    const queryClient = useQueryClient();
 
-export function useDeleteEmployee() {
-  const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: createEmployee,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+      },
+    });
+  }
 
-  return useMutation({
-    mutationFn: deleteEmployee,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees });
-    },
-  });
-}
+  export function useUpdateEmployee() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+      mutationFn: updateEmployee,
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+        queryClient.invalidateQueries({ queryKey: queryKeys.employee(data.id) });
+      },
+    });
+  }
+
+  export function useDeleteEmployee() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+      mutationFn: deleteEmployee,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.employees });
+      },
+    });
+  }

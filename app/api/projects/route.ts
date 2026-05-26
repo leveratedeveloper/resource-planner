@@ -82,7 +82,7 @@ function transformCampaignLikeToProject(campaign: RawCampaign, type: 'campaign' 
     projectType: type,
     entity: null,
     description: null,
-    color: '#' + Math.floor(Math.random()*16777215).toString(16),
+    color: '#' + Math.floor(Math.random() * 16777215).toString(16),
     createdById: null,
     region: null,
     submitDate: null,
@@ -92,7 +92,7 @@ function transformCampaignLikeToProject(campaign: RawCampaign, type: 'campaign' 
     brand: campaign.brand ? {
       id: String(campaign.brand_id),
       name: campaign.brand.brand_name,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
     } : undefined,
     company: campaign.company,
     channels: campaign.channels,
@@ -216,7 +216,7 @@ export async function GET(request: Request) {
       projectType: 'pitch' as const,
       entity: null,
       description: null,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
       createdById: pitch.author?.uuid || null,
       // Pitch-specific fields
       region: pitch.region || null,
@@ -227,7 +227,7 @@ export async function GET(request: Request) {
       brand: pitch.brand ? {
         id: String(pitch.brand_id),
         name: pitch.brand.brand_name,
-        color: '#' + Math.floor(Math.random()*16777215).toString(16),
+        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
       } : undefined,
       company: null,
       channels: pitch.channels,

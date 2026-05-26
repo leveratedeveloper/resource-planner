@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
 
 type RawEmployee = {
@@ -73,10 +72,13 @@ function extractMeta(response: EmployeeApiResponse): PaginationMeta {
 }
 
 export async function GET(request: Request) {
+  const timing = createRequestTiming("employees_api");
+
   try {
     // Get session and check authentication
     const session = await getSession();
     if (!session) {
+      timing.total({ result: "unauthenticated" });
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
@@ -245,7 +247,7 @@ export async function GET(request: Request) {
         name: emp.department.department_name,
         businessUnitId: null,
         code: null,
-        color: '#' + Math.floor(Math.random()*16777215).toString(16),
+        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
         description: null,
         isActive: true,
         createdAt: emp.created_at,
@@ -290,6 +292,7 @@ export async function GET(request: Request) {
       hasMore: !session.access.can_view_all || (!limit && !offset) ? false : currentPage < lastPage,
     });
   } catch (error) {
+    timing.total({ result: "error" });
     console.error("Failed to fetch employees:", error);
     return NextResponse.json(
       {
@@ -302,7 +305,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   // Check authentication
   const session = await getSession();
   if (!session) {

@@ -26,6 +26,7 @@ import {
 import { getTimelineDateRange } from "./timeline-date-range";
 
 interface TimelineProps {
+  initialTimelineAnchor: string;
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
@@ -43,7 +44,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
   const { data: brands = [], isLoading: isLoadingBrands, isError: isBrandsError } = useBrands();
   const { data: departments = [], isLoading: isLoadingDepartments, isError: isDepartmentsError } = useDepartments();
   const { data: projects = [] } = useProjects();
-  const { session } = useAuth();
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -107,8 +107,6 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
   // Calculate days/weeks based on view mode
   const allDays = useMemo(() => {
-    if (!currentDate) return [];
-
     switch (viewMode) {
       case "week": {
         const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -161,6 +159,10 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     if (dayCount === 0) return 100;
     return containerWidth / dayCount;
   }, [days.length, containerWidth]);
+  const headerLayout = getTimelineHeaderLayout({
+    columnCount: days.length,
+    cellWidth,
+  });
 
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
@@ -266,11 +268,11 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
 
     const grouped = new Map<string, { name: string; color: string; assignments: typeof filteredAssignments }>();
     let filteredBrands = brands;
-    
+
     if (brandId) {
       filteredBrands = filteredBrands.filter(b => b.id === brandId);
     }
-    
+
     if (searchQuery && searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       filteredBrands = filteredBrands.filter(b => b.name.toLowerCase().includes(query));
@@ -298,31 +300,31 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     let filtered = employees;
 
     if (brandId) {
-       const brand = brands.find((b) => b.id === brandId);
-       const memberIds = new Set(brand?.employeeBrandAssignments?.map((a) => a.employeeId) ?? []);
-       
-       // PERFORMANCE: Use dateFilteredAssignments instead of allAssignments for filtering
-       const assignmentIds = new Set(
-         dateFilteredAssignments
-           .filter((a) => {
-             if (a.project?.brand?.id === brandId) return true;
-             const project = projects.find((p) => p.id === a.projectId);
-             return project?.brandId === brandId;
-           })
-           .map((a) => a.employeeId)
-       );
+      const brand = brands.find((b) => b.id === brandId);
+      const memberIds = new Set(brand?.employeeBrandAssignments?.map((a) => a.employeeId) ?? []);
 
-       const hasEmployeeBrandData = brand?.employeeBrandAssignments && brand.employeeBrandAssignments.length > 0;
-       const hasAssignmentData = assignmentIds.size > 0;
+      // PERFORMANCE: Use dateFilteredAssignments instead of allAssignments for filtering
+      const assignmentIds = new Set(
+        dateFilteredAssignments
+          .filter((a) => {
+            if (a.project?.brand?.id === brandId) return true;
+            const project = projects.find((p) => p.id === a.projectId);
+            return project?.brandId === brandId;
+          })
+          .map((a) => a.employeeId)
+      );
 
-       if (hasEmployeeBrandData || hasAssignmentData) {
-         filtered = filtered.filter((emp) => {
-           if (hasEmployeeBrandData) {
-             return memberIds.has(emp.id) || assignmentIds.has(emp.id);
-           }
-           return assignmentIds.has(emp.id);
-         });
-       }
+      const hasEmployeeBrandData = brand?.employeeBrandAssignments && brand.employeeBrandAssignments.length > 0;
+      const hasAssignmentData = assignmentIds.size > 0;
+
+      if (hasEmployeeBrandData || hasAssignmentData) {
+        filtered = filtered.filter((emp) => {
+          if (hasEmployeeBrandData) {
+            return memberIds.has(emp.id) || assignmentIds.has(emp.id);
+          }
+          return assignmentIds.has(emp.id);
+        });
+      }
     }
 
     if (department) {
@@ -335,13 +337,13 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         if (emp.fullName.toLowerCase().includes(query)) return true;
         if (emp.position?.toLowerCase().includes(query)) return true;
         if (emp.department?.name?.toLowerCase().includes(query)) return true;
-        
+
         if (emp.assignments) {
           for (const assignment of emp.assignments) {
             if (assignment.project?.name?.toLowerCase().includes(query)) return true;
           }
         }
-        
+
         if (emp.employeeBrandAssignments) {
           for (const brandAssignment of emp.employeeBrandAssignments) {
             if (brandAssignment.brand?.name?.toLowerCase().includes(query)) return true;
@@ -421,8 +423,8 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     if (distanceFromBottom > TIMELINE_LOAD_MORE_THRESHOLD_PX) return;
 
-    const totalVisibleRows = resourceView === "employee" 
-      ? visibleEmployees.length 
+    const totalVisibleRows = resourceView === "employee"
+      ? visibleEmployees.length
       : resourceView === "brand"
         ? visibleBrands.length
         : visibleDepartments.length;
@@ -521,7 +523,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         <div className="w-[250px] shrink-0 p-4 font-semibold border-r bg-background">
           {resourceView === "employee" ? "Resources" : resourceView === "department" ? "Departments" : "Brands"}
         </div>
-        <div 
+        <div
           ref={headerScrollRef}
           onScroll={handleHeaderScroll}
           className="flex-1 overflow-x-auto scrollbar-hide"
@@ -546,7 +548,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
                     today && "border-b-2 border-b-primary bg-muted/30",
                     isMonthRangeView && currentMonth && "border-b-2 border-b-primary bg-muted/30"
                   )}
-                  style={{ width: `${cellWidth}px` }}
+                  style={{ width: headerLayout.columnWidth }}
                   data-testid="timeline-day-cell"
                   data-date={format(day, "yyyy-MM-dd")}
                   data-weekend={String(isWeekend)}
@@ -569,7 +571,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         </div>
       </div>
 
-      <div 
+      <div
         ref={bodyScrollRef}
         onScroll={handleBodyScroll}
         className="flex-1 overflow-auto"
@@ -577,46 +579,46 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         <div className="flex flex-col w-full">
           {resourceView === "employee" ? (
             isLoadingEmployees ? (
-               <div className="space-y-0">
-                 {[1, 2, 3, 4, 5].map((i) => (
-                   <div key={i} className="flex border-b">
-                     <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
-                       <Skeleton className="h-8 w-8 rounded-full" />
-                       <div className="space-y-2 flex-1">
-                         <Skeleton className="h-4 w-3/4" />
-                         <Skeleton className="h-3 w-1/2" />
-                       </div>
-                     </div>
-                     <div className="flex-1 px-2 py-4 space-y-2">
-                       <Skeleton className="h-full w-full opacity-20" />
-                     </div>
-                   </div>
-                 ))}
-               </div>
+              <div className="space-y-0">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex border-b">
+                    <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <div className="space-y-2 flex-1">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                    <div className="flex-1 px-2 py-4 space-y-2">
+                      <Skeleton className="h-full w-full opacity-20" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : visibleEmployees.length === 0 ? (
-               <div className="p-8 text-center text-muted-foreground">
-                   No employees found for this selection. Go to Setup to assign employees to this brand.
-               </div>
+              <div className="p-8 text-center text-muted-foreground">
+                No employees found for this selection. Go to Setup to assign employees to this brand.
+              </div>
             ) : (
-               renderedEmployees.map((employee) => (
-                  <ResourceRow
-                    key={employee.id}
-                    resource={{
-                      id: employee.id,
-                      name: employee.fullName,
-                      role: employee.position,
-                      department: employee.department?.name || "",
-                      capacity: employee.weeklyCapacity,
-                    }}
-                    days={days}
-                    brandId={brandId}
-                    cellWidth={cellWidth}
-                    isWeekView={isWeekView}
-                    assignments={assignmentsByEmployee.get(employee.id) || EMPTY_ASSIGNMENTS}
-                    actualAssignments={actualAssignmentsByEmployee.get(employee.id) || EMPTY_ACTUAL_ASSIGNMENTS}
-                    viewMode={viewMode}
-                  />
-                ))
+              renderedEmployees.map((employee) => (
+                <ResourceRow
+                  key={employee.id}
+                  resource={{
+                    id: employee.id,
+                    name: employee.fullName,
+                    role: employee.position,
+                    department: employee.department?.name || "",
+                    capacity: employee.weeklyCapacity,
+                  }}
+                  days={days}
+                  brandId={brandId}
+                  cellWidth={cellWidth}
+                  isWeekView={isWeekView}
+                  assignments={assignmentsByEmployee.get(employee.id) || EMPTY_ASSIGNMENTS}
+                  actualAssignments={actualAssignmentsByEmployee.get(employee.id) || EMPTY_ACTUAL_ASSIGNMENTS}
+                  viewMode={viewMode}
+                />
+              ))
             )
           ) : resourceView === "department" ? (
             isLoadingDepartments ? (
@@ -674,7 +676,7 @@ export const Timeline: React.FC<TimelineProps> = ({ brandId, department, searchQ
         </div>
       </div>
 
-      <AssignProjectModal 
+      <AssignProjectModal
         resourceId={assignModalResourceId}
         open={!!assignModalResourceId}
         onOpenChange={(open) => !open && setAssignModalResourceId(null)}

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
+import type { Employee } from "./useEmployees";
 
 // Types
 export interface Assignment {
@@ -277,6 +278,7 @@ export function useCreateAssignment() {
     onSettled: async () => {
       // Invalidate all assignments queries (including those with params)
       await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
@@ -328,11 +330,11 @@ export function useUpdateAssignment() {
       });
 
       // Update employees cache (assignments nested within)
-      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
-          assignments: employee.assignments?.map((assignment: Assignment) =>
+          assignments: employee.assignments?.map((assignment) =>
             assignment.id === id ? { ...assignment, ...updates } : assignment
           ),
         }));
@@ -377,15 +379,19 @@ export function useUpdateAssignment() {
       });
 
       // Update employees cache with server response
-      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
-          assignments: employee.assignments?.map((a: Assignment) =>
+          assignments: employee.assignments?.map((a) =>
             a.id === data.id ? data : a
           ),
         }));
       });
+    },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
     },
   });
 }
@@ -445,16 +451,17 @@ export function useDeleteAssignment() {
       console.log('[useDeleteAssignment] Updated', updateCount, 'assignment queries');
 
       // Remove from employees cache (nested assignments)
-      queryClient.setQueryData<any[]>(queryKeys.employees, (old) => {
+      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
         if (!old) return old;
         return old.map((employee) => ({
           ...employee,
-          assignments: employee.assignments?.filter((a: Assignment) => a.id !== id),
+          assignments: employee.assignments?.filter((a) => a.id !== id),
         }));
       });
 
       // Force immediate UI update by invalidating queries without refetch
       queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'none' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'none' });
       queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'none' });
 
       return { previousAssignments, previousEmployees };
@@ -471,6 +478,7 @@ export function useDeleteAssignment() {
         console.log('[useDeleteAssignment] Assignment already deleted, keeping optimistic update');
         // Force invalidate to ensure UI is in sync
         queryClient.invalidateQueries({ queryKey: ["assignments"] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
         return;
       }
 
@@ -492,6 +500,7 @@ export function useDeleteAssignment() {
       console.log('[useDeleteAssignment] Invalidating queries for refetch');
       // Invalidate all assignments queries (including those with params)
       await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
