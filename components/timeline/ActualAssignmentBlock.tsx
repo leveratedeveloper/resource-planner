@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
-import type { Project } from "@/lib/query/hooks/useProjects";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { differenceInDays, startOfDay, format, addDays, isWithinInterval, startOfWeek } from "date-fns";
 import { cn, toLocalDateString } from "@/lib/utils";
 import {
@@ -21,7 +21,7 @@ import { EditActualAssignmentDialog } from "./EditActualAssignmentDialog";
 
 interface ActualAssignmentBlockProps {
   assignment: ActualAssignment;
-  project?: Project;
+  project?: ProjectOption;
   days: Date[];
   resourceRowHeight: number;
   cellWidth?: number;

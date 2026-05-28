@@ -6,7 +6,7 @@ import {
   useEmployees,
   useInfiniteEmployees,
   usePlannerTimeline,
-  useProjects,
+  useProjectOptions,
 } from "@/lib/query/hooks";
 import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -82,7 +82,15 @@ export const Timeline: React.FC<TimelineProps> = ({
     ? isLoadingCompleteEmployees
     : isLoadingIncrementalEmployees;
   const { data: brands = [] } = useBrands();
-  const { data: projects = [] } = useProjects();
+  const { data: projects = [], isLoading: isLoadingProjects } = useProjectOptions();
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects]
+  );
+  const brandById = useMemo(
+    () => new Map(brands.map((brand) => [brand.id, brand])),
+    [brands]
+  );
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -271,27 +279,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     [visibleActualAssignments]
   );
 
-  // Apply additional filters (project, category, status) to date-filtered assignments for display
-  const filteredAssignments = useMemo(() => {
-    let filtered = dateFilteredAssignments;
-
-    // Filter by project
-    if (projectId) {
-      filtered = filtered.filter(a => a.projectId === projectId);
-    }
-
-    // Filter by category
-    if (category) {
-      filtered = filtered.filter(a => a.category === category);
-    }
-
-    // Filter by status
-    if (status) {
-      filtered = filtered.filter(a => a.status === status);
-    }
-
-    return filtered;
-  }, [dateFilteredAssignments, projectId, category, status]);
+  const filteredAssignments = dateFilteredAssignments;
 
 
   // PERFORMANCE: Pre-group assignments by employee ID to avoid N+1 query problem
@@ -323,8 +311,9 @@ export const Timeline: React.FC<TimelineProps> = ({
            .filter((a) => {
              // Use nested data when available, fall back to project map for optimistic entries
              if (a.project?.brand?.id === brandId) return true;
-             const project = projects.find((p) => p.id === a.projectId);
-             return project?.brandId === brandId;
+             return a.projectId
+               ? projectById.get(a.projectId)?.brandId === brandId
+               : false;
            })
            .map((a) => a.employeeId)
        );
@@ -389,7 +378,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
 
     return sortTimelineEmployees(filtered);
-  }, [brandId, department, searchQuery, employees, brands, allAssignments, projects]);
+  }, [brandId, department, searchQuery, employees, brands, allAssignments, projectById]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEmployees.length,
@@ -676,6 +665,10 @@ export const Timeline: React.FC<TimelineProps> = ({
                          )
                        }
                        viewMode={viewMode}
+                       projects={projects}
+                       projectById={projectById}
+                       brandById={brandById}
+                       isLoadingProjects={isLoadingProjects}
                      />
                    </div>
                  );

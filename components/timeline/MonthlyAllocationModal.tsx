@@ -19,7 +19,7 @@ import { distributeMonthlyHours, type DistributionResult } from "@/lib/utils/all
 import { validateActualHoursLimit } from "@/lib/utils/actual-hours-validation";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
-import type { Project } from "@/lib/query/hooks/useProjects";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
 interface MonthlyAllocationModalProps {
   monthStart: Date;
@@ -29,7 +29,7 @@ interface MonthlyAllocationModalProps {
     name: string;
     role: string;
   };
-  project: Project;
+  project: ProjectOption;
   existingAssignment?: Assignment; // If present, we're in EDIT mode
   existingActualAssignment?: ActualAssignment; // If present in actual mode, we're in EDIT mode
   mode?: 'plan' | 'actual'; // Determines if this is for plan or actual allocations

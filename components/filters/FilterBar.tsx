@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
-import { useProjects } from "@/lib/query/hooks/useProjects";
+import { useProjectOptions } from "@/lib/query/hooks/useProjects";
 import { useAuth } from "@/context/AuthContext";
 import { canAccessDashboard, isFullAccess } from "@/lib/auth/client-access";
 import {
@@ -77,7 +77,7 @@ const FilterBarComponent = ({
 }: FilterBarProps) => {
   const { data: brands = [] } = useBrands();
   const { data: departments = [] } = useDepartments();
-  const { data: projects = [] } = useProjects();
+  const { data: projects = [] } = useProjectOptions();
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
   const hasDashboardAccess = canAccessDashboard(session);

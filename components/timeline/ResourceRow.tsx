@@ -8,15 +8,19 @@ import { differenceInDays, isWithinInterval, startOfDay, addDays, format, startO
 import { useCreateAssignment, useUpdateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useCreateActualAssignment, useUpdateActualAssignment, useDeleteActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { calculatePlannedHoursForMonth, calculateActualHoursForMonth } from "@/lib/utils/actual-hours-validation";
-import { useProjects } from "@/lib/query/hooks/useProjects";
-import type { Project } from "@/lib/query/hooks/useProjects";
-import { useBrands } from "@/lib/query/hooks/useBrands";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import type { Brand } from "@/lib/query/hooks/useBrands";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
 import {
   shouldLoadPlannerActualDetail,
   shouldLoadPlannerAssignmentDetail,
 } from "@/lib/timeline/planner-loading";
+import {
+  extractDeliverables,
+  getMonthlyDetailKey,
+  parseHoursSafe,
+} from "@/lib/timeline/resource-row-model";
 import { AssignmentBlock } from "./AssignmentBlock";
 import { ActualAssignmentBlock } from "./ActualAssignmentBlock";
 import { DraggableTimelineCell } from "./DraggableTimelineCell";
@@ -43,33 +47,10 @@ import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
 
-// Helper to extract deliverables from assignment notes
-const extractDeliverables = (note: string | null): string[] => {
-  if (!note) return [];
-  // Regex to match "Deliverable(s): Name1, Name2..."
-  const match = note.match(/Deliverable[s]?:\s*([^.\n]+)/);
-  if (!match) return [];
-  return match[1].split(',').map(d => d.trim()).filter(Boolean);
-};
-
 type MonthlyDetailRequest = {
   key: string;
   controller: AbortController;
 };
-
-function getMonthlyDetailKey(
-  resourceId: string,
-  projectId: string,
-  monthStart: Date,
-  monthEnd: Date
-): string {
-  return [
-    resourceId,
-    projectId,
-    toLocalDateString(monthStart),
-    toLocalDateString(monthEnd),
-  ].join(":");
-}
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -92,6 +73,10 @@ interface ResourceRowProps {
   isFilterOpen: boolean;
   setIsFilterOpen: React.Dispatch<React.SetStateAction<boolean>>;
   viewMode?: 'week' | 'month' | 'quarter' | 'halfYear' | 'year';
+  projects: ProjectOption[];
+  projectById: Map<string, ProjectOption>;
+  brandById: Map<string, Brand>;
+  isLoadingProjects: boolean;
 }
 
 // Props for AllocationCell
@@ -106,17 +91,6 @@ interface AllocationCellProps {
   weekColumnIndex?: number; // Index of this week column (0-based)
   totalWeekColumns?: number; // Total number of week columns
 }
-
-// Helper function to safely parse hours - returns 0 for invalid values
-// Handles string | number | null | undefined inputs
-// Supports both dot (.) and comma (,) as decimal separator
-const parseHoursSafe = (hours?: string | number | null): number => {
-  if (hours === null || hours === undefined) return 0;
-  // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
-  const normalized = String(hours).replace(',', '.');
-  const parsed = parseFloat(normalized);
-  return isNaN(parsed) ? 0 : parsed;
-};
 
 // Memoized Allocation Cell Component for performance
 const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
@@ -391,7 +365,7 @@ const AllocationCell = React.memo<AllocationCellProps>(function AllocationCell({
 // Note: Month view now shows daily columns like week view, so this component is not used for month view
 interface WeeklyAssignmentBlockProps {
   assignment: Assignment;
-  project?: Project;
+  project?: ProjectOption;
   days: Date[];
   cellWidth: number;
   isActual?: boolean; // true for actual rows (green), false for plan rows (blue)
@@ -705,13 +679,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   setIsProjectsInitialized,
   isFilterOpen,
   setIsFilterOpen,
-  viewMode = 'week'
+  viewMode = 'week',
+  projects,
+  projectById,
+  brandById,
+  isLoadingProjects,
 }) => {
   // Determine if this is MonthRange view (Quarter/HalfYear/Year)
   // These views show monthly columns instead of weekly columns
   const isMonthRangeView = viewMode === 'quarter' || viewMode === 'halfYear' || viewMode === 'year';
-  const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
-  const { data: brands = [] } = useBrands();
   const { session } = useAuth();
   const queryClient = useQueryClient();
 
@@ -769,7 +745,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   const [monthlyAllocationModal, setMonthlyAllocationModal] = useState<{
     monthStart: Date;
     monthEnd: Date;
-    project: Project;
+    project: ProjectOption;
     existingAssignment?: Assignment; // For edit mode
     adjustmentAssignments?: Assignment[]; // adjustment records yang sudah ada
     detailAssignments?: Assignment[];
@@ -788,7 +764,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   const [monthlyActualAllocationModal, setMonthlyActualAllocationModal] = useState<{
     monthStart: Date;
     monthEnd: Date;
-    project: Project;
+    project: ProjectOption;
     existingActualAssignment?: ActualAssignment;
     detailActualAssignments?: ActualAssignment[];
     monthlyTotalHours?: number;
@@ -891,13 +867,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     });
   }, [resourceProjects, brandId, resourceAssignments, days]);
 
-  const projectMap = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
-
   // New logic: Group projects by deliverables (Primary: Deliverable, Secondary: Project)
   const deliverableGroups = useMemo(() => {
     const groupsMap = new Map<string, Array<{
       id: string;
-      project: Project;
+      project: ProjectOption;
       planAssignments: Assignment[];
       actualAssignments: ActualAssignment[];
     }>>();
@@ -1447,7 +1421,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   const handleProjectRowClick = useCallback((
     monthStart: Date,
     monthEnd: Date,
-    project: Project,
+    project: ProjectOption,
     clientX: number,
     clientY: number,
     clickedAssignment?: Assignment, // Present if clicked on existing block (edit mode)
@@ -1546,7 +1520,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   const handleActualRowClick = useCallback((
     monthStart: Date,
     monthEnd: Date,
-    project: Project,
+    project: ProjectOption,
     clientX: number,
     clientY: number,
     clickedActualAssignment?: ActualAssignment,
@@ -1679,7 +1653,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     planHoursChanged?: boolean;
   }) => {
     const { existingAssignment } = monthlyAllocationModal || {};
-    const project = projectMap.get(data.projectId);
+    const project = projectById.get(data.projectId);
 
     if (!project) return;
 
@@ -1709,7 +1683,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
       data,
       existingAssignment,
     };
-  }, [monthlyAllocationModal, projectMap]);
+  }, [monthlyAllocationModal, projectById]);
 
   // Handle monthly allocation confirmation
   const handleConfirmMonthlyAllocation = useCallback(() => {
@@ -2015,7 +1989,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     note?: string;
   }) => {
     const { existingActualAssignment } = monthlyActualAllocationModal || {};
-    const project = projectMap.get(data.projectId);
+    const project = projectById.get(data.projectId);
 
     if (!project) return;
 
@@ -2041,7 +2015,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
       data,
       existingActualAssignment,
     };
-  }, [monthlyActualAllocationModal, projectMap]);
+  }, [monthlyActualAllocationModal, projectById]);
 
   // Handle monthly actual allocation confirmation
   const handleConfirmMonthlyActualAllocation = useCallback(() => {
@@ -2408,7 +2382,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
             {/* Projects under this deliverable */}
             {visibleProjectsInGroup.map((row) => {
               const { project, planAssignments, actualAssignments: projectActualAssignments } = row;
-              const brand = brands.find(b => b.id === project.brandId);
+              const brand = project.brandId ? brandById.get(project.brandId) : undefined;
               return (
                 <React.Fragment key={row.id}>
                   {/* Project Row Container */}
@@ -2450,7 +2424,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                 <AssignmentBlock
                                   key={assignment.id}
                                   assignment={assignment}
-                                  project={projectMap.get(assignment.projectId ?? '')}
+                                  project={projectById.get(assignment.projectId ?? '')}
                                   days={days}
                                   resourceRowHeight={40}
                                   cellWidth={cellWidth}
@@ -2642,7 +2616,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                   <AssignmentBlock
                                     key={assignment.id}
                                     assignment={assignment}
-                                    project={projectMap.get(assignment.projectId ?? '')}
+                                    project={projectById.get(assignment.projectId ?? '')}
                                     days={days}
                                     resourceRowHeight={40}
                                     cellWidth={cellWidth}
@@ -2723,7 +2697,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                       <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
                         {sortedProjects.map(p => {
                           const isSelected = selectedProjectIds.has(p.id);
-                          const projectBrand = brands?.find(b => b.id === p.brandId);
+                          const projectBrand = p.brandId ? brandById.get(p.brandId) : undefined;
 
                           return (
                             <label

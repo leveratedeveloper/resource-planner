@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
+import {
+  mapCampaignToProject,
+  mapCampaignToProjectSummary,
+  mapPitchToProject,
+  mapPitchToProjectSummary,
+  type CampaignApiRecord,
+  type PitchApiRecord,
+} from "@/lib/projects/project-mappers";
 
 export async function GET(request: Request) {
   try {
@@ -18,6 +26,8 @@ export async function GET(request: Request) {
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
+    const fields = searchParams.get("fields");
+    const isSummary = fields === "summary";
 
     // Get API client with session token
     const client = getMySqlApiClient(async () => session.access_token);
@@ -26,21 +36,21 @@ export async function GET(request: Request) {
     const perPage = limit ? parseInt(limit, 10) : 50;
     const page = offset ? Math.floor(parseInt(offset, 10) / perPage) + 1 : 1;
 
-    // Fetch both campaigns and pitches in parallel (include channels for deliverables)
+    // Fetch both campaigns and pitches in parallel
     const [campaignsResponse, pitchesResponse] = await Promise.all([
       client.getCampaigns({
         page,
         per_page: perPage,
         search: search || undefined,
         brand_id: brandId || undefined,
-        include: 'channels',
+        include: isSummary ? undefined : "channels",
       }),
       client.getPitches({
         page,
         per_page: perPage,
         search: search || undefined,
         brand_id: brandId || undefined,
-        include: 'channels',
+        include: isSummary ? undefined : "channels",
       }),
     ]);
 
@@ -65,90 +75,14 @@ export async function GET(request: Request) {
     const pitchesData = pitchesResponse?.data?.data || pitchesResponse?.data || [];
 
     // Transform campaigns to projects
-    const campaignProjects = campaignsData.map((campaign: any) => ({
-      id: campaign.uuid,
-      projectNumber: campaign.io_number,
-      name: campaign.campaign_name,
-      brandId: campaign.brand_id !== null && campaign.brand_id !== undefined ? String(campaign.brand_id) : null,
-      companyId: String(campaign.company_id),
-      currency: campaign.currency,
-      budget: campaign.budget,
-      asf: campaign.asf,
-      grandTotal: campaign.grand_total,
-      startDate: campaign.start_date,
-      endDate: campaign.end_date,
-      notes: campaign.notes,
-      ioFile: campaign.io_file,
-      state: campaign.state,
-      status: campaign.flag === 'active' ? 'active' : campaign.flag === 'inactive' ? 'completed' : 'planning',
-      quotationReference: campaign.quotation_reference,
-      createdAt: campaign.created_at,
-      updatedAt: campaign.updated_at,
-      businessUnitId: null,
-      projectCategoryId: null,
-      projectTypeId: null,
-      projectType: 'campaign' as const,
-      entity: null,
-      description: null,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      createdById: null,
-      // Pitch-specific fields (null for campaigns)
-      region: null,
-      submitDate: null,
-      pitchStatus: null,
-      valueTotalEstimate: null,
-      hsDealId: null,
-      brand: campaign.brand ? {
-        id: String(campaign.brand_id),
-        name: campaign.brand.brand_name,
-        color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      } : undefined,
-      company: campaign.company,
-      channels: campaign.channels,
-    }));
+    const campaignProjects = (campaignsData as CampaignApiRecord[]).map((campaign) =>
+      isSummary ? mapCampaignToProjectSummary(campaign) : mapCampaignToProject(campaign)
+    );
 
     // Transform pitches to projects
-    const pitchProjects = pitchesData.map((pitch: any) => ({
-      id: pitch.uuid,
-      projectNumber: pitch.pitch_number,
-      name: pitch.pitch_name,
-      brandId: pitch.brand_id !== null && pitch.brand_id !== undefined ? String(pitch.brand_id) : null,
-      companyId: null,
-      currency: pitch.currency,
-      budget: pitch.budget,
-      asf: null,
-      grandTotal: pitch.value_total,
-      startDate: null,
-      endDate: null,
-      notes: pitch.notes,
-      ioFile: null,
-      state: null,
-      status: pitch.status === 'win' ? 'completed' : pitch.status === 'loss' ? 'cancelled' : 'planning',
-      quotationReference: null,
-      createdAt: pitch.created_at,
-      updatedAt: pitch.updated_at,
-      businessUnitId: null,
-      projectCategoryId: null,
-      projectTypeId: null,
-      projectType: 'pitch' as const,
-      entity: null,
-      description: null,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      createdById: pitch.author?.uuid || null,
-      // Pitch-specific fields
-      region: pitch.region || null,
-      submitDate: pitch.date_submit || null,
-      pitchStatus: pitch.status === 'on_going' ? 'proposal_development' : pitch.status === 'win' ? 'won' : pitch.status === 'loss' ? 'lost' : null,
-      valueTotalEstimate: pitch.value_total ? String(pitch.value_total) : null,
-      hsDealId: null,
-      brand: pitch.brand ? {
-        id: String(pitch.brand_id),
-        name: pitch.brand.brand_name,
-        color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      } : undefined,
-      company: null,
-      channels: pitch.channels,
-    }));
+    const pitchProjects = (pitchesData as PitchApiRecord[]).map((pitch) =>
+      isSummary ? mapPitchToProjectSummary(pitch) : mapPitchToProject(pitch)
+    );
 
     // Combine both project types
     const data = [...campaignProjects, ...pitchProjects];

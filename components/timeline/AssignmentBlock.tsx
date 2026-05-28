@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { Project } from "@/lib/query/hooks/useProjects";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
 import { cn, toLocalDateString } from "@/lib/utils";
 import {
@@ -21,7 +21,7 @@ import { EditAssignmentDialog } from "./EditAssignmentDialog";
 
 interface AssignmentBlockProps {
   assignment: Assignment;
-  project?: Project;  // Passed from parent for O(1) lookup
+  project?: ProjectOption;  // Passed from parent for O(1) lookup
   days: Date[];
   resourceRowHeight: number;
   cellWidth?: number;

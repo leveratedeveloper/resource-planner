@@ -87,6 +87,13 @@ export interface Project {
   projectChannels?: ProjectChannel[];
 }
 
+export type ProjectOption = Pick<
+  Project,
+  "id" | "name" | "color" | "status" | "projectType"
+> & {
+  brandId: string | null;
+};
+
 export type NewProject = {
   name: string;
   brandId: string;
@@ -136,6 +143,15 @@ async function fetchProjects(): Promise<Project[]> {
   return data.data;
 }
 
+async function fetchProjectOptions(): Promise<ProjectOption[]> {
+  const response = await fetch("/api/projects?fields=summary");
+  if (!response.ok) {
+    throw new Error("Failed to fetch project options");
+  }
+  const data = await response.json();
+  return data.data;
+}
+
 async function fetchProject(id: string): Promise<Project> {
   const response = await fetch(`/api/projects/${id}`);
   if (!response.ok) {
@@ -159,6 +175,13 @@ export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: fetchProjects,
+  });
+}
+
+export function useProjectOptions() {
+  return useQuery({
+    queryKey: [...queryKeys.projects, "summary"],
+    queryFn: fetchProjectOptions,
   });
 }
 
