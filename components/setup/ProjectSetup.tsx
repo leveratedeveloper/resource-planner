@@ -40,6 +40,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getCriticalMonthlyAllocations } from "@/lib/utils/critical-allocation";
 import {
   buildPendingAssignmentPayloads,
+  formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
   getProjectAssignmentDateRange,
@@ -1197,7 +1198,7 @@ export const ProjectSetup = () => {
                       </label>
                       <Input
                         id="submissionDate"
-                        value={submitDate}
+                        value={formatProjectDateForDisplay(submitDate)}
                         readOnly
                         disabled
                         placeholder="No submission date"
@@ -1211,7 +1212,7 @@ export const ProjectSetup = () => {
                         </label>
                         <Input
                           id="campaignStartDate"
-                          value={viewingProject?.startDate || ""}
+                          value={formatProjectDateForDisplay(viewingProject?.startDate)}
                           readOnly
                           disabled
                           placeholder="No start date"
@@ -1223,7 +1224,7 @@ export const ProjectSetup = () => {
                         </label>
                         <Input
                           id="campaignEndDate"
-                          value={viewingProject?.endDate || ""}
+                          value={formatProjectDateForDisplay(viewingProject?.endDate)}
                           readOnly
                           disabled
                           placeholder="No end date"
@@ -1260,7 +1261,7 @@ export const ProjectSetup = () => {
                       )}
                       {!hasCompleteAssignmentDateRange && (
                         <p className="text-xs text-amber-600">
-                          Please select a project period date range
+                          This project has no assignment date range. Set the campaign dates or pitch submission date before assigning a team.
                         </p>
                       )}
                     </div>

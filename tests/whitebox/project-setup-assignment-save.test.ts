@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPendingAssignmentPayloads,
+  formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
   getProjectAssignmentDateRange,
@@ -107,6 +108,30 @@ describe("project setup assignment save helpers", () => {
     expect(range).toEqual({
       from: new Date(2026, 5, 12),
       to: new Date(2026, 5, 12),
+    });
+  });
+
+  describe("formatProjectDateForDisplay", () => {
+    it("formats plain date strings for display", () => {
+      expect(formatProjectDateForDisplay("2022-01-11")).toBe("Jan 11, 2022");
+    });
+
+    it("formats MySQL datetime strings for display", () => {
+      expect(formatProjectDateForDisplay("2022-01-11 00:00:00")).toBe("Jan 11, 2022");
+    });
+
+    it("formats ISO datetime strings for display", () => {
+      expect(formatProjectDateForDisplay("2022-01-11T00:00:00.000000Z")).toBe("Jan 11, 2022");
+    });
+
+    it("returns an empty string for missing dates", () => {
+      expect(formatProjectDateForDisplay(null)).toBe("");
+      expect(formatProjectDateForDisplay(undefined)).toBe("");
+      expect(formatProjectDateForDisplay("")).toBe("");
+    });
+
+    it("returns an empty string for invalid dates", () => {
+      expect(formatProjectDateForDisplay("not-a-date")).toBe("");
     });
   });
 });

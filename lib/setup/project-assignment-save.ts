@@ -1,4 +1,4 @@
-import { format, startOfDay } from "date-fns";
+import { format, isValid, startOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
 
 export interface PendingProjectAssignment {
@@ -84,6 +84,15 @@ export function getProjectAssignmentDateRange(project: {
   return undefined;
 }
 
+export function formatProjectDateForDisplay(value: string | Date | null | undefined) {
+  if (!value) return "";
+
+  const parsedDate = parseDateLike(value);
+  if (!isValid(parsedDate)) return "";
+
+  return format(parsedDate, "MMM d, yyyy");
+}
+
 export function buildPendingAssignmentPayloads(params: {
   projectId: string;
   pendingAssignments: PendingProjectAssignment[];
@@ -130,7 +139,7 @@ export function buildPendingAssignmentPayloads(params: {
   });
 }
 
-function parseDateLike(value: string | Date) {
+export function parseDateLike(value: string | Date) {
   if (value instanceof Date) return value;
 
   const [year, month, day] = value.split("-").map(Number);
