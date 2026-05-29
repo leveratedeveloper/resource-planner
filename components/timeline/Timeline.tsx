@@ -15,8 +15,8 @@ import {
   groupActualAssignmentsByEmployee,
 } from "@/lib/timeline/actuals";
 import {
+  filterTimelineEmployees,
   getLoadedTimelineEmployees,
-  sortTimelineEmployees,
   shouldUseCompleteEmployeeList,
 } from "@/lib/timeline/employees";
 import {
@@ -52,6 +52,14 @@ interface TimelineProps {
 const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
 const EMPTY_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["assignments"]> = [];
 const EMPTY_ACTUAL_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["actualAssignments"]> = [];
+const DEFAULT_RESOURCE_COLUMN_WIDTH = 250;
+const MIN_RESOURCE_COLUMN_WIDTH = 220;
+const MAX_RESOURCE_COLUMN_WIDTH = 420;
+const TIMELINE_ROW_ESTIMATE = 56;
+
+function clampResourceColumnWidth(width: number) {
+  return Math.min(MAX_RESOURCE_COLUMN_WIDTH, Math.max(MIN_RESOURCE_COLUMN_WIDTH, width));
+}
 
 export const Timeline: React.FC<TimelineProps> = ({
   initialTimelineAnchor,
@@ -63,7 +71,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   status,
 }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
-  const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, searchQuery });
+  const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, projectId, searchQuery });
   const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
     enabled: useCompleteEmployeeList,
   });
@@ -104,6 +112,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_TIMELINE_VIEW);
   const [showWeekends, setShowWeekends] = useState(false); // Default: hidden
   const [containerWidth, setContainerWidth] = useState(1400); // Track actual container width
+  const [resourceColumnWidth, setResourceColumnWidth] = useState(DEFAULT_RESOURCE_COLUMN_WIDTH);
 
   useEffect(() => {
     // Load weekend preference from localStorage
@@ -126,9 +135,8 @@ export const Timeline: React.FC<TimelineProps> = ({
         if (!rootContainer) return;
         // Measure the timeline-root container width (excluding borders and scrollbars)
         const rootWidth = rootContainer.clientWidth;
-        // Subtract the fixed sidebar width (250px) to get available width for timeline
-        const sidebarWidth = 250;
-        const availableWidth = rootWidth - sidebarWidth;
+        // Subtract the resizable resource sidebar width to get available width for timeline
+        const availableWidth = rootWidth - resourceColumnWidth;
         setContainerWidth(Math.max(availableWidth, 100)); // Minimum 100px
       });
     };
@@ -143,7 +151,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [currentDate]); // Re-run when currentDate changes to ensure ref is ready
+  }, [currentDate, resourceColumnWidth]); // Re-run when currentDate changes to ensure ref is ready
 
   // Calculate days/weeks based on view mode and current date
   const allDays = useMemo(() => {
@@ -294,94 +302,37 @@ export const Timeline: React.FC<TimelineProps> = ({
     return grouped;
   }, [filteredAssignments]);
 
-  // Filter employees based on selected Brand, Department, and Search Query
-  const visibleEmployees = useMemo(() => {
-    let filtered = employees;
-
-    if (brandId) {
-       // Hybrid brand visibility: explicit membership OR assignment to a project in this brand
-       const brand = brands.find((b) => b.id === brandId);
-       const memberIds = new Set(
-         brand?.employeeBrandAssignments?.map((a) => a.employeeId) ?? []
-       );
-       const assignmentIds = new Set(
-         allAssignments
-           .filter((a) => {
-             // Use nested data when available, fall back to project map for optimistic entries
-             if (a.project?.brand?.id === brandId) return true;
-             return a.projectId
-               ? projectById.get(a.projectId)?.brandId === brandId
-               : false;
-           })
-           .map((a) => a.employeeId)
-       );
-
-       // If employeeBrandAssignments data is available (PostgreSQL), use hybrid logic
-       // Otherwise (MySQL API), only filter by project assignments
-       // If NEITHER is available, show all employees (allow users to create assignments)
-       const hasEmployeeBrandData = brand?.employeeBrandAssignments && brand.employeeBrandAssignments.length > 0;
-       const hasAssignmentData = assignmentIds.size > 0;
-
-       // Skip filtering entirely if we have no brand relationship data at all
-       // This allows users to see all employees and create assignments
-       if (!hasEmployeeBrandData && !hasAssignmentData) {
-         // No filtering - show all employees
-       } else {
-         filtered = filtered.filter((emp) => {
-           // When employeeBrandAssignments is available, require either membership OR assignment
-           if (hasEmployeeBrandData) {
-             return memberIds.has(emp.id) || assignmentIds.has(emp.id);
-           }
-           // When employeeBrandAssignments is NOT available (MySQL API), only filter by assignment
-           // This ensures employees with project assignments in the brand are still shown
-           return assignmentIds.has(emp.id);
-         });
-       }
-    }
-
-    if (department) {
-      filtered = filtered.filter((emp) => emp.departmentId === department);
-    }
-
-    // Search filter - matches employee name, position, department, projects, tasks, and brands
-    if (searchQuery && searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter((emp) => {
-        // Match employee name
-        if (emp.fullName.toLowerCase().includes(query)) return true;
-        
-        // Match position
-        if (emp.position?.toLowerCase().includes(query)) return true;
-        
-        // Match department name
-        if (emp.department?.name?.toLowerCase().includes(query)) return true;
-        
-        // Match assigned projects and tasks
-        if (emp.assignments) {
-          for (const assignment of emp.assignments) {
-            // Match project name
-            if (assignment.project?.name?.toLowerCase().includes(query)) return true;
-          }
-        }
-        
-        // Match assigned brands
-        if (emp.employeeBrandAssignments) {
-          for (const brandAssignment of emp.employeeBrandAssignments) {
-            if (brandAssignment.brand?.name?.toLowerCase().includes(query)) return true;
-          }
-        }
-        
-        return false;
-      });
-    }
-
-    return sortTimelineEmployees(filtered);
-  }, [brandId, department, searchQuery, employees, brands, allAssignments, projectById]);
+  // Filter employees based on selected Brand, Department, Project, and Search Query
+  const visibleEmployees = useMemo(() => filterTimelineEmployees({
+    employees,
+    brands,
+    allAssignments,
+    dateFilteredAssignments,
+    visibleActualAssignments,
+    projectById,
+    filters: {
+      brandId,
+      department,
+      projectId,
+      searchQuery,
+    },
+  }), [
+    allAssignments,
+    brandId,
+    brands,
+    dateFilteredAssignments,
+    department,
+    employees,
+    projectById,
+    projectId,
+    searchQuery,
+    visibleActualAssignments,
+  ]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEmployees.length,
     getScrollElement: () => bodyScrollRef.current,
-    estimateSize: () => 72,
+    estimateSize: () => TIMELINE_ROW_ESTIMATE,
     overscan: 8,
   });
 
@@ -467,6 +418,26 @@ export const Timeline: React.FC<TimelineProps> = ({
     });
   }, []);
 
+  const handleResourceColumnResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const startX = event.clientX;
+    const startWidth = resourceColumnWidth;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setResourceColumnWidth(clampResourceColumnWidth(startWidth + moveEvent.clientX - startX));
+    };
+
+    const handlePointerUp = () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+  }, [resourceColumnWidth]);
+
   const isInitialTimelineLoading =
     isLoadingEmployees || isLoadingPlannerTimeline;
 
@@ -485,8 +456,20 @@ export const Timeline: React.FC<TimelineProps> = ({
 
       {/* Timeline Header (Days) - Sticky */}
       <div className="flex border-b bg-muted/40 sticky top-0 z-10">
-        <div className="w-[250px] shrink-0 p-4 font-semibold border-r bg-background">
+        <div
+          className="relative shrink-0 p-4 font-semibold border-r bg-background"
+          style={{ width: resourceColumnWidth }}
+        >
           Resources
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize resources column"
+            className="absolute right-0 top-0 h-full w-2 translate-x-1 cursor-col-resize touch-none"
+            onPointerDown={handleResourceColumnResizeStart}
+          >
+            <div className="mx-auto h-full w-px bg-border transition-colors hover:bg-primary/60" />
+          </div>
         </div>
         <div 
           ref={headerScrollRef}
@@ -549,7 +532,10 @@ export const Timeline: React.FC<TimelineProps> = ({
              <div className="space-y-0">
                {[1, 2, 3, 4, 5].map((i) => (
                  <div key={i} className="flex border-b">
-                   <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
+	                   <div
+                       className="shrink-0 p-3 border-r sticky left-0 bg-background z-20 flex items-center gap-3"
+                       style={{ width: resourceColumnWidth }}
+                     >
                      <Skeleton className="h-8 w-8 rounded-full" />
                      <div className="space-y-2 flex-1">
                        <Skeleton className="h-4 w-3/4" />
@@ -564,7 +550,7 @@ export const Timeline: React.FC<TimelineProps> = ({
              </div>
           ) : visibleEmployees.length === 0 ? (
              <div className="p-8 text-center text-muted-foreground">
-                 No employees found for this selection. Go to Setup to assign employees to this brand.
+                 No results found
              </div>
           ) : (
              <div
@@ -607,8 +593,9 @@ export const Timeline: React.FC<TimelineProps> = ({
                        days={days}
                        brandId={brandId}
                        cellWidth={cellWidth}
-                       isWeekView={isWeekView}
-                       assignments={assignmentsByEmployee.get(employee.id) || []}
+	                       isWeekView={isWeekView}
+                       resourceColumnWidth={resourceColumnWidth}
+	                       assignments={assignmentsByEmployee.get(employee.id) || []}
                        actualAssignments={getActualAssignmentsForEmployee(actualAssignmentsByEmployee, employee.id)}
                        isExpanded={employeeIsExpanded}
                        setIsExpanded={(value) =>

@@ -66,6 +66,12 @@ type PendingMonthlyAllocationSave = {
   existingAssignment?: Assignment;
 };
 
+const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
+const TIME_OFF_ROW_HEIGHT = 32;
+const DELIVERABLE_ROW_HEIGHT = 28;
+const PROJECT_ROW_HEIGHT = 34;
+const PROJECT_FILTER_ROW_HEIGHT = 40;
+
 type AssignmentUpdateInput = Partial<
   Omit<Assignment, "startDate" | "endDate" | "createdAt" | "updatedAt">
 > & {
@@ -82,6 +88,7 @@ interface ResourceRowProps {
   days: Date[];
   brandId: string | null;
   cellWidth?: number;
+  resourceColumnWidth: number;
   isWeekView?: boolean;
   assignments: Assignment[]; // Pre-filtered assignments for this employee
   actualAssignments: ActualAssignment[]; // Pre-filtered actual assignments for this employee
@@ -211,8 +218,8 @@ const WeeklyTimeOffBlock = React.memo<WeeklyTimeOffBlockProps>(function WeeklyTi
             style={{
               left: `${leftOffset}%`,
               width: `${width}%`,
-              top: 4,
-              height: 36, // Same as AssignmentBlock (40 - 4)
+	              top: 2,
+	              height: TIME_OFF_ROW_HEIGHT - 4,
               zIndex: 10,
             }}
             title={`Time Off: ${Math.round(block.hours)}h`}
@@ -234,6 +241,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   days,
   brandId,
   cellWidth = 100,
+  resourceColumnWidth,
   isWeekView = false,
   assignments: resourceAssignments,
   actualAssignments,
@@ -336,8 +344,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
   // Get projects this resource is assigned to
   const resourceProjects = useMemo(
-    () => getResourceProjects(resourceAssignments, projects),
-    [resourceAssignments, projects]
+    () => getResourceProjects(resourceAssignments, actualAssignments, projects),
+    [actualAssignments, resourceAssignments, projects]
   );
 
   // Sort projects by priority: brand match → active in timeline → recent → alphabetical
@@ -1141,9 +1149,17 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   // Collapsed row content
   if (!isExpanded) {
     return (
-      <div className="flex border-b hover:bg-accent/5 transition-colors group" data-testid="resource-row" data-resource-id={resource.id}>
-        {/* Sidebar Info - Collapsed */}
-        <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
+	      <div
+          className="flex border-b hover:bg-accent/5 transition-colors group"
+          style={{ height: RESOURCE_SUMMARY_ROW_HEIGHT }}
+          data-testid="resource-row"
+          data-resource-id={resource.id}
+        >
+	        {/* Sidebar Info - Collapsed */}
+	        <div
+	          className="shrink-0 p-2 border-r sticky left-0 bg-background z-20 flex items-center gap-3"
+	          style={{ width: resourceColumnWidth, height: RESOURCE_SUMMARY_ROW_HEIGHT }}
+	        >
           <button
             onClick={() => setIsExpanded(true)}
             className="text-muted-foreground hover:text-foreground transition-colors"
@@ -1152,17 +1168,17 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
           >
             <Icon icon="lucide:chevron-right" className="h-4 w-4" />
           </button>
-          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
-            {resource.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm truncate">{resource.name}</div>
-            <div className="text-xs text-muted-foreground truncate">{resource.role} | {resource.department}</div>
-          </div>
-        </div>
+	          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+	            {resource.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+	          </div>
+	          <div className="flex-1 min-w-0">
+	            <div className="font-medium text-sm leading-4 truncate">{resource.name}</div>
+	            <div className="text-xs leading-3 text-muted-foreground truncate">{resource.role} | {resource.department}</div>
+	          </div>
+	        </div>
 
         {/* Allocation Bar - Collapsed */}
-        <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
+	        <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
           {days.map((day) => (
             <AllocationCell
               key={day.toISOString()}
@@ -1171,6 +1187,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
               assignments={resourceAssignments}
               actualAssignments={actualAssignments}
               cellWidth={cellWidth}
+              height={RESOURCE_SUMMARY_ROW_HEIGHT}
               isWeekView={isWeekView}
               isMonthRangeView={isMonthRangeView}
             />
@@ -1192,8 +1209,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
         data-resource-id={resource.id}
       >
         {/* Main Row Header */}
-        <div className="flex hover:bg-accent/5 transition-colors group">
-          <div className="w-[250px] shrink-0 p-4 border-r sticky left-0 bg-background z-20 flex items-center gap-3">
+	        <div className="flex hover:bg-accent/5 transition-colors group" style={{ height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
+	          <div
+	            className="shrink-0 p-2 border-r sticky left-0 bg-background z-20 flex items-center gap-3"
+	            style={{ width: resourceColumnWidth, height: RESOURCE_SUMMARY_ROW_HEIGHT }}
+	          >
             <button
               onClick={() => setIsExpanded(false)}
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -1202,17 +1222,17 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
             >
               <Icon icon="lucide:chevron-down" className="h-4 w-4" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
-              {resource.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm truncate">{resource.name}</div>
-              <div className="text-xs text-muted-foreground truncate">{resource.role} | {resource.department}</div>
-            </div>
-          </div>
+	            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+	              {resource.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+	            </div>
+	            <div className="flex-1 min-w-0">
+	              <div className="font-medium text-sm leading-4 truncate">{resource.name}</div>
+	              <div className="text-xs leading-3 text-muted-foreground truncate">{resource.role} | {resource.department}</div>
+	            </div>
+	          </div>
 
           {/* Allocation Bar - Expanded (Header) */}
-          <div className="flex relative" style={{ width: `${days.length * cellWidth}px` }}>
+	          <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
             {days.map((day) => (
               <AllocationCell
                 key={day.toISOString()}
@@ -1221,6 +1241,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                 assignments={resourceAssignments}
                 actualAssignments={actualAssignments}
                 cellWidth={cellWidth}
+                height={RESOURCE_SUMMARY_ROW_HEIGHT}
                 isWeekView={isWeekView}
                 isMonthRangeView={isMonthRangeView}
               />
@@ -1229,12 +1250,20 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
         </div>
 
         {/* Time Off Row */}
-        <div className="flex bg-gray-50/50 h-[40px]" data-testid="timeoff-row" data-resource-id={resource.id}>
-          <div className="w-[250px] shrink-0 px-4 border-r sticky left-0 bg-gray-50/50 z-20 flex items-center gap-2 pl-12 h-[40px]">
+        <div
+          className="flex bg-gray-50/50"
+          style={{ height: TIME_OFF_ROW_HEIGHT }}
+          data-testid="timeoff-row"
+          data-resource-id={resource.id}
+        >
+          <div
+            className="shrink-0 px-4 border-r sticky left-0 bg-gray-50/50 z-20 flex items-center gap-2 pl-12"
+            style={{ width: resourceColumnWidth, height: TIME_OFF_ROW_HEIGHT }}
+          >
             <Icon icon="lucide:calendar-off" className="h-4 w-4 text-gray-500" />
             <span className="text-sm text-gray-600">Time Off</span>
           </div>
-          <div ref={timeOffTimelineRef} className="flex relative h-[40px]" style={{ width: `${days.length * cellWidth}px` }}>
+          <div ref={timeOffTimelineRef} className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: TIME_OFF_ROW_HEIGHT }}>
             {!isWeekView && days.map((day, dayIndex) => (
               <DraggableTimelineCell
                 key={day.toISOString()}
@@ -1243,7 +1272,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                 projectColor="#6b7280"
                 days={days}
                 cellWidth={cellWidth}
-                cellHeight={40}
+                cellHeight={TIME_OFF_ROW_HEIGHT}
                 isTimeOffMode={true}
                 containerRef={timeOffTimelineRef.current}
                 onDragComplete={(startDay, endDay) =>
@@ -1276,7 +1305,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                   assignment={assignment}
                   project={undefined}
                   days={days}
-                  resourceRowHeight={40}
+                  resourceRowHeight={TIME_OFF_ROW_HEIGHT}
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
                   onUpdate={handleUpdateAssignment}
@@ -1323,14 +1352,17 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
           <>
             {[1, 2].map((i) => (
               <div key={`skeleton-${i}`} className="flex bg-white border-b">
-                <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-white z-20 flex items-center gap-2 pl-12 h-[60px]">
+                <div
+                  className="shrink-0 px-4 py-2 border-r sticky left-0 bg-white z-20 flex items-center gap-2 pl-12"
+                  style={{ width: resourceColumnWidth, height: RESOURCE_SUMMARY_ROW_HEIGHT }}
+                >
                   <Skeleton className="w-4 h-4 rounded" />
                   <div className="flex-1 min-w-0 space-y-1">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/2" />
                   </div>
                 </div>
-                <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: 60 }}>
+                <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
                   <div className="w-full h-full p-2">
                     <Skeleton className="h-full w-full opacity-20" />
                   </div>
@@ -1347,8 +1379,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
           return (
             <React.Fragment key={group.name || 'general'}>
             {/* Deliverable Header Row */}
-            <div className="flex bg-gray-100/50 h-[32px] border-b">
-              <div className="w-[250px] shrink-0 px-4 border-r sticky left-0 bg-gray-100/50 z-20 flex items-center gap-2 pl-12 h-[32px]">
+            <div className="flex bg-gray-100/50 border-b" style={{ height: DELIVERABLE_ROW_HEIGHT }}>
+              <div
+                className="shrink-0 px-4 border-r sticky left-0 bg-gray-100/50 z-20 flex items-center gap-2 pl-12"
+                style={{ width: resourceColumnWidth, height: DELIVERABLE_ROW_HEIGHT }}
+              >
                 <Icon icon="lucide:package" className="h-3.5 w-3.5 text-blue-600" />
                 <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">
                   {group.name || 'GENERAL / OTHER'}
@@ -1356,7 +1391,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
               </div>
               <div className="flex-1 flex" style={{ width: `${days.length * cellWidth}px` }}>
                 {days.map((day) => (
-                  <div key={day.toISOString()} className="shrink-0 h-[32px] border-r border-white/20" style={{ width: `${cellWidth}px` }} />
+                  <div key={day.toISOString()} className="shrink-0 border-r border-white/20" style={{ width: `${cellWidth}px`, height: DELIVERABLE_ROW_HEIGHT }} />
                 ))}
               </div>
             </div>
@@ -1371,19 +1406,22 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                   <div className="flex flex-col border-b">
                     {/* Sidebar - Merged for PLAN & ACTUAL */}
                     <div className="flex" data-testid="project-group" data-resource-id={resource.id} data-project-id={project.id}>
-                      <div className="w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-background z-20 flex pl-16" style={{ height: 40 }}>
+	                      <div
+                          className="shrink-0 px-4 py-1.5 border-r sticky left-0 bg-background z-20 flex pl-16"
+                          style={{ width: resourceColumnWidth, height: PROJECT_ROW_HEIGHT }}
+                        >
                         <div className="flex items-center gap-2 w-4/6">
-                          <div className="w-3.5 h-3.5 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: project.color }}>
-                            <Icon icon="lucide:folder" className="h-2.5 w-2.5 text-white" />
-                          </div>
+	                          <div className="w-3 h-3 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: project.color }}>
+	                            <Icon icon="lucide:folder" className="h-2.5 w-2.5 text-white" />
+	                          </div>
                           <div className="flex flex-col justify-center min-w-0">
-                            <div className="text-sm font-semibold truncate">
-                              {project.name}
-                            </div>
+	                            <div className="text-xs font-semibold truncate">
+	                              {project.name}
+	                            </div>
                             <div className="text-[10px] text-muted-foreground truncate">{brand?.name}</div>
                           </div>
                         </div>
-                        <div className="flex flex-col justify-center gap-2 text-[10px] font-semibold w-2/5">
+	                        <div className="flex flex-col justify-center gap-2 text-[10px] font-semibold w-2/5">
                           <span className="text-blue-600">PLAN</span>
                         </div>
                       </div>
@@ -1391,15 +1429,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                       {/* Timeline Content Container */}
                       <div className="flex-1 flex flex-col">
                         {/* PLAN Row */}
-                        <div className="flex-1 bg-blue-50/10" style={{ height: 40 }} data-testid="plan-row" data-resource-id={resource.id} data-project-id={project.id}>
+	                        <div className="flex-1 bg-blue-50/10" style={{ height: PROJECT_ROW_HEIGHT }} data-testid="plan-row" data-resource-id={resource.id} data-project-id={project.id}>
                           {!session?.access.can_view_all ? (
                             <div
                               ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${row.id}`, el); }}
                               className="flex relative"
-                              style={{ width: `${days.length * cellWidth}px`, height: 40 }}
+	                              style={{ width: `${days.length * cellWidth}px`, height: PROJECT_ROW_HEIGHT }}
                             >
                               {days.map((day) => (
-                                <div key={day.toISOString()} className="shrink-0 h-[40px] border-r border-white/20 bg-gray-100/50" style={{ width: `${cellWidth}px` }} />
+	                                <div key={day.toISOString()} className="shrink-0 border-r border-white/20 bg-gray-100/50" style={{ width: `${cellWidth}px`, height: PROJECT_ROW_HEIGHT }} />
                               ))}
                               {/* Show plan assignments but disabled */}
                               {planAssignments.map((assignment) => (
@@ -1408,7 +1446,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                   assignment={assignment}
                                   project={projectById.get(assignment.projectId ?? '')}
                                   days={days}
-                                  resourceRowHeight={40}
+	                                  resourceRowHeight={PROJECT_ROW_HEIGHT}
                                   cellWidth={cellWidth}
                                   isWeekView={isWeekView}
                                   onUpdate={handleUpdateAssignment}
@@ -1423,7 +1461,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                             <div
                               ref={(el) => { if (el) projectTimelineRefs.current.set(`plan-${row.id}`, el); }}
                               className="flex relative"
-                              style={{ width: `${days.length * cellWidth}px`, height: 40 }}
+	                              style={{ width: `${days.length * cellWidth}px`, height: PROJECT_ROW_HEIGHT }}
                             >
                               {!isWeekView && days.map((day, dayIndex) => (
                                 <DraggableTimelineCell
@@ -1433,7 +1471,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                   projectColor={project.color}
                                   days={days}
                                   cellWidth={cellWidth}
-                                  cellHeight={40}
+	                                  cellHeight={PROJECT_ROW_HEIGHT}
                                   timeOffAssignments={timeOffAssignments}
                                   containerRef={projectTimelineRefs.current.get(`plan-${row.id}`) || null}
                                   onDragComplete={(startDay, endDay) =>
@@ -1519,8 +1557,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                           style={{
                                             left: `${leftOffset}%`,
                                             width: `${width}%`,
-                                            top: 4,
-                                            height: 32,
+	                                            top: 2,
+	                                            height: PROJECT_ROW_HEIGHT - 4,
                                             zIndex: 10,
                                           }}
                                           title={`${project.name}${group.name ? ` - ${group.name}` : ''}: ${monthlyTotal}h`}
@@ -1599,7 +1637,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                     assignment={assignment}
                                     project={projectById.get(assignment.projectId ?? '')}
                                     days={days}
-                                    resourceRowHeight={40}
+	                                    resourceRowHeight={PROJECT_ROW_HEIGHT}
                                     cellWidth={cellWidth}
                                     isWeekView={isWeekView}
                                     onUpdate={handleUpdateAssignment}
@@ -1625,12 +1663,13 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
         {/* Project Filter Select Row */}
         {sortedProjects.length > PROJECT_DISPLAY_LIMIT && (
           <div className="flex bg-gray-50/30">
-            <div
-              className={cn(
-                "w-[250px] shrink-0 px-4 py-2 border-r sticky left-0 bg-gray-50/30 flex items-center pl-12 overflow-visible",
-                isFilterOpen ? "z-50" : "z-20" // <-- Tambahkan logika ini
-              )}
-            >
+	            <div
+	              className={cn(
+	                "shrink-0 px-4 py-2 border-r sticky left-0 bg-gray-50/30 flex items-center pl-12 overflow-visible",
+	                isFilterOpen ? "z-50" : "z-20" // <-- Tambahkan logika ini
+	              )}
+                style={{ width: resourceColumnWidth, minHeight: PROJECT_FILTER_ROW_HEIGHT }}
+	            >
 
               {/* Dropdown Wrapper */}
               <div className="relative w-full">
@@ -1754,8 +1793,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
               {days.map((day) => (
                 <div
                   key={day.toISOString()}
-                  className="shrink-0 h-[44px] border-r border-dashed"
-                  style={{ width: `${cellWidth}px` }}
+	                  className="shrink-0 border-r border-dashed"
+	                  style={{ width: `${cellWidth}px`, height: PROJECT_FILTER_ROW_HEIGHT }}
                 />
               ))}
             </div>

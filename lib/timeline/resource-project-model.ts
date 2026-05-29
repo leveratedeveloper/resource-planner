@@ -18,13 +18,22 @@ export type DeliverableGroup = {
 
 export function getResourceProjects(
   resourceAssignments: Assignment[],
+  actualAssignments: ActualAssignment[],
   projects: ProjectOption[]
 ): ProjectOption[] {
-  const projectIds = new Set(
-    resourceAssignments
-      .filter((assignment) => !assignment.isTimeOff && assignment.projectId)
-      .map((assignment) => assignment.projectId)
-  );
+  const projectIds = new Set<string>();
+
+  for (const assignment of resourceAssignments) {
+    if (!assignment.isTimeOff && assignment.projectId) {
+      projectIds.add(assignment.projectId);
+    }
+  }
+
+  for (const assignment of actualAssignments) {
+    if (!assignment.isTimeOff && assignment.projectUuid) {
+      projectIds.add(assignment.projectUuid);
+    }
+  }
 
   return projects.filter((project) => projectIds.has(project.id));
 }

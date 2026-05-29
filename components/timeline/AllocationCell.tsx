@@ -16,6 +16,7 @@ type AllocationCellProps = {
   assignments: Assignment[];
   actualAssignments: ActualAssignment[];
   cellWidth: number;
+  height?: number;
   isWeekView?: boolean;
   isMonthRangeView?: boolean;
 };
@@ -42,12 +43,12 @@ function getAllocationStyle(
   return { text: "text-white", border, bgColor: `rgba(22, 163, 74, ${opacity})` };
 }
 
-function renderAllocationCell(model: AllocationCellModel, cellWidth: number) {
+function renderAllocationCell(model: AllocationCellModel, cellWidth: number, height: number) {
   if (model.kind === "time-off") {
     return (
       <div
-        className="shrink-0 h-[60px] border-r border-white/20 bg-gray-600 flex items-center justify-center text-xs font-bold text-white"
-        style={{ width: `${cellWidth}px` }}
+        className="shrink-0 border-r border-white/20 bg-gray-600 flex items-center justify-center text-xs font-bold text-white"
+        style={{ width: `${cellWidth}px`, height }}
       >
         Time Off
       </div>
@@ -57,8 +58,8 @@ function renderAllocationCell(model: AllocationCellModel, cellWidth: number) {
   if (model.kind === "empty") {
     return (
       <div
-        className="shrink-0 h-[60px] border-r border-dashed"
-        style={{ width: `${cellWidth}px` }}
+        className="shrink-0 border-r border-dashed"
+        style={{ width: `${cellWidth}px`, height }}
       />
     );
   }
@@ -67,8 +68,8 @@ function renderAllocationCell(model: AllocationCellModel, cellWidth: number) {
 
   return (
     <div
-      className="shrink-0 h-[30px] border-r border-white/20 flex flex-col overflow-hidden"
-      style={{ width: `${cellWidth}px` }}
+      className="shrink-0 border-r border-white/20 flex flex-col overflow-hidden"
+      style={{ width: `${cellWidth}px`, height }}
     >
       <div
         className={cn(
@@ -90,6 +91,7 @@ export const AllocationCell = React.memo<AllocationCellProps>(function Allocatio
   assignments,
   actualAssignments,
   cellWidth,
+  height = 48,
   isWeekView = false,
   isMonthRangeView = false,
 }) {
@@ -102,5 +104,5 @@ export const AllocationCell = React.memo<AllocationCellProps>(function Allocatio
     isMonthRangeView,
   });
 
-  return renderAllocationCell(model, cellWidth);
+  return renderAllocationCell(model, cellWidth, height);
 });

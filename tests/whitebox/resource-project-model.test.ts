@@ -76,10 +76,29 @@ describe("resource project model", () => {
         assignment({ id: "a1", projectId: "project-1" }),
         assignment({ id: "pto", projectId: null, isTimeOff: true }),
       ],
+      [],
       projects
     );
 
     expect(resourceProjects.map((item) => item.id)).toEqual(["project-1"]);
+  });
+
+  it("includes projects with non-time-off actual assignments", () => {
+    const projects = [
+      project({ id: "project-1" }),
+      project({ id: "project-2" }),
+      project({ id: "project-3" }),
+    ];
+    const resourceProjects = getResourceProjects(
+      [assignment({ id: "a1", projectId: "project-1" })],
+      [
+        actualAssignment({ uuid: "actual-project", projectUuid: "project-2" }),
+        actualAssignment({ uuid: "actual-time-off", projectUuid: "project-3", isTimeOff: true }),
+      ],
+      projects
+    );
+
+    expect(resourceProjects.map((item) => item.id)).toEqual(["project-1", "project-2"]);
   });
 
   it("sorts brand matches before other projects", () => {
