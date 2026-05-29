@@ -34,7 +34,6 @@ import {
 } from "@/lib/timeline/row-state";
 import { getTimelineHeaderLayout } from "@/lib/timeline/header-layout";
 import { ResourceRow } from "./ResourceRow";
-import { AssignProjectModal } from "./AssignProjectModal";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
 import { addDays, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfDay, isToday, getMonth, getYear } from "date-fns";
 import { cn, toLocalDateString } from "@/lib/utils";
@@ -51,6 +50,8 @@ interface TimelineProps {
 }
 
 const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
+const EMPTY_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["assignments"]> = [];
+const EMPTY_ACTUAL_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["actualAssignments"]> = [];
 
 export const Timeline: React.FC<TimelineProps> = ({
   initialTimelineAnchor,
@@ -95,9 +96,6 @@ export const Timeline: React.FC<TimelineProps> = ({
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   const timelineRootRef = useRef<HTMLDivElement>(null);
-
-  // Modal state for assigning projects
-  const [assignModalResourceId, setAssignModalResourceId] = useState<string | null>(null);
 
   // Timeline state
   const [currentDate, setCurrentDate] = useState<Date>(
@@ -254,8 +252,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   } = usePlannerTimeline(plannerRequest, {
     enabled: shouldEnableTimelineAssignments(assignmentDateRange),
   });
-  const dateFilteredAssignments = plannerTimeline?.assignments ?? [];
-  const visibleActualAssignments = plannerTimeline?.actualAssignments ?? [];
+  const dateFilteredAssignments = plannerTimeline?.assignments ?? EMPTY_ASSIGNMENTS;
+  const visibleActualAssignments = plannerTimeline?.actualAssignments ?? EMPTY_ACTUAL_ASSIGNMENTS;
 
   // Fetch ALL assignments (no date filter) for employee filtering by brand
   // This ensures employees with assignments outside the visible date range are still shown
@@ -686,12 +684,6 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
       </div>
 
-      {/* Assign Project Modal */}
-      <AssignProjectModal 
-        resourceId={assignModalResourceId}
-        open={!!assignModalResourceId}
-        onOpenChange={(open) => !open && setAssignModalResourceId(null)}
-      />
     </div>
   );
 };
