@@ -4,9 +4,9 @@ import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { startOfDay, format } from "date-fns";
 import { type DateRange } from "react-day-picker";
 import { useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
+import { queryKeys } from "@/lib/query/queryKeys";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
@@ -29,27 +29,30 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  PopoverClose,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { AssignEmployeesDialog } from "@/components/projects/AssignEmployeesDialog";
+import { ProjectTeamAssignmentsTable } from "@/components/setup/ProjectTeamAssignmentsTable";
 import { useAuth } from "@/context/AuthContext";
-import { buildEmployeeAssignmentMap, buildProjectTeamMembers } from "@/components/setup/project-setup/team-members";
+import { buildEmployeeAssignmentMap } from "@/components/setup/project-setup/team-members";
 import { getUnsavedDeliverableChanges } from "@/components/setup/project-setup/deliverable-selection";
 import { getProjectDetailState } from "@/components/setup/project-setup/project-detail-state";
+import { getCriticalMonthlyAllocations } from "@/lib/utils/critical-allocation";
+import {
+  buildPendingAssignmentPayloads,
+  formatProjectDateForDisplay,
+  getAssignmentDateStrings,
+  getFallbackAssignmentDateRange,
+  getProjectAssignmentDateRange,
+} from "@/lib/setup/project-assignment-save";
+import {
+  hasProjectChannelManHoursChanges,
+  updateProjectChannelManHours,
+  type EditableProjectChannel,
+} from "@/lib/setup/project-channel-editor";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -64,6 +67,22 @@ const CURRENCIES = [
   { code: "SGD", symbol: "S$", name: "Singapore Dollar" },
 ];
 
+interface ProjectChannelSource {
+  channelId?: string | null;
+  channel_id?: string | null;
+  deliverableId?: string | null;
+  deliverable_id?: string | null;
+  quantity?: string | null;
+  channelBudget?: string | null;
+  channel_budget?: string | null;
+  manHours?: string | null;
+  man_hours?: string | null;
+}
+
+type ProjectWithRawChannels = Project & {
+  channels?: ProjectChannelSource[];
+  projectChannels?: ProjectChannelSource[];
+};
 export const ProjectSetup = () => {
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -77,7 +96,7 @@ export const ProjectSetup = () => {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteProjects(debouncedSearch || undefined);
-  const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const { data: brands = [] } = useBrands();
   const { data: businessUnits = [] } = useBusinessUnits();
   const { data: projectCategories = [] } = useProjectCategories();
   const { data: channels = [] } = useChannelClassifications();
@@ -107,8 +126,6 @@ export const ProjectSetup = () => {
   const [isSaving, setIsSaving] = useState(false);
   // Track initial deliverable selections to detect changes
   const [initialDeliverablesByEmployee, setInitialDeliverablesByEmployee] = useState<Record<string, string[]>>({});
-  // Track initial date range for change detection
-  const [initialDateRange, setInitialDateRange] = useState<DateRange | undefined>(undefined);
 
   const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
   const { data: allAssignments = [] } = useAssignments();
@@ -140,10 +157,6 @@ export const ProjectSetup = () => {
   const [quotationReference, setQuotationReference] = useState("");
   const [ioFile, setIoFile] = useState("");
 
-  // Form State - Timeline
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-
   // Form State - Additional Information
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
@@ -157,13 +170,8 @@ export const ProjectSetup = () => {
   const [hsDealId, setHsDealId] = useState("");
 
   // Form State - Project Channels (for pitches)
-  const [projectChannels, setProjectChannels] = useState<Array<{
-    channelId: string;
-    deliverableId: string;
-    quantity: string;
-    channelBudget: string;
-    manHours: string;
-  }>>([]);
+  const [projectChannels, setProjectChannels] = useState<EditableProjectChannel[]>([]);
+  const [initialProjectChannels, setInitialProjectChannels] = useState<EditableProjectChannel[]>([]);
 
   const projectDeliverables = useMemo(() => {
     const deliverableIds = new Set(
@@ -175,13 +183,40 @@ export const ProjectSetup = () => {
   }, [allDeliverables, projectChannels]);
 
   const teamMembers = useMemo(() => {
-    return buildProjectTeamMembers({
-      employeeMap,
-      projectAssignments,
-      pendingAssignments,
-      dateRange,
+    // Find which employees are assigned to this project
+    const employeeIdsInProject = new Set<string>();
+
+    // Add existing assignments from database
+    for (const a of projectAssignments) {
+      if (a.employeeId) employeeIdsInProject.add(a.employeeId);
+    }
+
+    // Add pending assignments
+    for (const p of pendingAssignments) {
+      employeeIdsInProject.add(p.employeeId);
+    }
+
+    return Array.from(employeeIdsInProject).map((employeeId) => {
+      const emp = employeeMap.get(employeeId);
+      const allAssignments = emp?.allAssignments || [];
+
+      const criticalAllocations = getCriticalMonthlyAllocations(allAssignments, dateRange);
+
+      return {
+        id: employeeId,
+        fullName: emp?.fullName ?? "Unknown",
+        position: emp?.position ?? "",
+        department: emp?.department ?? null,
+        criticalAllocations,
+      };
     });
   }, [projectAssignments, pendingAssignments, employeeMap, dateRange]);
+
+  // Resolve brand name for the currently selected project/pitch
+  const brandName = useMemo(() => {
+    if (!brandId || !brands.length) return "";
+    return brands.find((b) => b.id === brandId)?.name || "";
+  }, [brandId, brands]);
 
   // Detect unsaved deliverable changes for existing team members
   const unsavedDeliverableChanges = useMemo(() => {
@@ -193,18 +228,42 @@ export const ProjectSetup = () => {
     });
   }, [teamMembers, selectedDeliverablesByEmployee, pendingAssignments, initialDeliverablesByEmployee]);
 
-  // Check if date range has changed from initial
-  const hasDateRangeChanged = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return false;
-    if (!initialDateRange?.from || !initialDateRange?.to) return true;
-    return dateRange.from.getTime() !== initialDateRange.from.getTime()
-      || dateRange.to.getTime() !== initialDateRange.to.getTime();
-  }, [dateRange, initialDateRange]);
+  const pendingEmployeeIds = useMemo(() => {
+    return new Set(pendingAssignments.map((pending) => pending.employeeId));
+  }, [pendingAssignments]);
 
-  // Check if there are any unsaved changes (pending assignments, deliverable changes, or date range)
+  const changedDeliverableEmployeeIds = useMemo(() => {
+    return new Set(unsavedDeliverableChanges.map((change) => change.employeeId));
+  }, [unsavedDeliverableChanges]);
+
+  const handleUndoDeliverableChange = useCallback((employeeId: string) => {
+    setSelectedDeliverablesByEmployee(prev => ({
+      ...prev,
+      [employeeId]: initialDeliverablesByEmployee[employeeId] || [],
+    }));
+  }, [initialDeliverablesByEmployee]);
+
+  const handleToggleDeliverable = useCallback((employeeId: string, deliverableId: string) => {
+    setSelectedDeliverablesByEmployee(prev => {
+      const current = prev[employeeId] || [];
+      const next = current.includes(deliverableId)
+        ? current.filter(id => id !== deliverableId)
+        : [...current, deliverableId];
+      return { ...prev, [employeeId]: next };
+    });
+  }, []);
+
+  const hasAssignmentChanges = pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0;
+  const hasManHoursChanges = useMemo(() => {
+    return hasProjectChannelManHoursChanges(projectChannels, initialProjectChannels);
+  }, [projectChannels, initialProjectChannels]);
+
+  // Date range is assignment-planning state. It does not make pitch details dirty by itself.
   const hasUnsavedChanges = useMemo(() => {
-    return pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0 || hasDateRangeChanged;
-  }, [pendingAssignments, unsavedDeliverableChanges, hasDateRangeChanged]);
+    return hasAssignmentChanges || hasManHoursChanges;
+  }, [hasAssignmentChanges, hasManHoursChanges]);
+
+  const hasCompleteAssignmentDateRange = !!dateRange?.from && !!dateRange?.to;
 
   // Check if all pending/changed employees have deliverables selected
   const allHaveDeliverables = useMemo(() => {
@@ -217,6 +276,13 @@ export const ProjectSetup = () => {
     return true;
   }, [pendingAssignments, selectedDeliverablesByEmployee]);
 
+  const canEditProjectDetails = !!session?.access.can_view_all;
+  const isSaveDisabled = isSaving
+    || !hasUnsavedChanges
+    || !allHaveDeliverables
+    || (hasAssignmentChanges && !hasCompleteAssignmentDateRange)
+    || !canEditProjectDetails;
+
   // Auto-calculate grand total when budget or asf changes
   useEffect(() => {
     const budgetNum = parseFloat(budget) || 0;
@@ -227,6 +293,14 @@ export const ProjectSetup = () => {
 
   const getDeliverablesForChannel = (channelId: string) => {
     return allDeliverables.filter(d => d.channelId === channelId);
+  };
+
+  const ensureSuccessfulSaveResponse = async (response: Response) => {
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || "Failed to save pitch details");
+    }
+    return response;
   };
 
   const handleOpenView = (project: Project) => {
@@ -246,8 +320,7 @@ export const ProjectSetup = () => {
     setGrandTotal(detailState.grandTotal);
     setQuotationReference(detailState.quotationReference);
     setIoFile(detailState.ioFile);
-    setStartDate(detailState.startDate);
-    setEndDate(detailState.endDate);
+    setDateRange(getProjectAssignmentDateRange(project));
     setDescription(detailState.description);
     setNotes(detailState.notes);
     setFlag(detailState.flag);
@@ -256,25 +329,17 @@ export const ProjectSetup = () => {
     setPitchStatus(detailState.pitchStatus);
     setValueTotalEstimate(detailState.valueTotalEstimate);
     setHsDealId(detailState.hsDealId);
-    const channelsData = (project as any).channels || project.projectChannels || [];
-    setProjectChannels(channelsData.map((pc: any) => ({
+    const projectWithChannels = project as ProjectWithRawChannels;
+    const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
+    const nextProjectChannels = channelsData.map((pc) => ({
       channelId: pc.channelId || pc.channel_id || "",
       deliverableId: pc.deliverableId || pc.deliverable_id || "",
       quantity: pc.quantity || "",
       channelBudget: pc.channelBudget || pc.channel_budget || "",
       manHours: pc.manHours || pc.man_hours || "",
-    })));
-    if (project.startDate && project.endDate) {
-      const range = {
-        from: startOfDay(new Date(project.startDate)),
-        to: startOfDay(new Date(project.endDate)),
-      };
-      setDateRange(range);
-      setInitialDateRange(range);
-    } else {
-      setDateRange(undefined);
-      setInitialDateRange(undefined);
-    }
+    }));
+    setProjectChannels(nextProjectChannels);
+    setInitialProjectChannels(nextProjectChannels);
     setPendingAssignments([]);
     // Don't reset deliverables here - let the useEffect handle loading from existing assignments
     // Only reset if not already tracking this project
@@ -328,26 +393,18 @@ export const ProjectSetup = () => {
       setSelectedDeliverablesByEmployee(deliverablesByEmployee);
       setInitialDeliverablesByEmployee(deliverablesByEmployee);
     }
-  }, [isDialogOpen, viewingProject?.id, projectAssignments, allDeliverables, initialDeliverablesByEmployee]);
+  }, [isDialogOpen, viewingProject, projectAssignments, allDeliverables, initialDeliverablesByEmployee]);
 
-  // Initialize dateRange from projectAssignments when project has no saved dates
+  // Initialize assignment planning range from existing assignments when project has no saved dates
   useEffect(() => {
     if (!isDialogOpen || !viewingProject || projectAssignments.length === 0) return;
-    // Only run if dateRange hasn't been initialized yet (from project dates)
-    if (initialDateRange !== undefined) return;
+    if (dateRange !== undefined) return;
 
-    const startDates = projectAssignments.map(a => new Date(a.startDate).getTime()).filter(Boolean);
-    const endDates = projectAssignments.map(a => new Date(a.endDate).getTime()).filter(Boolean);
-
-    if (startDates.length > 0 && endDates.length > 0) {
-      const range = {
-        from: startOfDay(new Date(Math.min(...startDates))),
-        to: startOfDay(new Date(Math.max(...endDates))),
-      };
+    const range = getFallbackAssignmentDateRange(projectAssignments);
+    if (range) {
       setDateRange(range);
-      setInitialDateRange(range);
     }
-  }, [isDialogOpen, viewingProject?.id, projectAssignments, initialDateRange]);
+  }, [isDialogOpen, viewingProject, projectAssignments, dateRange]);
 
   // Group projects by brand
   // In default state: show all brands even if they have no projects
@@ -373,46 +430,32 @@ export const ProjectSetup = () => {
     return CURRENCIES.find((c) => c.code === code)?.symbol || code;
   };
 
-  // Handler for saving team assignments
-  const handleSaveTeamAssignments = async () => {
+  // Handler for saving pending team assignments and deliverable changes
+  const handleSaveTeamAssignments = async (closeAfterSave = false) => {
     setIsSaving(true);
     try {
-      const assignmentStartDate = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-      const assignmentEndDate = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : assignmentStartDate;
+      if (hasAssignmentChanges && !hasCompleteAssignmentDateRange) {
+        throw new Error("Assignment planning requires a complete date range.");
+      }
+
+      const assignmentDates = getAssignmentDateStrings(dateRange);
 
       // 1. Create new assignments for pending employees
-      const createPromises = pendingAssignments.map((pending) => {
-        const deliverableIds = selectedDeliverablesByEmployee[pending.employeeId] || [];
-        const deliverables = allDeliverables.filter(d => deliverableIds.includes(String(d.id)));
-        const deliverableNames = deliverables.map(d => d.deliverableNameNew || d.deliverableName).join(", ");
-
-        const note = deliverableNames
-          ? `Assigned to project - Deliverables: ${deliverableNames}. Set dates and hours as needed.`
-          : "Assigned to project - set dates and hours as needed.";
-
-        return fetch('/api/assignments', {
+      const createPromises = buildPendingAssignmentPayloads({
+        projectId: viewingProject!.id,
+        pendingAssignments,
+        selectedDeliverablesByEmployee,
+        allDeliverables,
+        assignmentDates,
+      }).map((payload) =>
+        fetch('/api/assignments', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            employeeId: pending.employeeId,
-            projectId: viewingProject!.id,
-            taskId: null,
-            startDate: assignmentStartDate,
-            endDate: assignmentEndDate,
-            hoursPerDay: "0",
-            allocationPercentage: null,
-            isTimeOff: false,
-            timeOffTypeId: null,
-            category: null,
-            isBillable: true,
-            status: "draft",
-            note,
-            createdById: null,
-          }),
-        });
-      });
+          body: JSON.stringify(payload),
+        }).then(ensureSuccessfulSaveResponse)
+      );
 
       // 2. Update existing assignments with changed deliverables
       const updatePromises = unsavedDeliverableChanges.map((change) => {
@@ -436,21 +479,10 @@ export const ProjectSetup = () => {
           body: JSON.stringify({
             note,
           }),
-        });
+        }).then(ensureSuccessfulSaveResponse);
       });
 
-      // 3. Update existing assignments with new date range
-      const dateRangeUpdatePromises = hasDateRangeChanged
-        ? projectAssignments.map((a) =>
-            fetch(`/api/assignments/${a.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ startDate: assignmentStartDate, endDate: assignmentEndDate }),
-            })
-          )
-        : [];
-
-      await Promise.all([...createPromises, ...updatePromises, ...dateRangeUpdatePromises]);
+      await Promise.all([...createPromises, ...updatePromises]);
 
       // Update initial deliverables to match current selections (mark as saved)
       const newInitialDeliverables: Record<string, string[]> = { ...initialDeliverablesByEmployee };
@@ -469,20 +501,24 @@ export const ProjectSetup = () => {
       }
 
       setInitialDeliverablesByEmployee(newInitialDeliverables);
-
-      // Reset initial date range after save
-      if (hasDateRangeChanged && dateRange?.from && dateRange?.to) {
-        setInitialDateRange({ from: dateRange.from, to: dateRange.to });
-      }
+      setInitialProjectChannels(projectChannels);
 
       // Clear pending assignments after successful save
       setPendingAssignments([]);
 
-      // Invalidate queries to refetch data
-      queryClient.invalidateQueries({ queryKey: ["assignments"] });
-      queryClient.invalidateQueries({ queryKey: ["assignmentsByProject", viewingProject!.id] });
+      if (hasAssignmentChanges) {
+        // Invalidate queries to refetch persisted assignment data
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectsInfinite });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(viewingProject!.id) });
+      }
+
+      if (closeAfterSave) {
+        setIsDialogOpen(false);
+      }
     } catch (error) {
-      console.error("Failed to save assignments:", error);
+      console.error("Failed to save team assignments:", error);
     } finally {
       setIsSaving(false);
     }
@@ -616,8 +652,21 @@ export const ProjectSetup = () => {
                           </div>
                           <div>
                             <div className="font-medium text-sm">{project.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "h-5 px-1.5 text-[10px]",
+                                  project.projectType === "campaign"
+                                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                                    : "border-amber-200 bg-amber-50 text-amber-700"
+                                )}
+                              >
+                                {project.projectType === "campaign" ? "Campaign" : "Pitch"}
+                              </Badge>
+                              <span>
+                                {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -664,691 +713,542 @@ export const ProjectSetup = () => {
           }
           setIsDialogOpen(open);
         }}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0 gap-0">
+            <DialogHeader className="px-6 pt-6 pb-4 border-b bg-background shrink-0 pr-12">
               <DialogTitle>
                 {projectType === 'pitch' ? 'Pitch Details' : 'Project Details'}
+                {brandName ? ` - ${brandName}` : ""}
               </DialogTitle>
               <DialogDescription>
                 View {projectType} information
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-6 py-4">
-              {/* Basic Information Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground border-b pb-2">Basic Information</h3>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="grid gap-6 py-4">
+                {/* Basic Information Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-foreground border-b pb-2">Basic Information</h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label htmlFor="name" className="text-sm font-medium">
-                      {projectType === 'pitch' ? 'Pitch Name' : 'Project Name'} <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      id="name"
-                      value={name}
-                      disabled
-                      placeholder={projectType === 'pitch' ? "e.g., Nike Q1 2026 Pitch" : "e.g., Website Redesign"}
-                    />
-                  </div>
-
-                  {projectType === 'campaign' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label htmlFor="projectNumber" className="text-sm font-medium">
-                        Project Number <span className="text-xs text-muted-foreground">(Auto-generated)</span>
+                      <label htmlFor="name" className="text-sm font-medium">
+                        {projectType === 'pitch' ? 'Pitch Name' : 'Project Name'} <span className="text-red-500">*</span>
                       </label>
                       <Input
-                        id="projectNumber"
-                        value={projectNumber}
+                        id="name"
+                        value={name}
                         readOnly
                         disabled
-                        className="bg-muted cursor-not-allowed"
-                        placeholder="Auto-generated from project name"
+                        placeholder={projectType === 'pitch' ? "e.g., Nike Q1 2026 Pitch" : "e.g., Website Redesign"}
                       />
                     </div>
-                  )}
 
-                  <div className="space-y-2">
-                    <label htmlFor="brand" className="text-sm font-medium">
-                      Brand <span className="text-red-500">*</span>
-                    </label>
-                    <Select value={brandId} disabled>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a brand" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brands.map((brand) => (
-                          <SelectItem key={brand.id} value={brand.id}>
-                            {brand.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {projectType === 'pitch' ? (
-                    <>
+                    {projectType === 'campaign' && (
                       <div className="space-y-2">
-                        <label htmlFor="region" className="text-sm font-medium">
-                          Region <span className="text-red-500">*</span>
+                        <label htmlFor="projectNumber" className="text-sm font-medium">
+                          Project Number <span className="text-xs text-muted-foreground">(Auto-generated)</span>
                         </label>
-                        <Select value={region} disabled>
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Indonesia">Indonesia</SelectItem>
-                            <SelectItem value="Singapore">Singapore</SelectItem>
-                            <SelectItem value="Malaysia">Malaysia</SelectItem>
-                            <SelectItem value="Thailand">Thailand</SelectItem>
-                            <SelectItem value="Vietnam">Vietnam</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Input
+                          id="projectNumber"
+                          value={projectNumber}
+                          readOnly
+                          disabled
+                          className="bg-muted cursor-not-allowed"
+                          placeholder="Auto-generated from project name"
+                        />
                       </div>
+                    )}
 
-                      <div className="space-y-2">
-                        <label htmlFor="pitchStatus" className="text-sm font-medium">
-                          Status <span className="text-red-500">*</span>
-                        </label>
-                        <Select value={pitchStatus} disabled>
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="introduction">Introduction</SelectItem>
-                            <SelectItem value="waiting_for_brief">Waiting for brief</SelectItem>
-                            <SelectItem value="proposal_development">Proposal development</SelectItem>
-                            <SelectItem value="submit_or_presentation">Submit or Presentation</SelectItem>
-                            <SelectItem value="waiting_for_feedback">Waiting for feedback</SelectItem>
-                            <SelectItem value="negotiation">Negotiation</SelectItem>
-                            <SelectItem value="won">Won</SelectItem>
-                            <SelectItem value="lost">Lost</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                            <SelectItem value="missing">Missing</SelectItem>
-                            <SelectItem value="withdraw">Withdraw</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <label htmlFor="businessUnit" className="text-sm font-medium">
-                          Business Unit
-                        </label>
-                        <Select value={businessUnitId} disabled>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select business unit" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {businessUnits.map((bu) => (
-                              <SelectItem key={bu.id} value={bu.id}>
-                                {bu.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label htmlFor="projectCategory" className="text-sm font-medium">
-                          Project Category
-                        </label>
-                        <Select value={projectCategoryId} disabled>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projectCategories.map((cat) => (
-                              <SelectItem key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label htmlFor="status" className="text-sm font-medium">
-                          Status
-                        </label>
-                        <Select value={status} disabled>
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="planning">Planning</SelectItem>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="on_hold">On Hold</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2 md:col-span-2">
-                        <label className="text-sm font-medium">Color</label>
-                        <div className="flex gap-2 flex-wrap">
-                          {PROJECT_COLORS.map((c) => (
-                            <div
-                              key={c}
-                              className={cn(
-                                "w-8 h-8 rounded-full",
-                                color === c && "ring-2 ring-offset-2 ring-primary"
-                              )}
-                              style={{ backgroundColor: c }}
-                            />
+                    <div className="space-y-2">
+                      <label htmlFor="brand" className="text-sm font-medium">
+                        Brand <span className="text-red-500">*</span>
+                      </label>
+                      <Select value={brandId} disabled>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((brand) => (
+                            <SelectItem key={brand.id} value={brand.id}>
+                              {brand.name}
+                            </SelectItem>
                           ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Budget & Financial Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground border-b pb-2">Budget & Financial</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label htmlFor="currency" className="text-sm font-medium">
-                      Currency <span className="text-red-500">*</span>
-                    </label>
-                    <Select value={currency} disabled>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CURRENCIES.map((curr) => (
-                          <SelectItem key={curr.code} value={curr.code}>
-                            {curr.symbol} {curr.code} - {curr.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="budget" className="text-sm font-medium">
-                      {projectType === 'pitch' ? 'Est. Budget (excl VAT)' : 'Budget'}
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        {getCurrencySymbol(currency)}
-                      </span>
-                      <Input
-                        id="budget"
-                        type="number"
-                        step="0.01"
-                        value={budget}
-                        disabled
-                        placeholder="0.00"
-                        className="pl-8"
-                      />
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </div>
 
-                  {projectType === 'campaign' && (
-                    <>
-                      <div className="space-y-2">
-                        <label htmlFor="asf" className="text-sm font-medium">
-                          ASF (Administrative Service Fee)
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                            {getCurrencySymbol(currency)}
-                          </span>
-                          <Input
-                            id="asf"
-                            type="number"
-                            step="0.01"
-                            value={asf}
-                            disabled
-                            placeholder="0.00"
-                            className="pl-8"
-                          />
+                    {projectType === 'pitch' ? (
+                      <>
+                        <div className="space-y-2">
+                          <label htmlFor="region" className="text-sm font-medium">
+                            Region <span className="text-red-500">*</span>
+                          </label>
+                          <Select value={region} disabled>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Indonesia">Indonesia</SelectItem>
+                              <SelectItem value="Singapore">Singapore</SelectItem>
+                              <SelectItem value="Malaysia">Malaysia</SelectItem>
+                              <SelectItem value="Thailand">Thailand</SelectItem>
+                              <SelectItem value="Vietnam">Vietnam</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                      </div>
 
-                      <div className="space-y-2">
-                        <label htmlFor="grandTotal" className="text-sm font-medium">
-                          Grand Total <span className="text-xs text-muted-foreground">(Auto-calculated)</span>
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                            {getCurrencySymbol(currency)}
-                          </span>
+                        <div className="space-y-2">
+                          <label htmlFor="pitchStatus" className="text-sm font-medium">
+                            Status <span className="text-red-500">*</span>
+                          </label>
+                          <Select value={pitchStatus} disabled>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="introduction">Introduction</SelectItem>
+                              <SelectItem value="waiting_for_brief">Waiting for brief</SelectItem>
+                              <SelectItem value="proposal_development">Proposal development</SelectItem>
+                              <SelectItem value="submit_or_presentation">Submit or Presentation</SelectItem>
+                              <SelectItem value="waiting_for_feedback">Waiting for feedback</SelectItem>
+                              <SelectItem value="negotiation">Negotiation</SelectItem>
+                              <SelectItem value="won">Won</SelectItem>
+                              <SelectItem value="lost">Lost</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                              <SelectItem value="missing">Missing</SelectItem>
+                              <SelectItem value="withdraw">Withdraw</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <label htmlFor="businessUnit" className="text-sm font-medium">
+                            Business Unit
+                          </label>
+                          <Select value={businessUnitId} disabled>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select business unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {businessUnits.map((bu) => (
+                                <SelectItem key={bu.id} value={bu.id}>
+                                  {bu.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="projectCategory" className="text-sm font-medium">
+                            Project Category
+                          </label>
+                          <Select value={projectCategoryId} disabled>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {projectCategories.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="status" className="text-sm font-medium">
+                            Status
+                          </label>
+                          <Select value={status} disabled>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="planning">Planning</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="on_hold">On Hold</SelectItem>
+                              <SelectItem value="completed">Completed</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-sm font-medium">Color</label>
+                          <div className="flex gap-2 flex-wrap">
+                            {PROJECT_COLORS.map((c) => (
+                              <div
+                                key={c}
+                                className={cn(
+                                  "w-8 h-8 rounded-full",
+                                  color === c && "ring-2 ring-offset-2 ring-primary"
+                                )}
+                                style={{ backgroundColor: c }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Budget & Financial Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-foreground border-b pb-2">Budget & Financial</h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="currency" className="text-sm font-medium">
+                        Currency <span className="text-red-500">*</span>
+                      </label>
+                      <Select value={currency} disabled>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CURRENCIES.map((curr) => (
+                            <SelectItem key={curr.code} value={curr.code}>
+                              {curr.symbol} {curr.code} - {curr.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="budget" className="text-sm font-medium">
+                        {projectType === 'pitch' ? 'Est. Budget (excl VAT)' : 'Budget'}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          {getCurrencySymbol(currency)}
+                        </span>
+                        <Input
+                          id="budget"
+                          type="number"
+                          step="0.01"
+                          value={budget}
+                          readOnly
+                          disabled
+                          placeholder="0.00"
+                          className="pl-8"
+                        />
+                      </div>
+                    </div>
+
+                    {projectType === 'campaign' && (
+                      <>
+                        <div className="space-y-2">
+                          <label htmlFor="asf" className="text-sm font-medium">
+                            ASF (Administrative Service Fee)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                              {getCurrencySymbol(currency)}
+                            </span>
+                            <Input
+                              id="asf"
+                              type="number"
+                              step="0.01"
+                              value={asf}
+                              readOnly
+                              disabled
+                              placeholder="0.00"
+                              className="pl-8"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="grandTotal" className="text-sm font-medium">
+                            Grand Total <span className="text-xs text-muted-foreground">(Auto-calculated)</span>
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                              {getCurrencySymbol(currency)}
+                            </span>
+                            <Input
+                              id="grandTotal"
+                              value={grandTotal}
+                              readOnly
+                              disabled
+                              className="bg-muted cursor-not-allowed pl-8 font-semibold"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="quotationReference" className="text-sm font-medium">
+                            Quotation Reference
+                          </label>
                           <Input
-                            id="grandTotal"
-                            value={grandTotal}
+                            id="quotationReference"
+                            value={quotationReference}
                             readOnly
                             disabled
-                            className="bg-muted cursor-not-allowed pl-8 font-semibold"
-                            placeholder="0.00"
+                            placeholder="e.g., QT-2026-0001"
                           />
                         </div>
-                      </div>
 
-                      <div className="space-y-2">
-                        <label htmlFor="quotationReference" className="text-sm font-medium">
-                          Quotation Reference
-                        </label>
-                        <Input
-                          id="quotationReference"
-                          value={quotationReference}
-                          disabled
-                          placeholder="e.g., QT-2026-0001"
-                        />
-                      </div>
+                        <div className="space-y-2">
+                          <label htmlFor="ioFile" className="text-sm font-medium">
+                            IO File (URL)
+                          </label>
+                          <Input
+                            id="ioFile"
+                            value={ioFile}
+                            readOnly
+                            disabled
+                            placeholder="https://example.com/io-file.pdf"
+                          />
+                        </div>
+                      </>
+                    )}
 
-                      <div className="space-y-2">
-                        <label htmlFor="ioFile" className="text-sm font-medium">
-                          IO File (URL)
-                        </label>
-                        <Input
-                          id="ioFile"
-                          value={ioFile}
-                          disabled
-                          placeholder="https://example.com/io-file.pdf"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="space-y-2 md:col-span-2">
-                    <label htmlFor="notes" className="text-sm font-medium">
-                      Notes
-                    </label>
-                    <Textarea
-                      id="notes"
-                      value={notes}
-                      disabled
-                      placeholder="Additional notes"
-                      rows={3}
-                    />
+                    <div className="space-y-2 md:col-span-2">
+                      <label htmlFor="notes" className="text-sm font-medium">
+                        Notes
+                      </label>
+                      <Textarea
+                        id="notes"
+                        value={notes}
+                        readOnly
+                        disabled
+                        placeholder="Additional notes"
+                        rows={3}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
 
 
-              {/* Channels & Deliverables Section (PITCH ONLY) */}
-              {projectType === 'pitch' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <h3 className="text-sm font-semibold text-foreground">Channels & Deliverables</h3>
-                  </div>
-
-                  {projectChannels.length === 0 ? (
-                    <div className="text-sm text-muted-foreground text-center py-8 border rounded-lg border-dashed">
-                      No channels added yet. Click "Add Channel" to get started.
+                {/* Channels & Deliverables Section (PITCH ONLY) */}
+                {projectType === 'pitch' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-sm font-semibold text-foreground">Channels & Deliverables</h3>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {projectChannels.map((channel, index) => (
-                        <div key={index} className="border rounded-lg p-4 space-y-4 bg-muted/20">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">
-                                Channel <span className="text-red-500">*</span>
-                              </label>
-                              <Select
-                                value={channel.channelId}
-                                disabled
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Select channel" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {channels.map((ch) => (
-                                    <SelectItem key={ch.id} value={ch.id}>
-                                      {ch.channelName}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
 
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">
-                                Deliverable <span className="text-red-500">*</span>
-                              </label>
-                              <Select
-                                value={channel.deliverableId}
-                                disabled
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Select deliverable" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {getDeliverablesForChannel(channel.channelId).map((del) => (
-                                    <SelectItem key={del.id} value={del.id}>
-                                      {del.deliverableName}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">Quantity</label>
-                              <Input
-                                value={channel.quantity}
-                                disabled
-                                placeholder="e.g., 5 posts"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">Budget</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                                  {getCurrencySymbol(currency)}
-                                </span>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={channel.channelBudget}
+                    {projectChannels.length === 0 ? (
+                      <div className="text-sm text-muted-foreground text-center py-8 border rounded-lg border-dashed">
+                        No channels added yet. Click &quot;Add Channel&quot; to get started.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {projectChannels.map((channel, index) => (
+                          <div key={index} className="border rounded-lg p-4 space-y-4 bg-muted/20">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">
+                                  Channel <span className="text-red-500">*</span>
+                                </label>
+                                <Select
+                                  value={channel.channelId}
                                   disabled
-                                  placeholder="0.00"
-                                  className="pl-8"
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select channel" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {channels.map((ch) => (
+                                      <SelectItem key={ch.id} value={ch.id}>
+                                        {ch.channelName}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">
+                                  Deliverable <span className="text-red-500">*</span>
+                                </label>
+                                <Select
+                                  value={channel.deliverableId}
+                                  disabled
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select deliverable" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {getDeliverablesForChannel(channel.channelId).map((del) => (
+                                      <SelectItem key={del.id} value={del.id}>
+                                        {del.deliverableName}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Quantity</label>
+                                <Input
+                                  value={channel.quantity}
+                                  readOnly
+                                  disabled
+                                  placeholder="e.g., 5 posts"
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Budget</label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                    {getCurrencySymbol(currency)}
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={channel.channelBudget}
+                                    readOnly
+                                    disabled
+                                    placeholder="0.00"
+                                    className="pl-8"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-2 md:col-span-2">
+                                <label className="text-sm font-medium">Man Hours</label>
+                                <Input
+                                  value={channel.manHours}
+                                  inputMode="decimal"
+                                  onChange={(event) => {
+                                    setProjectChannels(prev =>
+                                      updateProjectChannelManHours(prev, index, event.target.value)
+                                    );
+                                  }}
+                                  placeholder="e.g., 40 hours"
                                 />
                               </div>
                             </div>
-
-                            <div className="space-y-2 md:col-span-2">
-                              <label className="text-sm font-medium">Man Hours</label>
-                              <Input
-                                value={channel.manHours}
-                                disabled
-                                placeholder="e.g., 40 hours"
-                              />
-                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Manage Team Section */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Project Periode</label>
-                  <div className="flex items-center gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 text-xs gap-2">
-                          <Icon icon="lucide:calendar" className="h-3.5 w-3.5" />
-                          {dateRange?.from && dateRange?.to
-                            ? `${format(dateRange.from, "MMM yyyy")} - ${format(dateRange.to, "MMM yyyy")}`
-                            : "Select date range"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="range"
-                          selected={dateRange}
-                          onSelect={setDateRange}
-                          numberOfMonths={2}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {dateRange?.from && dateRange?.to && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-xs"
-                        onClick={() => setDateRange(undefined)}
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="border-b pb-2">
-                  <h3 className="text-sm font-semibold text-foreground">Manage Team</h3>
-                </div>
-
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="text-left text-sm font-medium p-3 w-[30%]">Name</th>
-                        <th className="text-left text-sm font-medium p-3 w-[35%]">Deliverables</th>
-                        <th className="text-left text-sm font-medium p-3 w-[25%]">Total % Allocated</th>
-                        <th className="text-left text-sm font-medium p-3 w-[10%]">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamMembers.map((member) => {
-                        const isPending = pendingAssignments.some(p => p.employeeId === member.id);
-                        const hasChangedDeliverable = unsavedDeliverableChanges.some(c => c.employeeId === member.id);
-
-                        return (
-                          <tr key={member.id} className="border-b last:border-b-0">
-                            <td className="p-3">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="font-medium text-sm">{member.fullName}</div>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {member.position}{member.department ? ` • ${member.department.name}` : ""}
-                                  </div>
-                                </div>
-                                {isPending && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="shrink-0 h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => handleRemovePending(member.id)}
-                                    title="Remove pending assignment"
-                                  >
-                                    <Icon icon="lucide:x" className="h-3 w-3" />
-                                  </Button>
-                                )}
-                                {hasChangedDeliverable && !isPending && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="shrink-0 h-6 w-6 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                                    onClick={() => {
-                                      setSelectedDeliverablesByEmployee(prev => ({
-                                        ...prev,
-                                        [member.id]: initialDeliverablesByEmployee[member.id] || [],
-                                      }));
-                                    }}
-                                    title="Undo deliverable change"
-                                  >
-                                    <Icon icon="lucide:undo" className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full justify-start text-left font-normal min-h-[32px] h-auto py-1"
-                                  >
-                                    {selectedDeliverablesByEmployee[member.id]?.length > 0 ? (
-                                      <div className="flex flex-col gap-1 w-full">
-                                        {selectedDeliverablesByEmployee[member.id].map(id => {
-                                          const del = allDeliverables.find(d => String(d.id) === String(id));
-                                          return (
-                                            <Badge key={id} variant="secondary" className="text-sm font-normal px-2 py-0.5 w-fit">
-                                              {del?.deliverableNameNew || del?.deliverableName || "Unknown"}
-                                            </Badge>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <span className="text-sm text-muted-foreground">Select deliverables</span>
-                                    )}
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-64 p-2" align="start">
-                                  <div className="space-y-1 max-h-[300px] overflow-y-auto">
-                                    {projectDeliverables.length > 0 ? (
-                                      projectDeliverables.map((del) => {
-                                        const isSelected = selectedDeliverablesByEmployee[member.id]?.includes(String(del.id)) ?? false;
-                                        return (
-                                          <div
-                                            key={del.id}
-                                            className="flex items-center space-x-2 p-1.5 hover:bg-accent rounded-md cursor-pointer transition-colors"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              setSelectedDeliverablesByEmployee(prev => {
-                                                const current = prev[member.id] || [];
-                                                const next = isSelected
-                                                  ? current.filter(id => id !== String(del.id))
-                                                  : [...current, String(del.id)];
-                                                return { ...prev, [member.id]: next };
-                                              });
-                                            }}
-                                          >
-                                            <Checkbox
-                                              checked={isSelected}
-                                              onCheckedChange={() => { }} // Handled by div onClick
-                                            />
-                                            <span className="text-sm select-none">{del.deliverableNameNew || del.deliverableName}</span>
-                                          </div>
-                                        );
-                                      })
-                                    ) : (
-                                      <div className="p-2 text-sm text-muted-foreground text-center">
-                                        No deliverables available
-                                      </div>
-                                    )}
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            </td>
-                            <td className="p-3 text-sm text-muted-foreground whitespace-pre-line">
-                              {Array.isArray(member.allocationPercentage) && member.allocationPercentage.length > 0 ? (
-                                <div className="flex flex-col">
-                                  {member.allocationPercentage.map((line, idx) => (
-                                    <div key={idx}>{line}</div>
-                                  ))}
-                                </div>
-                              ) : (
-                                "-"
-                              )}
-                            </td>
-                            <td className="p-3">
-                              {!isPending && !hasChangedDeliverable && (
-                                <Popover>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <PopoverTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="shrink-0 h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                          disabled={deleteAssignment.isPending}
-                                        >
-                                          <Icon icon="lucide:trash-2" className="h-4 w-4" />
-                                        </Button>
-                                      </PopoverTrigger>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Remove from project</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  <PopoverContent className="w-auto p-3" align="start">
-                                    <div className="space-y-3">
-                                      <p className="text-sm font-medium">Remove {member.fullName} from this project?</p>
-                                      <div className="flex items-center gap-2 justify-end">
-                                        <PopoverClose asChild>
-                                          <Button variant="outline" size="sm">Cancel</Button>
-                                        </PopoverClose>
-                                        <Button
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() => handleDeleteSavedAssignment(member.id)}
-                                          disabled={deleteAssignment.isPending}
-                                        >
-                                          {deleteAssignment.isPending ? (
-                                            <Icon icon="lucide:loader-2" className="h-3.5 w-3.5 animate-spin" />
-                                          ) : "Remove"}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      <tr className="border-b last:border-b-0">
-                        <td className="p-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setIsAssignEmployeesOpen(true)}
-                            disabled={!session?.access.can_view_all}
-                          >
-                            <Icon icon="lucide:plus" className="h-4 w-4 mr-1" />
-                            Assign Team
-                          </Button>
-                        </td>
-                        <td className="p-3">
-                          <Button variant="outline" size="sm" className="w-full justify-start text-muted-foreground font-normal" disabled>
-                            Select deliverable
-                          </Button>
-                        </td>
-                        <td className="p-3 text-sm text-muted-foreground">-</td>
-                        <td className="p-3"></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Save button for pending/changed assignments */}
-                {hasUnsavedChanges && (
-                  <div className="flex flex-col items-end gap-2">
-                    <div className="flex justify-end pt-4 border-t w-full">
-                      <Button
-                        onClick={handleSaveTeamAssignments}
-                        disabled={isSaving || !allHaveDeliverables || !dateRange?.from || !dateRange?.to}
-                      >
-                        {isSaving ? (
-                          <>
-                            <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Icon icon="lucide:save" className="h-4 w-4 mr-1" />
-                            Save Team Assignments
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    {!allHaveDeliverables && (
-                      <p className="text-xs text-amber-600">
-                        Please select deliverables for all pending employees
-                      </p>
-                    )}
-                    {(!dateRange?.from || !dateRange?.to) && (
-                      <p className="text-xs text-amber-600">
-                        Please select a project periode date range
-                      </p>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
+
+                {/* Manage Team Section */}
+                <div className="space-y-4">
+                  {projectType === "pitch" ? (
+                    <div className="space-y-2">
+                      <label htmlFor="submissionDate" className="text-sm font-medium">
+                        Submission Date
+                      </label>
+                      <Input
+                        id="submissionDate"
+                        value={formatProjectDateForDisplay(submitDate)}
+                        readOnly
+                        disabled
+                        placeholder="No submission date"
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label htmlFor="campaignStartDate" className="text-sm font-medium">
+                          Start Date
+                        </label>
+                        <Input
+                          id="campaignStartDate"
+                          value={formatProjectDateForDisplay(viewingProject?.startDate)}
+                          readOnly
+                          disabled
+                          placeholder="No start date"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="campaignEndDate" className="text-sm font-medium">
+                          End Date
+                        </label>
+                        <Input
+                          id="campaignEndDate"
+                          value={formatProjectDateForDisplay(viewingProject?.endDate)}
+                          readOnly
+                          disabled
+                          placeholder="No end date"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-b pb-2">
+                    <h3 className="text-sm font-semibold text-foreground">Manage Team</h3>
+                  </div>
+
+                  <ProjectTeamAssignmentsTable
+                    teamMembers={teamMembers}
+                    pendingEmployeeIds={pendingEmployeeIds}
+                    changedDeliverableEmployeeIds={changedDeliverableEmployeeIds}
+                    selectedDeliverablesByEmployee={selectedDeliverablesByEmployee}
+                    projectDeliverables={projectDeliverables}
+                    allDeliverables={allDeliverables}
+                    canAssignTeam={!!session?.access.can_view_all}
+                    isDeletePending={deleteAssignment.isPending}
+                    onAssignTeam={() => setIsAssignEmployeesOpen(true)}
+                    onUndoDeliverableChange={handleUndoDeliverableChange}
+                    onToggleDeliverable={handleToggleDeliverable}
+                    onRemovePending={handleRemovePending}
+                    onDeleteSavedAssignment={handleDeleteSavedAssignment}
+                  />
+
+                  {hasUnsavedChanges && (
+                    <div className="flex flex-col items-end gap-2">
+                      {!allHaveDeliverables && (
+                        <p className="text-xs text-amber-600">
+                          Please select deliverables for all pending employees
+                        </p>
+                      )}
+                      {!hasCompleteAssignmentDateRange && (
+                        <p className="text-xs text-amber-600">
+                          This project has no assignment date range. Set the campaign dates or pitch submission date before assigning a team.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <DialogFooter className="px-6 py-4 border-t bg-background shrink-0 gap-2 sm:justify-end">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
                 Close
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleSaveTeamAssignments(true)}
+                disabled={isSaveDisabled}
+              >
+                {isSaving ? (
+                  <>
+                    <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : "Save & Close"}
+              </Button>
+              <Button
+                onClick={() => handleSaveTeamAssignments(false)}
+                disabled={isSaveDisabled}
+              >
+                {isSaving ? (
+                  <>
+                    <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Icon icon="lucide:save" className="h-4 w-4 mr-1" />
+                    Save
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
