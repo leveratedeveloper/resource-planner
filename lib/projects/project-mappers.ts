@@ -62,9 +62,18 @@ export type PitchApiRecord = {
   channels?: unknown;
 };
 
-export function projectColor(): string {
-  return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
-}
+const PROJECT_COLOR_PALETTE = [
+  "#3b82f6",
+  "#10b981",
+  "#ef4444",
+  "#f59e0b",
+  "#8b5cf6",
+  "#ec4899",
+  "#06b6d4",
+  "#84cc16",
+  "#f97316",
+  "#6366f1",
+] as const;
 
 function text(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
@@ -72,6 +81,18 @@ function text(value: unknown): string {
 
 function nullableText(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
+}
+
+export function projectColor(seed: unknown): string {
+  const seedText = text(seed);
+  if (!seedText) return PROJECT_COLOR_PALETTE[0];
+
+  let hash = 0;
+  for (let index = 0; index < seedText.length; index += 1) {
+    hash = (hash * 31 + seedText.charCodeAt(index)) >>> 0;
+  }
+
+  return PROJECT_COLOR_PALETTE[hash % PROJECT_COLOR_PALETTE.length];
 }
 
 function campaignStatus(flag: unknown): ProjectStatus {
@@ -122,7 +143,7 @@ export function mapCampaignToProject(campaign: CampaignApiRecord): ProjectApiRes
     projectType: "campaign",
     entity: null,
     description: null,
-    color: projectColor(),
+    color: projectColor(campaign.uuid ?? campaign.io_number ?? campaign.campaign_name),
     createdById: null,
     region: null,
     submitDate: null,
@@ -133,7 +154,7 @@ export function mapCampaignToProject(campaign: CampaignApiRecord): ProjectApiRes
       ? {
           id: brandId,
           name: text(campaign.brand.brand_name),
-          color: projectColor(),
+          color: projectColor(`brand:${brandId}`),
         }
       : undefined,
     company: campaign.company,
@@ -170,7 +191,7 @@ export function mapPitchToProject(pitch: PitchApiRecord): ProjectApiResponse {
     projectType: "pitch",
     entity: null,
     description: null,
-    color: projectColor(),
+    color: projectColor(pitch.uuid ?? pitch.pitch_number ?? pitch.pitch_name),
     createdById: pitch.author?.uuid ?? null,
     region: nullableText(pitch.region),
     submitDate: nullableText(pitch.date_submit),
@@ -181,7 +202,7 @@ export function mapPitchToProject(pitch: PitchApiRecord): ProjectApiResponse {
       ? {
           id: brandId,
           name: text(pitch.brand.brand_name),
-          color: projectColor(),
+          color: projectColor(`brand:${brandId}`),
         }
       : undefined,
     company: null,
@@ -194,7 +215,7 @@ export function mapCampaignToProjectSummary(campaign: CampaignApiRecord): Projec
     id: text(campaign.uuid),
     name: text(campaign.campaign_name),
     brandId: nullableText(campaign.brand_id),
-    color: projectColor(),
+    color: projectColor(campaign.uuid ?? campaign.io_number ?? campaign.campaign_name),
     status: campaignStatus(campaign.flag),
     projectType: "campaign",
   };
@@ -205,7 +226,7 @@ export function mapPitchToProjectSummary(pitch: PitchApiRecord): ProjectOption {
     id: text(pitch.uuid),
     name: text(pitch.pitch_name),
     brandId: nullableText(pitch.brand_id),
-    color: projectColor(),
+    color: projectColor(pitch.uuid ?? pitch.pitch_number ?? pitch.pitch_name),
     status: pitchProjectStatus(pitch.status),
     projectType: "pitch",
   };

@@ -11,6 +11,7 @@ import type {
   MySqlPitch,
   MySqlEmployee,
   MySqlAssignment,
+  MySqlProjectDeliverable,
   MySqlCreateAssignmentRequest,
   MySqlUpdateAssignmentRequest,
   MySqlQueryParams,
@@ -369,6 +370,16 @@ class MySqlApiClient {
    */
   getDeliverables(params?: MySqlQueryParams): Promise<MySqlApiResponse<any>> {
     return this.request<any>('/deliverables', params);
+  }
+
+  /**
+   * Get deliverables for a single campaign or pitch
+   */
+  getProjectDeliverables(
+    type: "campaigns" | "pitches",
+    id: string,
+  ): Promise<MySqlApiResponse<MySqlProjectDeliverable[]>> {
+    return this.request<MySqlProjectDeliverable[]>(`/${type}/${id}/deliverables`);
   }
 
   /**

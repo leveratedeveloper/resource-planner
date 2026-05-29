@@ -4,6 +4,7 @@ import {
   mapCampaignToProjectSummary,
   mapPitchToProject,
   mapPitchToProjectSummary,
+  projectColor,
 } from "@/lib/projects/project-mappers";
 
 describe("project mappers", () => {
@@ -108,5 +109,18 @@ describe("project mappers", () => {
       projectType: "pitch",
     });
     expect(summary).not.toHaveProperty("channels");
+  });
+
+  it("returns stable project colors for the same campaign seed", () => {
+    const first = mapCampaignToProject(campaign);
+    const second = mapCampaignToProject(campaign);
+    expect(first.color).toBe(second.color);
+    expect(first.brand?.color).toBe(second.brand?.color);
+  });
+
+  it("returns different colors for different campaign ids", () => {
+    const first = projectColor("campaign-1");
+    const second = projectColor("campaign-2");
+    expect(first).not.toBe(second);
   });
 });

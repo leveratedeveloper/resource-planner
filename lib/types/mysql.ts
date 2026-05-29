@@ -127,6 +127,21 @@ export interface MySqlPitch {
   }>;
 }
 
+export interface MySqlProjectDeliverableChannel {
+  id: number | string;
+  channel_name: string | null;
+  channel_name_new: string | null;
+}
+
+export interface MySqlProjectDeliverable {
+  id: number | string;
+  channel_id: number | string | null;
+  deliverable_name: string | null;
+  deliverable_name_new: string | null;
+  flag: string | null;
+  channel?: MySqlProjectDeliverableChannel | null;
+}
+
 // ============ EMPLOYEE ENTITY ============
 
 export interface MySqlEmployee {

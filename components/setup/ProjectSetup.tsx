@@ -4,9 +4,9 @@ import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { startOfMonth, endOfMonth, startOfDay, format, isSameMonth, eachMonthOfInterval } from "date-fns";
+import { startOfDay, format } from "date-fns";
 import { type DateRange } from "react-day-picker";
-import { useProjects, useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
+import { useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
@@ -47,6 +47,9 @@ import { cn } from "@/lib/utils";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { AssignEmployeesDialog } from "@/components/projects/AssignEmployeesDialog";
 import { useAuth } from "@/context/AuthContext";
+import { buildEmployeeAssignmentMap, buildProjectTeamMembers } from "@/components/setup/project-setup/team-members";
+import { getUnsavedDeliverableChanges } from "@/components/setup/project-setup/deliverable-selection";
+import { getProjectDetailState } from "@/components/setup/project-setup/project-detail-state";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -60,25 +63,6 @@ const CURRENCIES = [
   { code: "GBP", symbol: "£", name: "British Pound" },
   { code: "SGD", symbol: "S$", name: "Singapore Dollar" },
 ];
-
-// Generate project number from project name
-const generateProjectNumber = (projectName: string, existingNumbers: string[] = []): string => {
-  if (!projectName) return "";
-
-  const year = new Date().getFullYear();
-
-  // Get all project numbers for current year
-  const yearPrefix = `PROJ-${year}-`;
-  const currentYearNumbers = existingNumbers
-    .filter((num) => num.startsWith(yearPrefix))
-    .map((num) => parseInt(num.replace(yearPrefix, ""), 10))
-    .filter((num) => !isNaN(num));
-
-  // Find next available number
-  const nextNumber = currentYearNumbers.length > 0 ? Math.max(...currentYearNumbers) + 1 : 1;
-
-  return `${yearPrefix}${String(nextNumber).padStart(4, "0")}`;
-};
 
 export const ProjectSetup = () => {
   const { session } = useAuth();
@@ -132,25 +116,7 @@ export const ProjectSetup = () => {
   const deleteAssignment = useDeleteAssignment();
 
   const employeeMap = useMemo(() => {
-    const map = new Map<string, { fullName: string; position: string; department: { name: string } | null; allAssignments: any[] }>();
-    for (const emp of employees) {
-      map.set(emp.id, {
-        fullName: emp.fullName,
-        position: emp.position,
-        department: emp.department ?? null,
-        allAssignments: [],
-      });
-    }
-
-    // Populate allAssignments
-    for (const assignment of allAssignments) {
-      const empData = map.get(assignment.employeeId);
-      if (empData) {
-        empData.allAssignments.push(assignment);
-      }
-    }
-
-    return map;
+    return buildEmployeeAssignmentMap(employees, allAssignments);
   }, [employees, allAssignments]);
 
 
@@ -209,126 +175,22 @@ export const ProjectSetup = () => {
   }, [allDeliverables, projectChannels]);
 
   const teamMembers = useMemo(() => {
-    // Find which employees are assigned to this project
-    const employeeIdsInProject = new Set<string>();
-
-    // Add existing assignments from database
-    for (const a of projectAssignments) {
-      if (a.employeeId) employeeIdsInProject.add(a.employeeId);
-    }
-
-    // Add pending assignments
-    for (const p of pendingAssignments) {
-      employeeIdsInProject.add(p.employeeId);
-    }
-
-    return Array.from(employeeIdsInProject).map((employeeId) => {
-      const emp = employeeMap.get(employeeId);
-      const allAssignments = emp?.allAssignments || [];
-
-      // Calculate monthly percentages
-      const monthlyPcts: Record<string, number> = {};
-
-      for (const assignment of allAssignments) {
-        if (assignment.isTimeOff) continue;
-        const assignStart = startOfDay(new Date(assignment.startDate));
-        const assignEnd = startOfDay(new Date(assignment.endDate));
-        const hoursPerDay = parseFloat(assignment.hoursPerDay) || 0;
-
-        let currentDay = new Date(assignStart);
-        while (currentDay <= assignEnd) {
-          const dayOfWeek = currentDay.getDay();
-          // sum hours only on weekdays
-          if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-            const monthKey = format(currentDay, "MMM yyyy");
-            if (!monthlyPcts[monthKey]) monthlyPcts[monthKey] = 0;
-            monthlyPcts[monthKey] += hoursPerDay;
-          }
-          currentDay = new Date(currentDay);
-          currentDay.setDate(currentDay.getDate() + 1);
-        }
-      }
-
-      // Convert monthly hours to percentage
-      const isInDateRange = (monthKey: string) => {
-        if (!dateRange?.from || !dateRange?.to) return true;
-        const monthDate = startOfMonth(new Date(monthKey));
-        const rangeStart = startOfMonth(dateRange.from);
-        const rangeEnd = startOfMonth(dateRange.to);
-        return monthDate >= rangeStart && monthDate <= rangeEnd;
-      };
-
-      const hasDateRange = dateRange?.from && dateRange?.to;
-      const isSingleMonth = hasDateRange && isSameMonth(dateRange.from!, dateRange.to!);
-
-      const monthlyPercentages = Object.entries(monthlyPcts)
-        .filter(([monthKey]) => isInDateRange(monthKey))
-        .map(([monthKey, totalHours]) => {
-          const monthDate = new Date(monthKey); // e.g. "Apr 2026"
-          const mStart = startOfMonth(monthDate);
-          const mEnd = endOfMonth(mStart);
-
-          let workDays = 0;
-          let currentDay = new Date(mStart);
-          while (currentDay <= mEnd) {
-            const dayOfWeek = currentDay.getDay();
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) workDays++;
-            currentDay.setDate(currentDay.getDate() + 1);
-          }
-
-          const maxHours = workDays * 8;
-          const pct = maxHours > 0 ? (totalHours / maxHours) * 100 : 0;
-
-          return `${format(monthDate, "MMM")}: ${Math.round(pct)}%`;
-        });
-
-      // If no monthly percentages but date range is selected, show 0% for each month
-      let finalMonthlyPercentages = monthlyPercentages;
-      if (monthlyPercentages.length === 0 && dateRange?.from && dateRange?.to) {
-        const monthsInRange = eachMonthOfInterval({
-          start: startOfMonth(dateRange.from),
-          end: startOfMonth(dateRange.to),
-        });
-        finalMonthlyPercentages = monthsInRange.map(m => `${format(m, "MMM")}: 0%`);
-      }
-
-      return {
-        id: employeeId,
-        fullName: emp?.fullName ?? "Unknown",
-        position: emp?.position ?? "",
-        department: emp?.department ?? null,
-        allocationPercentage: finalMonthlyPercentages.length > 0 ? finalMonthlyPercentages : "-",
-      };
+    return buildProjectTeamMembers({
+      employeeMap,
+      projectAssignments,
+      pendingAssignments,
+      dateRange,
     });
   }, [projectAssignments, pendingAssignments, employeeMap, dateRange]);
 
   // Detect unsaved deliverable changes for existing team members
   const unsavedDeliverableChanges = useMemo(() => {
-    const changes: Array<{ employeeId: string; deliverableIds: string[] }> = [];
-
-    // Check for deliverable changes in existing assignments
-    for (const member of teamMembers) {
-      const currentDeliverables = selectedDeliverablesByEmployee[member.id] || [];
-      const isPending = pendingAssignments.some(p => p.employeeId === member.id);
-
-      // Only track existing team members (not pending)
-      if (!isPending) {
-        const currentDeliverables = selectedDeliverablesByEmployee[member.id] || [];
-        const initialDeliverables = initialDeliverablesByEmployee[member.id] || [];
-
-        // Compare arrays
-        const isSame = currentDeliverables.length === initialDeliverables.length &&
-          currentDeliverables.every(id => initialDeliverables.includes(id)) &&
-          initialDeliverables.every(id => currentDeliverables.includes(id));
-
-        // If deliverables are changed from initial (including removal)
-        if (!isSame) {
-          changes.push({ employeeId: member.id, deliverableIds: currentDeliverables });
-        }
-      }
-    }
-
-    return changes;
+    return getUnsavedDeliverableChanges({
+      teamMembers,
+      selectedDeliverablesByEmployee,
+      pendingAssignments,
+      initialDeliverablesByEmployee,
+    });
   }, [teamMembers, selectedDeliverablesByEmployee, pendingAssignments, initialDeliverablesByEmployee]);
 
   // Check if date range has changed from initial
@@ -368,31 +230,32 @@ export const ProjectSetup = () => {
   };
 
   const handleOpenView = (project: Project) => {
+    const detailState = getProjectDetailState(project);
     setViewingProject(project);
-    setProjectType(project.projectType);
-    setName(project.name);
-    setProjectNumber(project.projectNumber || "");
-    setBrandId(project.brandId);
-    setBusinessUnitId(project.businessUnitId || "");
-    setProjectCategoryId(project.projectCategoryId || "");
-    setColor(project.color);
-    setStatus(project.status);
-    setCurrency(project.currency);
-    setBudget(project.budget || "");
-    setAsf(project.asf || "");
-    setGrandTotal(project.grandTotal || "");
-    setQuotationReference(project.quotationReference || "");
-    setIoFile(project.ioFile || "");
-    setStartDate(project.startDate || "");
-    setEndDate(project.endDate || "");
-    setDescription(project.description || "");
-    setNotes(project.notes || "");
-    setFlag(project.flag || "");
-    setRegion(project.region || "Indonesia");
-    setSubmitDate(project.submitDate || "");
-    setPitchStatus(project.pitchStatus || "introduction");
-    setValueTotalEstimate(project.valueTotalEstimate || "");
-    setHsDealId(project.hsDealId || "");
+    setProjectType(detailState.projectType);
+    setName(detailState.name);
+    setProjectNumber(detailState.projectNumber);
+    setBrandId(detailState.brandId);
+    setBusinessUnitId(detailState.businessUnitId);
+    setProjectCategoryId(detailState.projectCategoryId);
+    setColor(detailState.color);
+    setStatus(detailState.status);
+    setCurrency(detailState.currency);
+    setBudget(detailState.budget);
+    setAsf(detailState.asf);
+    setGrandTotal(detailState.grandTotal);
+    setQuotationReference(detailState.quotationReference);
+    setIoFile(detailState.ioFile);
+    setStartDate(detailState.startDate);
+    setEndDate(detailState.endDate);
+    setDescription(detailState.description);
+    setNotes(detailState.notes);
+    setFlag(detailState.flag);
+    setRegion(detailState.region);
+    setSubmitDate(detailState.submitDate);
+    setPitchStatus(detailState.pitchStatus);
+    setValueTotalEstimate(detailState.valueTotalEstimate);
+    setHsDealId(detailState.hsDealId);
     const channelsData = (project as any).channels || project.projectChannels || [];
     setProjectChannels(channelsData.map((pc: any) => ({
       channelId: pc.channelId || pc.channel_id || "",

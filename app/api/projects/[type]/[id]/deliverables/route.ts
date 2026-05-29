@@ -1,35 +1,39 @@
 import { NextResponse } from "next/server";
 import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
+import type { MySqlProjectDeliverable } from "@/lib/types/mysql";
+
+type RouteParams = { type: string; id: string };
+type ProjectType = "campaigns" | "pitches";
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ type: string; id: string }> }
+  { params }: { params: Promise<RouteParams> }
 ) {
   try {
-    // Get session and check authentication
     const session = await getSession();
     if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const { type, id } = await params;
+    if (!isProjectType(type)) {
       return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
+        { success: false, error: "Unsupported project type", data: [] },
+        { status: 400 }
       );
     }
 
-    // Await params (Next.js 15 requirement)
-    const { type, id } = await params;
-
-    // Get API client with session token
     const client = getMySqlApiClient(async () => session.access_token);
+    const response = await client.getProjectDeliverables(type, id);
 
-    // Call MySQL API endpoint for project deliverables
-    const response = await client.request<any>(`/${type}/${id}/deliverables`);
-
-    console.log('[Project Deliverables API] Raw MySQL response:', JSON.stringify(response, null, 2));
-
-    // Check for API errors from the client
     if (response.error) {
-      console.error('[Project Deliverables API] MySQL API returned an error:', response.error);
+      console.error("[Project Deliverables API] Upstream API error", {
+        projectType: type,
+        projectId: id,
+        status: response.status,
+        errorType: response.error.type,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -41,22 +45,22 @@ export async function GET(
       );
     }
 
-    // Handle double-wrapped response: response.data.data instead of response.data
-    let actualData = response?.data?.data || response?.data || [];
+    const actualData = unwrapDeliverables(response.data);
 
-    // Transform MySQL response to match expected format
     return NextResponse.json({
       success: response.success ?? true,
-      data: actualData.map((del: any) => ({
+      data: actualData.map((del) => ({
         id: String(del.id),
         channelId: del.channel_id ? String(del.channel_id) : null,
         deliverableName: del.deliverable_name,
-        deliverableNameNew: del.deliverable_name_new || null,
-        flag: del.flag || 'active',
-        channel: del.channel ? {
+        deliverableNameNew: del.deliverable_name_new ?? null,
+        flag: del.flag ?? "active",
+        channel: del.channel
+          ? {
           id: String(del.channel.id),
           channelName: del.channel.channel_name_new || del.channel.channel_name,
-        } : null,
+            }
+          : null,
       })),
     });
   } catch (error) {
@@ -70,4 +74,21 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+function isProjectType(type: string): type is ProjectType {
+  return type === "campaigns" || type === "pitches";
+}
+
+function unwrapDeliverables(data: unknown): MySqlProjectDeliverable[] {
+  if (Array.isArray(data)) return data as MySqlProjectDeliverable[];
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "data" in data &&
+    Array.isArray((data as { data: unknown }).data)
+  ) {
+    return (data as { data: MySqlProjectDeliverable[] }).data;
+  }
+  return [];
 }
