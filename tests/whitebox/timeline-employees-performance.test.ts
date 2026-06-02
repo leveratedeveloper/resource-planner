@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
@@ -378,5 +379,52 @@ describe("timeline employee loading helpers", () => {
       "employee-b",
       "employee-c",
     ]);
+  });
+
+  it("keeps all visible assignments available after a project resource filter chooses employees", () => {
+    const employees = [
+      makeEmployee("employee-1", { fullName: "Alpha Person" }),
+      makeEmployee("employee-2", { fullName: "Beta Person" }),
+    ];
+
+    const dateFilteredAssignments = [
+      makeAssignment({ id: "selected-project", employeeId: "employee-1", projectId: "project-1" }),
+      makeAssignment({ id: "other-project-same-employee", employeeId: "employee-1", projectId: "project-2" }),
+      makeAssignment({ id: "other-employee", employeeId: "employee-2", projectId: "project-2" }),
+    ];
+
+    const visible = filterTimelineEmployees({
+      employees,
+      dateFilteredAssignments,
+      visibleActualAssignments: [],
+      projectById: new Map(),
+      filters: {
+        brandId: null,
+        department: null,
+        projectId: "project-1",
+        searchQuery: "",
+      },
+    });
+
+    const assignmentsByVisibleEmployee = new Map(
+      visible.map((employee) => [
+        employee.id,
+        dateFilteredAssignments.filter((assignment) => assignment.employeeId === employee.id),
+      ])
+    );
+
+    expect(visible.map((employee) => employee.id)).toEqual(["employee-1"]);
+    expect(assignmentsByVisibleEmployee.get("employee-1")?.map((assignment) => assignment.id)).toEqual([
+      "selected-project",
+      "other-project-same-employee",
+    ]);
+  });
+
+  it("delegates brand and project resource matching to the unified timeline scope filter module", () => {
+    const source = readFileSync("lib/timeline/employees.ts", "utf8");
+
+    expect(source).toContain("getMatchingTimelineEmployeeIds");
+    expect(source).not.toContain("function getBrandEmployeeIds");
+    expect(source).not.toContain("const projectEmployeeIds = new Set<string>()");
   });
 });
