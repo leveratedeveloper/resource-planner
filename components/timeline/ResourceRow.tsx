@@ -1527,7 +1527,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                           )}
                           style={{ width: resourceColumnWidth, height: PROJECT_ROW_HEIGHT }}
                         >
-                        <div className="flex items-center gap-2 w-4/6">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
 	                          <div className="w-3 h-3 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: project.color }}>
 	                            <Icon icon="lucide:folder" className="h-2.5 w-2.5 text-white" />
 	                          </div>
@@ -1538,9 +1538,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                             <div className="text-[10px] text-muted-foreground truncate">{brand?.name}</div>
                           </div>
                         </div>
-	                        {/* <div className="flex flex-col justify-center gap-2 text-[10px] font-semibold w-2/5">
-                          <span className="text-blue-600">PLAN</span>
-                        </div> */}
                       </div>
 
                       {/* Timeline Content Container */}
