@@ -24,8 +24,6 @@ type HomePlannerFilters = {
   department: string | null;
   searchQuery: string;
   projectId: string | null;
-  category: string | null;
-  status: string | null;
 };
 
 const HomePlannerContext = createContext<HomePlannerFilters | null>(null);
@@ -61,8 +59,6 @@ export function HomePlannerTimeline({
       department={filters.department}
       searchQuery={filters.searchQuery}
       projectId={filters.projectId}
-      category={filters.category}
-      status={filters.status}
     />
   );
 }
@@ -78,8 +74,6 @@ export function HomeClient({
   const [isSetupOpen, setIsSetupOpen] = useState(false);
 
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
   useEffect(() => {
     console.info("[Timing]", {
@@ -95,17 +89,8 @@ export function HomeClient({
       department: selectedDepartment,
       searchQuery: debouncedSearch,
       projectId: filterProjectId,
-      category: filterCategory,
-      status: filterStatus,
     }),
-    [
-      debouncedSearch,
-      filterCategory,
-      filterProjectId,
-      filterStatus,
-      selectedBrandId,
-      selectedDepartment,
-    ]
+    [debouncedSearch, filterProjectId, selectedBrandId, selectedDepartment]
   );
 
   return (
@@ -121,10 +106,6 @@ export function HomeClient({
           onOpenSetup={() => setIsSetupOpen(true)}
           projectId={filterProjectId}
           onProjectChange={setFilterProjectId}
-          category={filterCategory}
-          onCategoryChange={setFilterCategory}
-          status={filterStatus}
-          onStatusChange={setFilterStatus}
         />
 
         <main className="flex-1 overflow-hidden">

@@ -25,8 +25,6 @@ type TimelineRowStateResetInput = {
   brandId: string | null;
   department: string | null;
   projectId: string | null;
-  category: string | null;
-  status: string | null;
   searchQuery?: string;
 };
 
@@ -39,16 +37,12 @@ export function getTimelineRowStateResetKey({
   brandId,
   department,
   projectId,
-  category,
-  status,
   searchQuery,
 }: TimelineRowStateResetInput): string {
   return [
     `brand=${filterValue(brandId)}`,
     `department=${filterValue(department)}`,
     `project=${filterValue(projectId)}`,
-    `category=${filterValue(category)}`,
-    `status=${filterValue(status)}`,
     `search=${filterValue(searchQuery)}`,
   ].join("|");
 }

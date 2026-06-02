@@ -103,15 +103,17 @@ describe("planner timeline loading contract", () => {
     expect(plannerPrefetchSource).toContain("assignment.status !== request.filters.status");
   });
 
-  it("keeps projectId out of the planner request because project is a resource filter", () => {
+  it("keeps brand and project ids out of the planner request because they are resource filters", () => {
     const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
     const routeSource = readFileSync("app/api/planner/timeline/route.ts", "utf8");
 
     expect(timelineSource).not.toContain("filters: {\n        projectId,");
-    expect(timelineSource).toContain("filters: {\n        category,\n        status,");
+    expect(timelineSource).not.toContain("filters: {\n        brandId,");
     expect(timelineSource).toContain("selectedProjectId={projectId}");
-    expect(timelineSource).toContain("projectId,\n      searchQuery,");
+    expect(timelineSource).toContain("brandId={brandId}");
+    expect(timelineSource).toContain("filterTimelineEmployees");
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("projectId")');
+    expect(routeSource).not.toContain('request.nextUrl.searchParams.get("brandId")');
   });
 
   it("does not use brandId as a destructive planner assignment payload filter", () => {

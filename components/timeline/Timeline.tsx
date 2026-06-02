@@ -51,8 +51,6 @@ interface TimelineProps {
   department: string | null;
   searchQuery?: string;
   projectId: string | null;
-  category: string | null;
-  status: string | null;
 }
 
 const EMPTY_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["assignments"]> = [];
@@ -72,8 +70,6 @@ export const Timeline: React.FC<TimelineProps> = ({
   department,
   searchQuery,
   projectId,
-  category,
-  status,
 }) => {
   // Fetch data using React Query (assignments fetched after date range is calculated)
   const useCompleteEmployeeList = shouldUseCompleteEmployeeList({ brandId, department, projectId, searchQuery });
@@ -263,12 +259,8 @@ export const Timeline: React.FC<TimelineProps> = ({
       resolution: getTimelineResolution(viewMode),
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
-      filters: {
-        category,
-        status,
-      },
     };
-  }, [assignmentDateRange, category, status, viewMode]);
+  }, [assignmentDateRange, viewMode]);
 
   const {
     data: plannerTimeline,
@@ -344,11 +336,9 @@ export const Timeline: React.FC<TimelineProps> = ({
         brandId,
         department,
         projectId,
-        category,
-        status,
         searchQuery,
       }),
-    [brandId, category, department, projectId, searchQuery, status]
+    [brandId, department, projectId, searchQuery]
   );
   const previousRowStateResetKeyRef = useRef(rowStateResetKey);
 

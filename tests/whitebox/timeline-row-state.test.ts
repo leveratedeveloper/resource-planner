@@ -23,12 +23,10 @@ describe("timeline row state helpers", () => {
       brandId: "brand-1",
       department: null,
       projectId: "project-garuda",
-      category: null,
-      status: "confirmed",
       searchQuery: "  Designer  ",
     });
 
-    expect(key).toBe("brand=brand-1|department=all|project=project-garuda|category=all|status=confirmed|search=designer");
+    expect(key).toBe("brand=brand-1|department=all|project=project-garuda|search=designer");
   });
 
   it("changes the row state reset key when project filters change", () => {
@@ -36,16 +34,12 @@ describe("timeline row state helpers", () => {
       brandId: null,
       department: null,
       projectId: null,
-      category: null,
-      status: null,
       searchQuery: "",
     });
     const filtered = getTimelineRowStateResetKey({
       brandId: null,
       department: null,
       projectId: "project-garuda",
-      category: null,
-      status: null,
       searchQuery: "",
     });
 
