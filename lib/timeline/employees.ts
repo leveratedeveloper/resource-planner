@@ -1,6 +1,5 @@
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
@@ -22,11 +21,10 @@ type TimelineEmployeeFilters = {
 
 export type TimelineEmployeeFilterInput = {
   employees: Employee[];
-  brands: Brand[];
-  allAssignments: Assignment[];
   dateFilteredAssignments: Assignment[];
   visibleActualAssignments: ActualAssignment[];
   projectById: Map<string, ProjectOption>;
+  selectedBrandProjectIds?: Set<string>;
   filters: TimelineEmployeeFilters;
 };
 
@@ -52,57 +50,36 @@ export function sortEmployeeRecordsByName<T extends EmployeeNameRecord>(employee
 
 function getBrandEmployeeIds({
   brandId,
-  brands,
-  allAssignments,
-  projectById,
-}: {
-  brandId: string;
-  brands: Brand[];
-  allAssignments: Assignment[];
-  projectById: Map<string, ProjectOption>;
-}) {
-  const brand = brands.find((item) => item.id === brandId);
-  const memberIds = new Set(
-    brand?.employeeBrandAssignments?.map((assignment) => assignment.employeeId) ?? []
-  );
-  const assignmentIds = new Set(
-    allAssignments
-      .filter((assignment) => {
-        if (assignment.project?.brand?.id === brandId) return true;
-        return assignment.projectId
-          ? projectById.get(assignment.projectId)?.brandId === brandId
-          : false;
-      })
-      .map((assignment) => assignment.employeeId)
-  );
-
-  return {
-    memberIds,
-    assignmentIds,
-    hasEmployeeBrandData: memberIds.size > 0,
-    hasAssignmentData: assignmentIds.size > 0,
-  };
-}
-
-function getProjectEmployeeIds({
-  projectId,
   dateFilteredAssignments,
   visibleActualAssignments,
+  projectById,
+  selectedBrandProjectIds,
 }: {
-  projectId: string;
+  brandId: string;
   dateFilteredAssignments: Assignment[];
   visibleActualAssignments: ActualAssignment[];
+  projectById: Map<string, ProjectOption>;
+  selectedBrandProjectIds?: Set<string>;
 }) {
   const employeeIds = new Set<string>();
 
   for (const assignment of dateFilteredAssignments) {
-    if (assignment.projectId === projectId) {
+    if (assignment.isTimeOff || !assignment.projectId) continue;
+
+    const projectBrandId =
+      assignment.project?.brand?.id ?? projectById.get(assignment.projectId)?.brandId;
+
+    if (projectBrandId === brandId || selectedBrandProjectIds?.has(assignment.projectId)) {
       employeeIds.add(assignment.employeeId);
     }
   }
 
   for (const assignment of visibleActualAssignments) {
-    if (assignment.projectUuid === projectId) {
+    if (assignment.isTimeOff || !assignment.projectUuid) continue;
+
+    const projectBrandId = projectById.get(assignment.projectUuid)?.brandId;
+
+    if (projectBrandId === brandId || selectedBrandProjectIds?.has(assignment.projectUuid)) {
       employeeIds.add(assignment.employeeUuid);
     }
   }
@@ -128,39 +105,24 @@ function matchesSearch(employee: Employee, query: string): boolean {
 
 export function filterTimelineEmployees({
   employees,
-  brands,
-  allAssignments,
   dateFilteredAssignments,
   visibleActualAssignments,
   projectById,
+  selectedBrandProjectIds,
   filters,
 }: TimelineEmployeeFilterInput): Employee[] {
   let filtered = employees;
 
   if (filters.brandId) {
-    const {
-      memberIds,
-      assignmentIds,
-      hasEmployeeBrandData,
-      hasAssignmentData,
-    } = getBrandEmployeeIds({
+    const brandEmployeeIds = getBrandEmployeeIds({
       brandId: filters.brandId,
-      brands,
-      allAssignments,
+      dateFilteredAssignments,
+      visibleActualAssignments,
       projectById,
+      selectedBrandProjectIds,
     });
 
-    filtered = filtered.filter((employee) => {
-      if (hasEmployeeBrandData) {
-        return memberIds.has(employee.id) || assignmentIds.has(employee.id);
-      }
-
-      if (hasAssignmentData) {
-        return assignmentIds.has(employee.id);
-      }
-
-      return false;
-    });
+    filtered = filtered.filter((employee) => brandEmployeeIds.has(employee.id));
   }
 
   if (filters.department) {
@@ -168,11 +130,19 @@ export function filterTimelineEmployees({
   }
 
   if (filters.projectId) {
-    const projectEmployeeIds = getProjectEmployeeIds({
-      projectId: filters.projectId,
-      dateFilteredAssignments,
-      visibleActualAssignments,
-    });
+    const projectEmployeeIds = new Set<string>();
+
+    for (const assignment of dateFilteredAssignments) {
+      if (assignment.projectId === filters.projectId) {
+        projectEmployeeIds.add(assignment.employeeId);
+      }
+    }
+
+    for (const assignment of visibleActualAssignments) {
+      if (assignment.projectUuid === filters.projectId) {
+        projectEmployeeIds.add(assignment.employeeUuid);
+      }
+    }
 
     filtered = filtered.filter((employee) => projectEmployeeIds.has(employee.id));
   }

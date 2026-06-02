@@ -16,6 +16,11 @@ export type DeliverableGroup = {
   projects: DeliverableProjectRow[];
 };
 
+export type ProjectHighlightFilters = {
+  selectedProjectId: string | null;
+  selectedBrandId: string | null;
+};
+
 export function getResourceProjects(
   resourceAssignments: Assignment[],
   actualAssignments: ActualAssignment[],
@@ -38,21 +43,51 @@ export function getResourceProjects(
   return projects.filter((project) => projectIds.has(project.id));
 }
 
+export function isProjectHighlighted(
+  project: ProjectOption,
+  filters: ProjectHighlightFilters
+): boolean {
+  if (filters.selectedProjectId && project.id === filters.selectedProjectId) {
+    return true;
+  }
+
+  if (filters.selectedBrandId && project.brandId === filters.selectedBrandId) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isDeliverableGroupHighlighted(
+  group: DeliverableGroup,
+  filters: ProjectHighlightFilters
+): boolean {
+  return group.projects.some((row) => isProjectHighlighted(row.project, filters));
+}
+
 export function sortResourceProjects({
   projects,
   resourceAssignments,
   brandId,
+  selectedProjectId,
   days,
 }: {
   projects: ProjectOption[];
   resourceAssignments: Assignment[];
   brandId: string | null;
+  selectedProjectId?: string | null;
   days: Date[];
 }): ProjectOption[] {
   const timelineStart = days[0] ? startOfDay(days[0]) : null;
   const timelineEnd = days[days.length - 1] ? startOfDay(days[days.length - 1]) : null;
 
   return [...projects].sort((a, b) => {
+    if (selectedProjectId) {
+      const aProjectMatch = a.id === selectedProjectId;
+      const bProjectMatch = b.id === selectedProjectId;
+      if (aProjectMatch !== bProjectMatch) return aProjectMatch ? -1 : 1;
+    }
+
     if (brandId) {
       const aBrandMatch = a.brandId === brandId;
       const bBrandMatch = b.brandId === brandId;

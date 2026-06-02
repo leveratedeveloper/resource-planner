@@ -141,9 +141,6 @@ function filterPlannerAssignments(
   request: PlannerTimelineRequest
 ): Assignment[] {
   return assignments.filter((assignment) => {
-    if (request.filters?.projectId && assignment.projectId !== request.filters.projectId) {
-      return false;
-    }
     if (request.filters?.category && assignment.category !== request.filters.category) {
       return false;
     }
@@ -159,9 +156,6 @@ function filterPlannerActualAssignments(
   request: PlannerTimelineRequest
 ): ActualAssignment[] {
   return actualAssignments.filter((assignment) => {
-    if (request.filters?.projectId && assignment.projectUuid !== request.filters.projectId) {
-      return false;
-    }
     if (request.filters?.category && assignment.category !== request.filters.category) {
       return false;
     }

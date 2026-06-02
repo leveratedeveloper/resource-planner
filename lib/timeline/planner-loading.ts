@@ -15,7 +15,6 @@ export type TimelineViewMode = "week" | "month" | "quarter" | "halfYear" | "year
 export type PlannerTimelineResolution = "day" | "month";
 
 export type PlannerTimelineFilters = {
-  projectId?: string | null;
   category?: string | null;
   status?: string | null;
 };
@@ -48,8 +47,59 @@ export function getTimelineResolution(viewMode: TimelineViewMode): PlannerTimeli
   return viewMode === "week" || viewMode === "month" ? "day" : "month";
 }
 
+function normalizePlannerFilters(filters?: PlannerTimelineFilters): Required<PlannerTimelineFilters> {
+  return {
+    category: filters?.category ?? null,
+    status: filters?.status ?? null,
+  };
+}
+
+function getPlannerTimelineRequestIdentity(request: PlannerTimelineRequest) {
+  return {
+    viewMode: request.viewMode,
+    resolution: request.resolution,
+    startDate: request.startDate,
+    endDate: request.endDate,
+    filters: normalizePlannerFilters(request.filters),
+  };
+}
+
 export function getPlannerTimelineQueryKey(request: PlannerTimelineRequest) {
-  return [...queryKeys.plannerTimeline, request] as const;
+  return [...queryKeys.plannerTimeline, getPlannerTimelineRequestIdentity(request)] as const;
+}
+
+export function arePlannerTimelineRequestsEqual(
+  left?: PlannerTimelineRequest,
+  right?: PlannerTimelineRequest
+): boolean {
+  if (!left || !right) {
+    return false;
+  }
+
+  const leftFilters = normalizePlannerFilters(left.filters);
+  const rightFilters = normalizePlannerFilters(right.filters);
+
+  return (
+    left.viewMode === right.viewMode &&
+    left.resolution === right.resolution &&
+    left.startDate === right.startDate &&
+    left.endDate === right.endDate &&
+    leftFilters.category === rightFilters.category &&
+    leftFilters.status === rightFilters.status
+  );
+}
+
+export function getCurrentPlannerTimelineData(
+  response: PlannerTimelineResponse | undefined,
+  activeRequest: PlannerTimelineRequest | undefined
+): PlannerTimelineResponse | undefined {
+  if (!response || !activeRequest) {
+    return undefined;
+  }
+
+  return arePlannerTimelineRequestsEqual(response.request, activeRequest)
+    ? response
+    : undefined;
 }
 
 function countWeekdays(startDate: Date, endDate: Date): number {

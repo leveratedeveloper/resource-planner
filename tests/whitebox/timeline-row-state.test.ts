@@ -1,8 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  getEmployeeFilterSelection,
+  getTimelineRowStateResetKey,
   hasEmployeeFlag,
-  setEmployeeFilterSelection,
   setEmployeeFlag,
 } from "@/lib/timeline/row-state";
 
@@ -18,27 +18,48 @@ describe("timeline row state helpers", () => {
     expect(hasEmployeeFlag(collapsed, "employee-2")).toBe(true);
   });
 
-  it("persists project selections independently per employee", () => {
-    const employeeOneSelection = new Set(["project-a", "project-b"]);
-    const employeeTwoSelection = new Set(["project-c"]);
+  it("creates a stable row state reset key from global timeline filters", () => {
+    const key = getTimelineRowStateResetKey({
+      brandId: "brand-1",
+      department: null,
+      projectId: "project-garuda",
+      category: null,
+      status: "confirmed",
+      searchQuery: "  Designer  ",
+    });
 
-    const initial = setEmployeeFilterSelection(
-      new Map<string, Set<string>>(),
-      "employee-1",
-      employeeOneSelection
-    );
-    const withSecondEmployee = setEmployeeFilterSelection(
-      initial,
-      "employee-2",
-      employeeTwoSelection
-    );
+    expect(key).toBe("brand=brand-1|department=all|project=project-garuda|category=all|status=confirmed|search=designer");
+  });
 
-    expect(getEmployeeFilterSelection(withSecondEmployee, "employee-1")).toEqual(
-      employeeOneSelection
-    );
-    expect(getEmployeeFilterSelection(withSecondEmployee, "employee-2")).toEqual(
-      employeeTwoSelection
-    );
-    expect(getEmployeeFilterSelection(withSecondEmployee, "employee-missing")).toBeUndefined();
+  it("changes the row state reset key when project filters change", () => {
+    const base = getTimelineRowStateResetKey({
+      brandId: null,
+      department: null,
+      projectId: null,
+      category: null,
+      status: null,
+      searchQuery: "",
+    });
+    const filtered = getTimelineRowStateResetKey({
+      brandId: null,
+      department: null,
+      projectId: "project-garuda",
+      category: null,
+      status: null,
+      searchQuery: "",
+    });
+
+    expect(base).not.toBe(filtered);
+  });
+
+  it("resets expanded timeline row state from the global filter signature", () => {
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+
+    expect(timelineSource).toContain("rowStateResetKey");
+    expect(timelineSource).toContain("setExpandedEmployeeIds(new Set())");
+    expect(timelineSource).not.toContain("setSelectedProjectIdsByEmployee");
+    expect(timelineSource).not.toContain("setInitializedProjectFiltersByEmployee");
+    expect(timelineSource).not.toContain("setOpenProjectFilterEmployeeIds");
+    expect(timelineSource).toContain("key={`${employee.id}:${rowStateResetKey}`}");
   });
 });

@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import {
+  arePlannerTimelineRequestsEqual,
+  getCurrentPlannerTimelineData,
   getPlannerTimelineQueryKey,
   getTimelineResolution,
   shouldLoadPlannerAssignmentDetail,
@@ -47,7 +50,6 @@ describe("planner timeline loading contract", () => {
         startDate: "2026-01-01",
         endDate: "2026-12-31",
         filters: {
-          projectId: "project-1",
           category: "Development",
           status: "confirmed",
         },
@@ -60,12 +62,75 @@ describe("planner timeline loading contract", () => {
         startDate: "2026-01-01",
         endDate: "2026-12-31",
         filters: {
-          projectId: "project-1",
           category: "Development",
           status: "confirmed",
         },
       },
     ]);
+  });
+
+  it("scopes planner cache keys and request equality without presentation-only project filters", () => {
+    const baseRequest = {
+      viewMode: "month" as const,
+      resolution: "day" as const,
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+      filters: {
+        category: null,
+        status: null,
+      },
+    };
+    const requestWithProject = {
+      ...baseRequest,
+      filters: {
+        ...baseRequest.filters,
+        projectId: "project-1",
+      },
+    };
+
+    expect(getPlannerTimelineQueryKey(requestWithProject)).toEqual(
+      getPlannerTimelineQueryKey(baseRequest)
+    );
+    expect(arePlannerTimelineRequestsEqual(requestWithProject, baseRequest)).toBe(true);
+  });
+
+  it("does not use projectId as a destructive planner assignment payload filter", () => {
+    const plannerPrefetchSource = readFileSync("lib/query/server/planner-prefetch.ts", "utf8");
+
+    expect(plannerPrefetchSource).not.toContain("assignment.projectId !== request.filters.projectId");
+    expect(plannerPrefetchSource).not.toContain("assignment.projectUuid !== request.filters.projectId");
+    expect(plannerPrefetchSource).toContain("assignment.category !== request.filters.category");
+    expect(plannerPrefetchSource).toContain("assignment.status !== request.filters.status");
+  });
+
+  it("keeps projectId out of the planner request because project is a resource filter", () => {
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const routeSource = readFileSync("app/api/planner/timeline/route.ts", "utf8");
+
+    expect(timelineSource).not.toContain("filters: {\n        projectId,");
+    expect(timelineSource).toContain("filters: {\n        category,\n        status,");
+    expect(timelineSource).toContain("selectedProjectId={projectId}");
+    expect(timelineSource).toContain("projectId,\n      searchQuery,");
+    expect(routeSource).not.toContain('request.nextUrl.searchParams.get("projectId")');
+  });
+
+  it("does not use brandId as a destructive planner assignment payload filter", () => {
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+
+    expect(timelineSource).not.toContain("filters: {\n        brandId:");
+    expect(timelineSource).not.toContain("request.filters.brandId");
+    expect(timelineSource).toContain("brandId={brandId}");
+    expect(timelineSource).toContain("filterTimelineEmployees");
+  });
+
+  it("loads selected brand projects before calculating brand-filtered resources", () => {
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+
+    expect(timelineSource).toContain("useProjectsByBrand(brandId ?? \"\")");
+    expect(timelineSource).toContain("isLoadingSelectedBrandProjects");
+    expect(timelineSource).toContain("isLoadingBrandProjectLookup");
+    expect(timelineSource).toContain("selectedBrandProjectIds");
+    expect(timelineSource).toContain("isLoadingEmployees || isLoadingBrandProjectLookup");
   });
 
   it("returns one monthly render block per month for assignments crossing a boundary", () => {
@@ -128,5 +193,111 @@ describe("planner timeline loading contract", () => {
 
     expect(shouldLoadPlannerAssignmentDetail(monthlyBlock)).toBe(true);
     expect(shouldLoadPlannerAssignmentDetail(makeAssignment({ id: "raw-assignment" }))).toBe(false);
+  });
+
+  it("matches planner responses only when request identity is identical", () => {
+    const request = {
+      viewMode: "quarter" as const,
+      resolution: "month" as const,
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+      filters: {
+        category: null,
+        status: null,
+      },
+    };
+
+    expect(arePlannerTimelineRequestsEqual(request, { ...request })).toBe(true);
+    expect(
+      arePlannerTimelineRequestsEqual(request, {
+        ...request,
+        filters: {
+          category: "Design",
+          status: null,
+        },
+      })
+    ).toBe(false);
+    expect(
+      arePlannerTimelineRequestsEqual(request, {
+        ...request,
+        startDate: "2026-07-01",
+        endDate: "2026-09-30",
+      })
+    ).toBe(false);
+  });
+
+  it("rejects stale planner responses for a new active request", () => {
+    const activeRequest = {
+      viewMode: "quarter" as const,
+      resolution: "month" as const,
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+      filters: {
+        category: null,
+        status: null,
+      },
+    };
+    const staleResponse = {
+      request: {
+        ...activeRequest,
+        filters: {
+          category: "Design",
+          status: null,
+        },
+      },
+      assignments: [],
+      actualAssignments: [],
+    };
+
+    expect(getCurrentPlannerTimelineData(staleResponse, activeRequest)).toBeUndefined();
+    expect(
+      getCurrentPlannerTimelineData({ ...staleResponse, request: activeRequest }, activeRequest)
+    ).toEqual({
+      ...staleResponse,
+      request: activeRequest,
+    });
+  });
+
+  it("keeps previous query data out of active timeline calculations", () => {
+    const hookSource = readFileSync("lib/query/hooks/usePlannerTimeline.ts", "utf8");
+
+    expect(hookSource).toContain("getCurrentPlannerTimelineData(query.data, request)");
+    expect(hookSource).toContain("data: currentData");
+    expect(hookSource).toContain("isLoadingCurrentData");
+    expect(hookSource).toContain("isShowingPreviousData");
+  });
+
+  it("shows filter application state instead of calculating from stale planner data", () => {
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+
+    expect(timelineSource).toContain("isLoadingCurrentData: isLoadingPlannerTimeline");
+    expect(timelineSource).toContain("isShowingPreviousData: isPlannerTimelineApplyingFilters");
+    expect(timelineSource).toContain("Applying filters...");
+    expect(timelineSource).toContain("<TimelineDataStatus");
+  });
+
+  it("does not render row-level project selector UI in resource rows", () => {
+    const resourceRowSource = readFileSync("components/timeline/ResourceRow.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+
+    expect(resourceRowSource).not.toContain("Select Project");
+    expect(resourceRowSource).not.toContain("Select Projects");
+    expect(resourceRowSource).not.toContain("selectedProjectIds.has");
+    expect(resourceRowSource).not.toContain("PROJECT_DISPLAY_LIMIT");
+    expect(timelineSource).not.toContain("selectedProjectIdsByEmployee");
+    expect(timelineSource).not.toContain("initializedProjectFiltersByEmployee");
+    expect(timelineSource).not.toContain("openProjectFilterEmployeeIds");
+  });
+
+  it("keeps resources visible while planner rows and expanded deliverables show loading state", () => {
+    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline/ResourceRow.tsx", "utf8");
+
+    expect(timelineSource).toContain("getResourceRowLoadingState");
+    expect(timelineSource).toContain("showTimelineLoading={rowLoadingState.showTimelineLoading}");
+    expect(timelineSource).toContain("showExpandedLoading={rowLoadingState.showExpandedLoading}");
+    expect(resourceRowSource).toContain("showTimelineLoading");
+    expect(resourceRowSource).toContain("showExpandedLoading");
+    expect(resourceRowSource).toContain("data-testid=\"expanded-deliverables-loading\"");
   });
 });

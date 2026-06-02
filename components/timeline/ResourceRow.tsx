@@ -19,6 +19,8 @@ import { getMonthlyDetailKey } from "@/lib/timeline/resource-row-model";
 import {
   getResourceProjects,
   groupProjectsByDeliverable,
+  isDeliverableGroupHighlighted,
+  isProjectHighlighted,
   sortResourceProjects,
 } from "@/lib/timeline/resource-project-model";
 import { AssignmentBlock } from "./AssignmentBlock";
@@ -35,7 +37,6 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, toLocalDateString } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
 
@@ -70,7 +71,6 @@ const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
 const TIME_OFF_ROW_HEIGHT = 32;
 const DELIVERABLE_ROW_HEIGHT = 28;
 const PROJECT_ROW_HEIGHT = 34;
-const PROJECT_FILTER_ROW_HEIGHT = 40;
 
 type AssignmentUpdateInput = Partial<
   Omit<Assignment, "startDate" | "endDate" | "createdAt" | "updatedAt">
@@ -87,6 +87,7 @@ interface ResourceRowProps {
   resource: Resource;
   days: Date[];
   brandId: string | null;
+  selectedProjectId: string | null;
   cellWidth?: number;
   resourceColumnWidth: number;
   isWeekView?: boolean;
@@ -94,17 +95,14 @@ interface ResourceRowProps {
   actualAssignments: ActualAssignment[]; // Pre-filtered actual assignments for this employee
   isExpanded: boolean;
   setIsExpanded: React.Dispatch<React.SetStateAction<boolean>>;
-  selectedProjectIds: Set<string>;
-  setSelectedProjectIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-  isProjectsInitialized: boolean;
-  setIsProjectsInitialized: React.Dispatch<React.SetStateAction<boolean>>;
-  isFilterOpen: boolean;
-  setIsFilterOpen: React.Dispatch<React.SetStateAction<boolean>>;
   viewMode?: 'week' | 'month' | 'quarter' | 'halfYear' | 'year';
   projects: ProjectOption[];
   projectById: Map<string, ProjectOption>;
   brandById: Map<string, Brand>;
   isLoadingProjects: boolean;
+  showTimelineLoading: boolean;
+  showExpandedLoading: boolean;
+  canEditAssignments: boolean;
 }
 
 // Component for weekly/monthly time off blocks in Quarter/HalfYear/Year view
@@ -240,6 +238,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   resource,
   days,
   brandId,
+  selectedProjectId,
   cellWidth = 100,
   resourceColumnWidth,
   isWeekView = false,
@@ -247,17 +246,14 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   actualAssignments,
   isExpanded,
   setIsExpanded,
-  selectedProjectIds,
-  setSelectedProjectIds,
-  isProjectsInitialized,
-  setIsProjectsInitialized,
-  isFilterOpen,
-  setIsFilterOpen,
   viewMode = 'week',
   projects,
   projectById,
   brandById,
   isLoadingProjects,
+  showTimelineLoading,
+  showExpandedLoading,
+  canEditAssignments,
 }) => {
   // Determine if this is MonthRange view (Quarter/HalfYear/Year)
   // These views show monthly columns instead of weekly columns
@@ -271,7 +267,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
   const createActualAssignment = useCreateActualAssignment();
 
-  const PROJECT_DISPLAY_LIMIT = 5;
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
   // Hover state for month columns in quarter/half-year/year views (for + indicator)
@@ -279,7 +274,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
   const [hoveredRowType, setHoveredRowType] = useState<'plan' | 'actual' | null>(null);
 
-  // State untuk fitur Select Project
   // Drag state - using refs for immediate synchronous access
   const isDraggingRef = useRef(false);
   const dragStartIndex = useRef<number | null>(null);
@@ -355,9 +349,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
         projects: resourceProjects,
         resourceAssignments,
         brandId,
+        selectedProjectId,
         days,
       }),
-    [brandId, days, resourceAssignments, resourceProjects]
+    [brandId, days, resourceAssignments, resourceProjects, selectedProjectId]
   );
 
   // New logic: Group projects by deliverables (Primary: Deliverable, Secondary: Project)
@@ -371,14 +366,13 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     [actualAssignments, resourceAssignments, sortedProjects]
   );
 
-  // Set default 5 project pertama saat data siap
-  useEffect(() => {
-    if (!isProjectsInitialized && sortedProjects.length > 0) {
-      const defaultTop5 = sortedProjects.slice(0, PROJECT_DISPLAY_LIMIT).map(p => p.id);
-      setSelectedProjectIds(new Set(defaultTop5));
-      setIsProjectsInitialized(true);
-    }
-  }, [isProjectsInitialized, setIsProjectsInitialized, setSelectedProjectIds, sortedProjects]);
+  const projectHighlightFilters = useMemo(
+    () => ({
+      selectedProjectId,
+      selectedBrandId: brandId,
+    }),
+    [brandId, selectedProjectId]
+  );
 
   // Get time-off assignments for this resource (used to block scheduling on time-off days)
   const timeOffAssignments = useMemo(() =>
@@ -704,6 +698,53 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     deleteAssignmentMutation.mutate(id);
   }, [deleteAssignmentMutation]);
 
+  const plannerEditDisabledTitle = !canEditAssignments
+    ? "Planner is updating. Editing will be available when refresh completes."
+    : undefined;
+
+  const renderTimelineLoadingCells = useCallback(
+    (height: number) => (
+      <div
+        className="flex relative"
+        style={{ width: `${days.length * cellWidth}px`, height }}
+        data-testid="timeline-loading-cells"
+      >
+        {days.map((day) => (
+          <div
+            key={day.toISOString()}
+            className="shrink-0 border-r bg-muted/20 p-2"
+            style={{ width: `${cellWidth}px`, height }}
+          >
+            <Skeleton className="h-full w-full opacity-40" />
+          </div>
+        ))}
+      </div>
+    ),
+    [cellWidth, days]
+  );
+
+  const handleGuardedUpdateAssignment = useCallback(
+    (id: string, updates: AssignmentUpdateInput) => {
+      if (!canEditAssignments) {
+        return;
+      }
+
+      handleUpdateAssignment(id, updates);
+    },
+    [canEditAssignments, handleUpdateAssignment]
+  );
+
+  const handleGuardedDeleteAssignment = useCallback(
+    (id: string) => {
+      if (!canEditAssignments) {
+        return;
+      }
+
+      handleDeleteAssignment(id);
+    },
+    [canEditAssignments, handleDeleteAssignment]
+  );
+
   // Handle save actual assignment - Struktur sama dengan assignments
   const handleSaveActualAssignment = useCallback((data: {
     startDate: string;
@@ -713,6 +754,11 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     isBillable: boolean;
     note?: string;
   }) => {
+    if (!canEditAssignments) {
+      setActualPopoverData(null);
+      return;
+    }
+
     if (!actualPopoverData) return;
 
     // Create a single actual assignment with date range (struktur sama dengan assignments)
@@ -737,7 +783,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 
     // Close popover
     setActualPopoverData(null);
-  }, [actualPopoverData, resource.id, createActualAssignment, session]);
+  }, [actualPopoverData, canEditAssignments, resource.id, createActualAssignment, session]);
 
   // Handle monthly allocation modal open (click on project row in month range view)
   const handleProjectRowClick = useCallback((
@@ -751,6 +797,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
     planTotalHours?: number, // Plan-only hours (excluding adjustments)
     adjustmentTotalHours?: number // Adjustment-only hours for this month
   ) => {
+    if (!canEditAssignments) {
+      return;
+    }
+
     // Only allow if row is expanded and in monthly range view
     if (!isExpanded || !isMonthRangeView) return;
 
@@ -836,10 +886,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
           setLoadingMonthlyPlanDetailKey(null);
         }
       });
-  }, [isExpanded, isMonthRangeView, resource.id, resourceAssignments]);
+  }, [canEditAssignments, isExpanded, isMonthRangeView, resource.id, resourceAssignments]);
 
   // Handle monthly allocation save from modal
   const handleSaveMonthlyAllocation = useCallback((data: MonthlyAllocationSaveData) => {
+    if (!canEditAssignments) {
+      setMonthlyAllocationModal(null);
+      return;
+    }
+
     const { existingAssignment } = monthlyAllocationModal || {};
     const project = projectById.get(data.projectId);
 
@@ -870,7 +925,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
       data,
       existingAssignment,
     });
-  }, [monthlyAllocationModal, projectById]);
+  }, [canEditAssignments, monthlyAllocationModal, projectById]);
 
   // Handle monthly allocation confirmation
   const handleConfirmMonthlyAllocation = useCallback(() => {
@@ -1178,21 +1233,25 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 	        </div>
 
         {/* Allocation Bar - Collapsed */}
-	        <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
-          {days.map((day) => (
-            <AllocationCell
-              key={day.toISOString()}
-              day={day}
-              resource={resource}
-              assignments={resourceAssignments}
-              actualAssignments={actualAssignments}
-              cellWidth={cellWidth}
-              height={RESOURCE_SUMMARY_ROW_HEIGHT}
-              isWeekView={isWeekView}
-              isMonthRangeView={isMonthRangeView}
-            />
-          ))}
-        </div>
+        {showTimelineLoading ? (
+          renderTimelineLoadingCells(RESOURCE_SUMMARY_ROW_HEIGHT)
+        ) : (
+          <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
+            {days.map((day) => (
+              <AllocationCell
+                key={day.toISOString()}
+                day={day}
+                resource={resource}
+                assignments={resourceAssignments}
+                actualAssignments={actualAssignments}
+                cellWidth={cellWidth}
+                height={RESOURCE_SUMMARY_ROW_HEIGHT}
+                isWeekView={isWeekView}
+                isMonthRangeView={isMonthRangeView}
+              />
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -1201,10 +1260,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
   return (
     <TooltipProvider delayDuration={200}>
       <div
-        className={cn(
-          "border-b",
-          isFilterOpen ? "relative z-50" : "relative z-0"
-        )}
+        className="relative z-0 border-b"
         data-testid="resource-row"
         data-resource-id={resource.id}
       >
@@ -1232,21 +1288,25 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 	          </div>
 
           {/* Allocation Bar - Expanded (Header) */}
-	          <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
-            {days.map((day) => (
-              <AllocationCell
-                key={day.toISOString()}
-                day={day}
-                resource={resource}
-                assignments={resourceAssignments}
-                actualAssignments={actualAssignments}
-                cellWidth={cellWidth}
-                height={RESOURCE_SUMMARY_ROW_HEIGHT}
-                isWeekView={isWeekView}
-                isMonthRangeView={isMonthRangeView}
-              />
-            ))}
-          </div>
+          {showTimelineLoading ? (
+            renderTimelineLoadingCells(RESOURCE_SUMMARY_ROW_HEIGHT)
+          ) : (
+            <div className="flex relative" style={{ width: `${days.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
+              {days.map((day) => (
+                <AllocationCell
+                  key={day.toISOString()}
+                  day={day}
+                  resource={resource}
+                  assignments={resourceAssignments}
+                  actualAssignments={actualAssignments}
+                  cellWidth={cellWidth}
+                  height={RESOURCE_SUMMARY_ROW_HEIGHT}
+                  isWeekView={isWeekView}
+                  isMonthRangeView={isMonthRangeView}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Time Off Row */}
@@ -1278,10 +1338,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                 onDragComplete={(startDay, endDay) =>
                   handleTimeOffDragComplete(startDay, endDay)
                 }
-                disabled={createAssignment.isPending}
+                disabled={createAssignment.isPending || !canEditAssignments}
                 isDragging={isDraggingRef.current && dragProjectIdRef.current === ""}
                 isInDragRange={isInDragRange(dayIndex, null)}
-                onMouseDown={(index, containerRef) => handleDragStart(index, "", "#6b7280", containerRef)}
+                onMouseDown={(index, containerRef) => {
+                  if (!canEditAssignments) {
+                    return;
+                  }
+                  handleDragStart(index, "", "#6b7280", containerRef);
+                }}
                 rowType="plan"
               />
             ))}
@@ -1308,8 +1373,9 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                   resourceRowHeight={TIME_OFF_ROW_HEIGHT}
                   cellWidth={cellWidth}
                   isWeekView={isWeekView}
-                  onUpdate={handleUpdateAssignment}
-                  onDelete={handleDeleteAssignment}
+                  onDelete={handleGuardedDeleteAssignment}
+                  onUpdate={handleGuardedUpdateAssignment}
+                  disabled={!canEditAssignments}
                   isUpdating={updatingAssignmentId === assignment.id}
                 />
               ))
@@ -1372,20 +1438,67 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
           </>
         )}
 
-        {deliverableGroups.map((group) => {
-          const visibleProjectsInGroup = group.projects.filter(row => selectedProjectIds.has(row.project.id));
-          if (visibleProjectsInGroup.length === 0) return null;
+        {showExpandedLoading ? (
+          <div data-testid="expanded-deliverables-loading">
+            {[1, 2].map((index) => (
+              <React.Fragment key={`expanded-loading-${index}`}>
+                <div className="flex border-b bg-muted/30" style={{ height: DELIVERABLE_ROW_HEIGHT }}>
+                  <div
+                    className="shrink-0 px-4 border-r sticky left-0 bg-muted/30 z-20 flex items-center gap-2 pl-12"
+                    style={{ width: resourceColumnWidth, height: DELIVERABLE_ROW_HEIGHT }}
+                  >
+                    <Skeleton className="h-3.5 w-3.5 rounded" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  {renderTimelineLoadingCells(DELIVERABLE_ROW_HEIGHT)}
+                </div>
+                <div className="flex border-b" style={{ height: PROJECT_ROW_HEIGHT }}>
+                  <div
+                    className="shrink-0 px-4 py-1.5 border-r sticky left-0 bg-background z-20 flex items-center gap-2 pl-16"
+                    style={{ width: resourceColumnWidth, height: PROJECT_ROW_HEIGHT }}
+                  >
+                    <Skeleton className="h-3 w-3 rounded" />
+                    <div className="flex flex-col gap-1">
+                      <Skeleton className="h-3 w-28" />
+                      <Skeleton className="h-2.5 w-20" />
+                    </div>
+                  </div>
+                  {renderTimelineLoadingCells(PROJECT_ROW_HEIGHT)}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        ) : deliverableGroups.map((group) => {
+          if (group.projects.length === 0) return null;
+          const isGroupHighlighted = isDeliverableGroupHighlighted(group, projectHighlightFilters);
 
           return (
             <React.Fragment key={group.name || 'general'}>
             {/* Deliverable Header Row */}
-            <div className="flex bg-gray-100/50 border-b" style={{ height: DELIVERABLE_ROW_HEIGHT }}>
+            <div
+              className={cn(
+                "flex border-b",
+                isGroupHighlighted ? "bg-amber-50/80" : "bg-gray-100/50"
+              )}
+              style={{ height: DELIVERABLE_ROW_HEIGHT }}
+            >
               <div
-                className="shrink-0 px-4 border-r sticky left-0 bg-gray-100/50 z-20 flex items-center gap-2 pl-12"
+                className={cn(
+                  "shrink-0 px-4 border-r sticky left-0 z-20 flex items-center gap-2 pl-12",
+                  isGroupHighlighted ? "bg-amber-50/90" : "bg-gray-100/50"
+                )}
                 style={{ width: resourceColumnWidth, height: DELIVERABLE_ROW_HEIGHT }}
               >
-                <Icon icon="lucide:package" className="h-3.5 w-3.5 text-blue-600" />
-                <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">
+                <Icon
+                  icon="lucide:package"
+                  className={cn("h-3.5 w-3.5", isGroupHighlighted ? "text-amber-600" : "text-blue-600")}
+                />
+                <span
+                  className={cn(
+                    "text-xs font-bold uppercase tracking-wider",
+                    isGroupHighlighted ? "text-amber-800" : "text-blue-800"
+                  )}
+                >
                   {group.name || 'GENERAL / OTHER'}
                 </span>
               </div>
@@ -1397,9 +1510,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
             </div>
 
             {/* Projects under this deliverable */}
-            {visibleProjectsInGroup.map((row) => {
+            {group.projects.map((row) => {
               const { project, planAssignments } = row;
               const brand = project.brandId ? brandById.get(project.brandId) : undefined;
+              const isHighlightedProject = isProjectHighlighted(project, projectHighlightFilters);
               return (
                 <React.Fragment key={row.id}>
                   {/* Project Row Container */}
@@ -1407,7 +1521,10 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                     {/* Sidebar - Merged for PLAN & ACTUAL */}
                     <div className="flex" data-testid="project-group" data-resource-id={resource.id} data-project-id={project.id}>
 	                      <div
-                          className="shrink-0 px-4 py-1.5 border-r sticky left-0 bg-background z-20 flex pl-16"
+                          className={cn(
+                            "shrink-0 px-4 py-1.5 border-r sticky left-0 z-20 flex pl-16",
+                            isHighlightedProject ? "bg-amber-50" : "bg-background"
+                          )}
                           style={{ width: resourceColumnWidth, height: PROJECT_ROW_HEIGHT }}
                         >
                         <div className="flex items-center gap-2 w-4/6">
@@ -1415,15 +1532,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 	                            <Icon icon="lucide:folder" className="h-2.5 w-2.5 text-white" />
 	                          </div>
                           <div className="flex flex-col justify-center min-w-0">
-	                            <div className="text-xs font-semibold truncate">
+	                            <div className={cn("text-xs font-semibold truncate", isHighlightedProject && "text-amber-900")}>
 	                              {project.name}
 	                            </div>
                             <div className="text-[10px] text-muted-foreground truncate">{brand?.name}</div>
                           </div>
                         </div>
-	                        <div className="flex flex-col justify-center gap-2 text-[10px] font-semibold w-2/5">
+	                        {/* <div className="flex flex-col justify-center gap-2 text-[10px] font-semibold w-2/5">
                           <span className="text-blue-600">PLAN</span>
-                        </div>
+                        </div> */}
                       </div>
 
                       {/* Timeline Content Container */}
@@ -1453,6 +1570,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                   onDelete={handleDeleteAssignment}
                                   timeOffAssignments={timeOffAssignments}
                                   isUpdating={updatingAssignmentId === assignment.id}
+                                  isHighlighted={isHighlightedProject}
                                   disabled={true}
                                 />
                               ))}
@@ -1477,10 +1595,15 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                   onDragComplete={(startDay, endDay) =>
                                     handleDragComplete(project.id, startDay, endDay)
                                   }
-                                  disabled={createAssignment.isPending}
+                                  disabled={createAssignment.isPending || !canEditAssignments}
                                   isDragging={isDraggingRef.current && dragProjectIdRef.current === project.id && dragRowTypeRef.current === 'plan'}
                                   isInDragRange={isInDragRange(dayIndex, 'plan')}
-                                  onMouseDown={(index, containerRef) => handleDragStart(index, project.id, project.color, containerRef, 'plan')}
+                                  onMouseDown={(index, containerRef) => {
+                                    if (!canEditAssignments) {
+                                      return;
+                                    }
+                                    handleDragStart(index, project.id, project.color, containerRef, 'plan');
+                                  }}
                                   rowType="plan"
                                 />
                               ))}
@@ -1553,17 +1676,23 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                       blocks.push(
                                         <div
                                           key={`project-${row.id}-month-${monthIndex}`}
-                                          className="absolute rounded shadow-sm border text-[10px] text-white overflow-hidden flex flex-col bg-blue-600 hover:bg-blue-700 cursor-pointer"
+                                          className={cn(
+                                            "absolute rounded shadow-sm border text-[10px] text-white overflow-hidden flex flex-col bg-blue-600 hover:bg-blue-700 cursor-pointer",
+                                            isHighlightedProject && "ring-2 ring-amber-400 border-amber-200 shadow-md"
+                                          )}
                                           style={{
                                             left: `${leftOffset}%`,
                                             width: `${width}%`,
 	                                            top: 2,
 	                                            height: PROJECT_ROW_HEIGHT - 4,
-                                            zIndex: 10,
+                                            zIndex: isHighlightedProject ? 20 : 10,
                                           }}
                                           title={`${project.name}${group.name ? ` - ${group.name}` : ''}: ${monthlyTotal}h`}
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            if (!canEditAssignments) {
+                                              return;
+                                            }
                                             const clickedDay = days[monthIndex];
                                             const ms = startOfMonth(clickedDay);
                                             const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
@@ -1602,7 +1731,7 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                     }}
                                     onMouseLeave={() => { setHoveredMonthIndex(null); setHoveredProjectId(null); setHoveredRowType(null); }}
                                     onClick={(e) => {
-                                      if (!isMonthRangeView) return;
+                                      if (!isMonthRangeView || !canEditAssignments) return;
                                       const containerRect = e.currentTarget.getBoundingClientRect();
                                       const x = e.clientX - containerRect.left;
                                       const dayIndex = Math.floor(x / cellWidth);
@@ -1611,7 +1740,8 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
                                       const monthEnd = startOfDay(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
                                       handleProjectRowClick(monthStart, monthEnd, project, e.clientX, e.clientY);
                                     }}
-                                    style={{ pointerEvents: 'auto', cursor: 'cell' }}
+                                    style={{ pointerEvents: 'auto', cursor: canEditAssignments ? 'cell' : 'not-allowed' }}
+                                    title={plannerEditDisabledTitle}
                                   />
                                   {isMonthRangeView && hoveredProjectId === project.id && hoveredRowType === 'plan' && hoveredMonthIndex !== null && (() => {
                                     const monthStart = startOfMonth(days[hoveredMonthIndex]);
@@ -1640,10 +1770,12 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
 	                                    resourceRowHeight={PROJECT_ROW_HEIGHT}
                                     cellWidth={cellWidth}
                                     isWeekView={isWeekView}
-                                    onUpdate={handleUpdateAssignment}
-                                    onDelete={handleDeleteAssignment}
+                                    onUpdate={handleGuardedUpdateAssignment}
+                                    onDelete={handleGuardedDeleteAssignment}
                                     timeOffAssignments={timeOffAssignments}
                                     isUpdating={updatingAssignmentId === assignment.id}
+                                    isHighlighted={isHighlightedProject}
+                                    disabled={!canEditAssignments}
                                   />
                                 ))
                               )}
@@ -1659,147 +1791,6 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
           </React.Fragment>
         );
       })}
-
-        {/* Project Filter Select Row */}
-        {sortedProjects.length > PROJECT_DISPLAY_LIMIT && (
-          <div className="flex bg-gray-50/30">
-	            <div
-	              className={cn(
-	                "shrink-0 px-4 py-2 border-r sticky left-0 bg-gray-50/30 flex items-center pl-12 overflow-visible",
-	                isFilterOpen ? "z-50" : "z-20" // <-- Tambahkan logika ini
-	              )}
-                style={{ width: resourceColumnWidth, minHeight: PROJECT_FILTER_ROW_HEIGHT }}
-	            >
-
-              {/* Dropdown Wrapper */}
-              <div className="relative w-full">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-between text-xs h-7 text-primary hover:text-primary border border-transparent hover:bg-accent"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  data-testid="select-project-filter"
-                >
-                  <span className="truncate">Select Project ({selectedProjectIds.size}/{sortedProjects.length})</span>
-                  <Icon
-                    icon={isFilterOpen ? "lucide:chevron-up" : "lucide:chevron-down"}
-                    className="h-3 w-3 ml-1 shrink-0"
-                  />
-                </Button>
-
-                {/* Centered Modal-style Dropdown */}
-                {isFilterOpen && (
-                  <>
-                    {/* Darker backdrop with blur */}
-                    <div
-                      className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-sm transition-opacity"
-                      onClick={() => setIsFilterOpen(false)}
-                    />
-                    
-                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-w-[90vw] bg-background border border-border rounded-xl shadow-3xl z-[100] max-h-[75vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-                      {/* Header */}
-                      <div className="px-6 py-4 border-b bg-muted/10 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md">
-                        <div>
-                          <h3 className="text-base font-bold text-foreground">Select Projects</h3>
-                          <p className="text-xs text-muted-foreground mt-0.5">Showing {selectedProjectIds.size} of {sortedProjects.length} projects</p>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => setIsFilterOpen(false)}
-                          className="h-8 w-8 rounded-full hover:bg-muted"
-                        >
-                          <Icon icon="lucide:x" className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {/* Scrollable Project List */}
-                      <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
-                        {sortedProjects.map(p => {
-                          const isSelected = selectedProjectIds.has(p.id);
-                          const projectBrand = p.brandId ? brandById.get(p.brandId) : undefined;
-
-                          return (
-                            <label
-                              key={p.id}
-                              className="flex items-start gap-4 px-6 py-3 transition-colors cursor-pointer hover:bg-accent/50 border-b border-border/30 last:border-0 group"
-                            >
-                              <div className="pt-0.5">
-                                <input
-                                  type="checkbox"
-                                  className="rounded-md border-muted-foreground/30 text-primary focus:ring-primary h-5 w-5 cursor-pointer transition-transform group-hover:scale-105"
-                                  checked={isSelected}
-                                  onChange={() => {
-                                    setSelectedProjectIds(prev => {
-                                      const next = new Set(prev);
-                                      if (next.has(p.id)) {
-                                        next.delete(p.id);
-                                      } else {
-                                        next.add(p.id);
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                />
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-[14.5px] font-semibold text-foreground leading-tight">
-                                  {p.name}
-                                </span>
-                                {projectBrand && (
-                                  <div className="flex items-center gap-1.5 mt-1">
-                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
-                                    <span className="text-xs text-muted-foreground font-medium">
-                                      {projectBrand.name}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-
-                      {/* Footer / Quick Actions */}
-                      <div className="px-6 py-3 border-t bg-muted/10 flex justify-end gap-2">
-                         <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="text-xs h-8"
-                          onClick={() => {
-                            setSelectedProjectIds(new Set());
-                          }}
-                         >
-                           Clear All
-                         </Button>
-                         <Button 
-                          variant="default" 
-                          size="sm" 
-                          className="text-xs h-8 bg-primary text-white"
-                          onClick={() => setIsFilterOpen(false)}
-                         >
-                           Apply Selection
-                         </Button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-            </div>
-
-            {/* Timeline filler (garis-garis putus kosong di sisa row) */}
-            <div className="flex relative flex-1" style={{ width: `${days.length * cellWidth}px` }}>
-              {days.map((day) => (
-                <div
-                  key={day.toISOString()}
-	                  className="shrink-0 border-r border-dashed"
-	                  style={{ width: `${cellWidth}px`, height: PROJECT_FILTER_ROW_HEIGHT }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Assignment Popover */}
         {popoverData && (
@@ -1845,13 +1836,24 @@ export const ResourceRow: React.FC<ResourceRowProps> = ({
             planTotalHours={monthlyAllocationModal.planTotalHours}
             adjustmentTotalHours={monthlyAllocationModal.adjustmentTotalHours}
             onClose={() => setMonthlyAllocationModal(null)}
-            onSave={handleSaveMonthlyAllocation}
+            onSave={(data) => {
+              if (!canEditAssignments) {
+                setMonthlyAllocationModal(null);
+                return;
+              }
+              handleSaveMonthlyAllocation(data);
+            }}
             onDelete={monthlyAllocationModal.existingAssignment ? (() => {
               const projectId = monthlyAllocationModal.existingAssignment!.projectId;
               const monthStart = monthlyAllocationModal.monthStart;
               const monthEnd = monthlyAllocationModal.monthEnd;
 
               return () => {
+                if (!canEditAssignments) {
+                  setMonthlyAllocationModal(null);
+                  return;
+                }
+
                 // Find ALL assignments for this project that fall within the month range
                 const assignmentsInMonth = (
                   monthlyAllocationModal.detailAssignments ?? resourceAssignments

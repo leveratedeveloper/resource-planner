@@ -6,9 +6,9 @@ import {
   useEmployees,
   useInfiniteEmployees,
   usePlannerTimeline,
+  useProjectsByBrand,
   useProjectOptions,
 } from "@/lib/query/hooks";
-import { useAssignments } from "@/lib/query/hooks/useAssignments";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   getActualAssignmentsForEmployee,
@@ -20,20 +20,26 @@ import {
   shouldUseCompleteEmployeeList,
 } from "@/lib/timeline/employees";
 import {
+  getProjectById,
+  getProjectIdSet,
+  mergeProjectsById,
+} from "@/lib/timeline/project-index";
+import {
   DEFAULT_TIMELINE_VIEW,
   getInitialTimelineDateRange,
   shouldEnableTimelineAssignments,
   type TimelineAssignmentDateRange,
 } from "@/lib/timeline/initial-load";
 import { getTimelineResolution } from "@/lib/timeline/planner-loading";
+import { getResourceRowLoadingState } from "@/lib/timeline/resource-row-loading";
 import {
-  getEmployeeFilterSelection,
+  getTimelineRowStateResetKey,
   hasEmployeeFlag,
-  setEmployeeFilterSelection,
   setEmployeeFlag,
 } from "@/lib/timeline/row-state";
 import { getTimelineHeaderLayout } from "@/lib/timeline/header-layout";
 import { ResourceRow } from "./ResourceRow";
+import { TimelineDataStatus } from "./TimelineDataStatus";
 import { TimelineHeaderControls, ViewMode } from "./TimelineHeaderControls";
 import { addDays, addMonths, format, startOfWeek, startOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfDay, isToday, getMonth, getYear } from "date-fns";
 import { cn, toLocalDateString } from "@/lib/utils";
@@ -49,7 +55,6 @@ interface TimelineProps {
   status: string | null;
 }
 
-const EMPTY_SELECTED_PROJECT_IDS = new Set<string>();
 const EMPTY_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["assignments"]> = [];
 const EMPTY_ACTUAL_ASSIGNMENTS: NonNullable<import("@/lib/timeline/planner-loading").PlannerTimelineResponse["actualAssignments"]> = [];
 const DEFAULT_RESOURCE_COLUMN_WIDTH = 250;
@@ -92,9 +97,22 @@ export const Timeline: React.FC<TimelineProps> = ({
     : isLoadingIncrementalEmployees;
   const { data: brands = [] } = useBrands();
   const { data: projects = [], isLoading: isLoadingProjects } = useProjectOptions();
+  const {
+    data: selectedBrandProjects = [],
+    isLoading: isLoadingSelectedBrandProjects,
+  } = useProjectsByBrand(brandId ?? "");
+  const isLoadingBrandProjectLookup = !!brandId && isLoadingSelectedBrandProjects;
+  const timelineProjects = useMemo(
+    () => mergeProjectsById({ projects, selectedBrandProjects }),
+    [projects, selectedBrandProjects]
+  );
+  const selectedBrandProjectIds = useMemo(
+    () => getProjectIdSet(selectedBrandProjects),
+    [selectedBrandProjects]
+  );
   const projectById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project])),
-    [projects]
+    () => getProjectById(timelineProjects),
+    [timelineProjects]
   );
   const brandById = useMemo(
     () => new Map(brands.map((brand) => [brand.id, brand])),
@@ -230,7 +248,6 @@ export const Timeline: React.FC<TimelineProps> = ({
   const isWeekView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 
   // PERFORMANCE: Calculate date range for assignments API filtering.
-  // Brand visibility still uses allAssignments below when it needs cross-range context.
   const assignmentDateRange = useMemo<TimelineAssignmentDateRange | undefined>(() => {
     if (days.length === 0) return undefined;
     return getInitialTimelineDateRange(toLocalDateString(currentDate), viewMode);
@@ -247,38 +264,23 @@ export const Timeline: React.FC<TimelineProps> = ({
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
       filters: {
-        projectId,
         category,
         status,
       },
     };
-  }, [assignmentDateRange, category, projectId, status, viewMode]);
+  }, [assignmentDateRange, category, status, viewMode]);
 
   const {
     data: plannerTimeline,
-    isLoading: isLoadingPlannerTimeline,
+    isLoadingCurrentData: isLoadingPlannerTimeline,
+    isFetching: isFetchingPlannerTimeline,
+    isRefetchError: isPlannerTimelineRefetchError,
+    isShowingPreviousData: isPlannerTimelineApplyingFilters,
   } = usePlannerTimeline(plannerRequest, {
     enabled: shouldEnableTimelineAssignments(assignmentDateRange),
   });
   const dateFilteredAssignments = plannerTimeline?.assignments ?? EMPTY_ASSIGNMENTS;
   const visibleActualAssignments = plannerTimeline?.actualAssignments ?? EMPTY_ACTUAL_ASSIGNMENTS;
-
-  // Fetch ALL assignments (no date filter) for employee filtering by brand
-  // This ensures employees with assignments outside the visible date range are still shown
-  // PERFORMANCE: When brandId is selected, filter assignments by project UUIDs at the server level
-  // This reduces the dataset by ~90% when a brand is selected
-  const brandProjectIds = useMemo(() => {
-    if (!brandId || !projects.length) return undefined;
-    return projects.filter(p => p.brandId === brandId).map(p => p.id);
-  }, [brandId, projects]);
-
-  const shouldFetchBrandAssignments =
-    !!brandId && (!projects.length || (brandProjectIds?.length ?? 0) > 0);
-
-  const { data: allAssignments = [] } = useAssignments(
-    brandProjectIds && brandProjectIds.length > 0 ? { projectIds: brandProjectIds } : undefined,
-    { enabled: shouldFetchBrandAssignments }
-  );
 
   const actualAssignmentsByEmployee = useMemo(
     () => groupActualAssignmentsByEmployee(visibleActualAssignments),
@@ -305,11 +307,10 @@ export const Timeline: React.FC<TimelineProps> = ({
   // Filter employees based on selected Brand, Department, Project, and Search Query
   const visibleEmployees = useMemo(() => filterTimelineEmployees({
     employees,
-    brands,
-    allAssignments,
     dateFilteredAssignments,
     visibleActualAssignments,
     projectById,
+    selectedBrandProjectIds,
     filters: {
       brandId,
       department,
@@ -317,15 +318,14 @@ export const Timeline: React.FC<TimelineProps> = ({
       searchQuery,
     },
   }), [
-    allAssignments,
     brandId,
-    brands,
     dateFilteredAssignments,
     department,
     employees,
     projectById,
     projectId,
     searchQuery,
+    selectedBrandProjectIds,
     visibleActualAssignments,
   ]);
 
@@ -338,9 +338,19 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Set<string>>(new Set());
-  const [selectedProjectIdsByEmployee, setSelectedProjectIdsByEmployee] = useState<Map<string, Set<string>>>(new Map());
-  const [initializedProjectFiltersByEmployee, setInitializedProjectFiltersByEmployee] = useState<Set<string>>(new Set());
-  const [openProjectFilterEmployeeIds, setOpenProjectFilterEmployeeIds] = useState<Set<string>>(new Set());
+  const rowStateResetKey = useMemo(
+    () =>
+      getTimelineRowStateResetKey({
+        brandId,
+        department,
+        projectId,
+        category,
+        status,
+        searchQuery,
+      }),
+    [brandId, category, department, projectId, searchQuery, status]
+  );
+  const previousRowStateResetKeyRef = useRef(rowStateResetKey);
 
   useEffect(() => {
     if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) {
@@ -364,6 +374,16 @@ export const Timeline: React.FC<TimelineProps> = ({
     virtualRows,
     visibleEmployees.length,
   ]);
+
+  useEffect(() => {
+    if (previousRowStateResetKeyRef.current === rowStateResetKey) {
+      return;
+    }
+
+    previousRowStateResetKeyRef.current = rowStateResetKey;
+    setExpandedEmployeeIds(new Set());
+    rowVirtualizer.scrollToOffset(0);
+  }, [rowStateResetKey, rowVirtualizer]);
 
   // Synchronize horizontal scroll between header and body
   const handleBodyScroll = useCallback(() => {
@@ -438,8 +458,35 @@ export const Timeline: React.FC<TimelineProps> = ({
     document.addEventListener("pointerup", handlePointerUp);
   }, [resourceColumnWidth]);
 
+  const hasPlannerData = !!plannerTimeline;
+  const isPlannerRefreshingFromCachedData =
+    hasPlannerData && isFetchingPlannerTimeline;
+  const hasPlannerRefreshError =
+    hasPlannerData && isPlannerTimelineRefetchError;
+  const rowLoadingState = getResourceRowLoadingState({
+    hasPlannerData,
+    isPlannerApplyingFilters: isPlannerTimelineApplyingFilters,
+    isPlannerRefreshing: isPlannerRefreshingFromCachedData,
+    hasPlannerRefreshError,
+  });
   const isInitialTimelineLoading =
-    isLoadingEmployees || isLoadingPlannerTimeline;
+    isLoadingEmployees || isLoadingBrandProjectLookup || rowLoadingState.showInitialSkeleton;
+  const plannerFreshnessState = hasPlannerRefreshError
+    ? {
+        tone: "warning" as const,
+        message: "Showing saved planner data. Refresh failed.",
+      }
+    : isPlannerTimelineApplyingFilters
+      ? {
+          tone: "syncing" as const,
+          message: "Applying filters...",
+        }
+      : isPlannerRefreshingFromCachedData
+        ? {
+            tone: "syncing" as const,
+            message: "Updating planner...",
+          }
+        : null;
 
   return (
     <div ref={timelineRootRef} className="flex flex-col h-full" data-testid="timeline-root">
@@ -453,6 +500,12 @@ export const Timeline: React.FC<TimelineProps> = ({
         onToggleWeekends={handleToggleWeekends}
         onToday={handleToday}
       />
+      {plannerFreshnessState ? (
+        <TimelineDataStatus
+          tone={plannerFreshnessState.tone}
+          message={plannerFreshnessState.message}
+        />
+      ) : null}
 
       {/* Timeline Header (Days) - Sticky */}
       <div className="flex border-b bg-muted/40 sticky top-0 z-10">
@@ -561,22 +614,11 @@ export const Timeline: React.FC<TimelineProps> = ({
                  const employee = visibleEmployees[virtualRow.index];
                  if (!employee) return null;
 
-                 const employeeSelectedProjectIds =
-                   getEmployeeFilterSelection(selectedProjectIdsByEmployee, employee.id) ??
-                   EMPTY_SELECTED_PROJECT_IDS;
                  const employeeIsExpanded = hasEmployeeFlag(expandedEmployeeIds, employee.id);
-                 const employeeProjectsInitialized = hasEmployeeFlag(
-                   initializedProjectFiltersByEmployee,
-                   employee.id
-                 );
-                 const employeeFilterOpen = hasEmployeeFlag(
-                   openProjectFilterEmployeeIds,
-                   employee.id
-                 );
 
                  return (
                    <div
-                     key={employee.id}
+                     key={`${employee.id}:${rowStateResetKey}`}
                      data-index={virtualRow.index}
                      ref={rowVirtualizer.measureElement}
                      className="absolute left-0 top-0 w-full"
@@ -592,6 +634,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                        }}
                        days={days}
                        brandId={brandId}
+                       selectedProjectId={projectId}
                        cellWidth={cellWidth}
 	                       isWeekView={isWeekView}
                        resourceColumnWidth={resourceColumnWidth}
@@ -607,53 +650,14 @@ export const Timeline: React.FC<TimelineProps> = ({
                            )
                          )
                        }
-                       selectedProjectIds={employeeSelectedProjectIds}
-                       setSelectedProjectIds={(value) =>
-                         setSelectedProjectIdsByEmployee((prev) => {
-                           const previousSelection =
-                             getEmployeeFilterSelection(prev, employee.id) ??
-                             EMPTY_SELECTED_PROJECT_IDS;
-                           const nextSelection =
-                             typeof value === "function"
-                               ? value(new Set(previousSelection))
-                               : value;
-
-                           return setEmployeeFilterSelection(
-                             prev,
-                             employee.id,
-                             nextSelection
-                           );
-                         })
-                       }
-                       isProjectsInitialized={employeeProjectsInitialized}
-                       setIsProjectsInitialized={(value) =>
-                         setInitializedProjectFiltersByEmployee((prev) =>
-                           setEmployeeFlag(
-                             prev,
-                             employee.id,
-                             typeof value === "function"
-                               ? value(hasEmployeeFlag(prev, employee.id))
-                               : value
-                           )
-                         )
-                       }
-                       isFilterOpen={employeeFilterOpen}
-                       setIsFilterOpen={(value) =>
-                         setOpenProjectFilterEmployeeIds((prev) =>
-                           setEmployeeFlag(
-                             prev,
-                             employee.id,
-                             typeof value === "function"
-                               ? value(hasEmployeeFlag(prev, employee.id))
-                               : value
-                           )
-                         )
-                       }
                        viewMode={viewMode}
-                       projects={projects}
+                       projects={timelineProjects}
                        projectById={projectById}
                        brandById={brandById}
                        isLoadingProjects={isLoadingProjects}
+                       showTimelineLoading={rowLoadingState.showTimelineLoading}
+                       showExpandedLoading={rowLoadingState.showExpandedLoading}
+                       canEditAssignments={rowLoadingState.canEditAssignments}
                      />
                    </div>
                  );

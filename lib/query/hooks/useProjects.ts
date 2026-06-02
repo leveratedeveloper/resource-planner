@@ -161,13 +161,26 @@ async function fetchProject(id: string): Promise<Project> {
   return data.data;
 }
 
-async function fetchProjectsByBrand(brandId: string): Promise<Project[]> {
-  const response = await fetch(`/api/projects?brandId=${brandId}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch projects by brand");
+async function fetchProjectsByBrand(brandId: string): Promise<ProjectOption[]> {
+  const projects: ProjectOption[] = [];
+  const limit = 500;
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(
+      `/api/projects?brandId=${brandId}&fields=summary&limit=${limit}&offset=${offset}`
+    );
+    if (!response.ok) {
+      throw new Error("Failed to fetch projects by brand");
+    }
+    const data = await response.json();
+    projects.push(...(data.data ?? []));
+    hasMore = Boolean(data.hasMore);
+    offset += limit;
   }
-  const data = await response.json();
-  return data.data;
+
+  return projects;
 }
 
 // Hooks

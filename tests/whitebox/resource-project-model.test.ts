@@ -5,6 +5,8 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import {
   getResourceProjects,
   groupProjectsByDeliverable,
+  isDeliverableGroupHighlighted,
+  isProjectHighlighted,
   sortResourceProjects,
 } from "@/lib/timeline/resource-project-model";
 
@@ -116,6 +118,72 @@ describe("resource project model", () => {
     });
 
     expect(sorted.map((item) => item.id)).toEqual(["project-2", "project-1"]);
+  });
+
+  it("sorts the selected project before selected brand matches and other projects", () => {
+    const sorted = sortResourceProjects({
+      projects: [
+        project({ id: "project-1", name: "Alpha", brandId: "brand-a" }),
+        project({ id: "project-2", name: "Beta", brandId: "brand-b" }),
+        project({ id: "project-3", name: "Gamma", brandId: "brand-a" }),
+      ],
+      resourceAssignments: [
+        assignment({ id: "a1", projectId: "project-1" }),
+        assignment({ id: "a2", projectId: "project-2" }),
+        assignment({ id: "a3", projectId: "project-3" }),
+      ],
+      brandId: "brand-a",
+      selectedProjectId: "project-2",
+      days: [new Date("2026-05-18T00:00:00")],
+    });
+
+    expect(sorted.map((item) => item.id)).toEqual(["project-2", "project-1", "project-3"]);
+  });
+
+  it("highlights projects by selected project or selected brand", () => {
+    expect(
+      isProjectHighlighted(project({ id: "project-1", brandId: "brand-a" }), {
+        selectedProjectId: "project-1",
+        selectedBrandId: null,
+      })
+    ).toBe(true);
+
+    expect(
+      isProjectHighlighted(project({ id: "project-2", brandId: "brand-a" }), {
+        selectedProjectId: null,
+        selectedBrandId: "brand-a",
+      })
+    ).toBe(true);
+
+    expect(
+      isProjectHighlighted(project({ id: "project-3", brandId: "brand-b" }), {
+        selectedProjectId: "project-1",
+        selectedBrandId: "brand-a",
+      })
+    ).toBe(false);
+  });
+
+  it("highlights deliverable groups when any project row matches the active project or brand filter", () => {
+    const groups = groupProjectsByDeliverable({
+      sortedProjects: [
+        project({ id: "project-1", name: "Alpha", brandId: "brand-a" }),
+        project({ id: "project-2", name: "Beta", brandId: "brand-b" }),
+      ],
+      resourceAssignments: [
+        assignment({ id: "brand-work", projectId: "project-1", note: "Deliverables: Banner." }),
+        assignment({ id: "other-work", projectId: "project-2", note: "Deliverables: Banner." }),
+      ],
+      actualAssignments: [],
+    });
+
+    const bannerGroup = groups.find((group) => group.name === "Banner");
+    expect(bannerGroup).toBeDefined();
+    expect(
+      isDeliverableGroupHighlighted(bannerGroup!, {
+        selectedProjectId: null,
+        selectedBrandId: "brand-a",
+      })
+    ).toBe(true);
   });
 
   it("groups projects by deliverable notes with general first", () => {
