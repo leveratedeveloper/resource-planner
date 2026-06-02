@@ -202,4 +202,36 @@ describe("resource project model", () => {
     expect(groups[1].projects[0].planAssignments.map((item) => item.id)).toEqual(["named"]);
     expect(groups[1].projects[0].actualAssignments.map((item) => item.uuid)).toEqual(["actual"]);
   });
+
+  it("keeps all resource deliverables available even when one selected project is highlighted", () => {
+    const groups = groupProjectsByDeliverable({
+      sortedProjects: [
+        project({ id: "project-selected", name: "Selected Project", brandId: "brand-a" }),
+        project({ id: "project-other", name: "Other Project", brandId: "brand-b" }),
+      ],
+      resourceAssignments: [
+        assignment({
+          id: "selected-deliverable",
+          projectId: "project-selected",
+          note: "Deliverables: Landing Page.",
+        }),
+        assignment({
+          id: "other-deliverable",
+          projectId: "project-other",
+          note: "Deliverables: Banner.",
+        }),
+      ],
+      actualAssignments: [],
+    });
+
+    expect(groups.map((group) => group.name)).toEqual(["Banner", "Landing Page"]);
+    expect(
+      groups.some((group) =>
+        isDeliverableGroupHighlighted(group, {
+          selectedProjectId: "project-selected",
+          selectedBrandId: null,
+        })
+      )
+    ).toBe(true);
+  });
 });
