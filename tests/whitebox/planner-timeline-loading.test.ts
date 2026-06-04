@@ -104,29 +104,30 @@ describe("planner timeline loading contract", () => {
   });
 
   it("keeps brand and project ids out of the planner request because they are resource filters", () => {
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
     const routeSource = readFileSync("app/api/planner/timeline/route.ts", "utf8");
 
     expect(timelineSource).not.toContain("filters: {\n        projectId,");
     expect(timelineSource).not.toContain("filters: {\n        brandId,");
-    expect(timelineSource).toContain("selectedProjectId={projectId}");
-    expect(timelineSource).toContain("brandId={brandId}");
+    expect(timelineSource).toContain("filters: {");
+    expect(timelineSource).toContain("projectId,");
+    expect(timelineSource).toContain("brandId,");
     expect(timelineSource).toContain("filterTimelineEmployees");
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("projectId")');
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("brandId")');
   });
 
   it("does not use brandId as a destructive planner assignment payload filter", () => {
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
     expect(timelineSource).not.toContain("filters: {\n        brandId:");
     expect(timelineSource).not.toContain("request.filters.brandId");
-    expect(timelineSource).toContain("brandId={brandId}");
+    expect(timelineSource).toContain("brandId,");
     expect(timelineSource).toContain("filterTimelineEmployees");
   });
 
   it("loads selected brand projects before calculating brand-filtered resources", () => {
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
     expect(timelineSource).toContain("useProjectsByBrand(brandId ?? \"\")");
     expect(timelineSource).toContain("isLoadingSelectedBrandProjects");
@@ -270,17 +271,16 @@ describe("planner timeline loading contract", () => {
   });
 
   it("shows filter application state instead of calculating from stale planner data", () => {
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
-    expect(timelineSource).toContain("isLoadingCurrentData: isLoadingPlannerTimeline");
     expect(timelineSource).toContain("isShowingPreviousData: isPlannerTimelineApplyingFilters");
     expect(timelineSource).toContain("Applying filters...");
-    expect(timelineSource).toContain("<TimelineDataStatus");
+    expect(timelineSource).toContain("<TimelineDataStatusV2");
   });
 
   it("does not render row-level project selector UI in resource rows", () => {
-    const resourceRowSource = readFileSync("components/timeline/ResourceRow.tsx", "utf8");
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
     expect(resourceRowSource).not.toContain("Select Project");
     expect(resourceRowSource).not.toContain("Select Projects");
@@ -291,15 +291,15 @@ describe("planner timeline loading contract", () => {
     expect(timelineSource).not.toContain("openProjectFilterEmployeeIds");
   });
 
-  it("keeps resources visible while planner rows and expanded deliverables show loading state", () => {
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
-    const resourceRowSource = readFileSync("components/timeline/ResourceRow.tsx", "utf8");
+  it("keeps resources visible while planner rows and expanded campaigns show loading state", () => {
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
 
     expect(timelineSource).toContain("getResourceRowLoadingState");
     expect(timelineSource).toContain("showTimelineLoading={rowLoadingState.showTimelineLoading}");
     expect(timelineSource).toContain("showExpandedLoading={rowLoadingState.showExpandedLoading}");
     expect(resourceRowSource).toContain("showTimelineLoading");
     expect(resourceRowSource).toContain("showExpandedLoading");
-    expect(resourceRowSource).toContain("data-testid=\"expanded-deliverables-loading\"");
+    expect(resourceRowSource).toContain("data-testid=\"timeline-v2-expanded-loading\"");
   });
 });

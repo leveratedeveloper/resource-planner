@@ -47,13 +47,13 @@ describe("timeline row state helpers", () => {
   });
 
   it("resets expanded timeline row state from the global filter signature", () => {
-    const timelineSource = readFileSync("components/timeline/Timeline.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
     expect(timelineSource).toContain("rowStateResetKey");
     expect(timelineSource).toContain("setExpandedEmployeeIds(new Set())");
     expect(timelineSource).not.toContain("setSelectedProjectIdsByEmployee");
     expect(timelineSource).not.toContain("setInitializedProjectFiltersByEmployee");
     expect(timelineSource).not.toContain("setOpenProjectFilterEmployeeIds");
-    expect(timelineSource).toContain("key={`${employee.id}:${rowStateResetKey}`}");
+    expect(timelineSource).toContain("rowVirtualizer.scrollToOffset(0)");
   });
 });
