@@ -5,7 +5,6 @@ import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { filterTimelineEmployees } from "@/lib/timeline/employees";
 import {
-  getResourceProjects,
   isProjectHighlighted,
   sortResourceProjects,
 } from "@/lib/timeline/resource-project-model";
@@ -36,6 +35,27 @@ export function groupTimelineV2ActualAssignmentsByEmployee(actualAssignments: Ac
   });
 
   return grouped;
+}
+
+function getPlanCampaignProjects(
+  assignments: Assignment[],
+  projectById: Map<string, ProjectOption>
+): ProjectOption[] {
+  const seenProjectIds = new Set<string>();
+  const campaignProjects: ProjectOption[] = [];
+
+  for (const assignment of assignments) {
+    if (assignment.isTimeOff || !assignment.projectId) continue;
+    if (seenProjectIds.has(assignment.projectId)) continue;
+
+    const project = projectById.get(assignment.projectId);
+    if (!project) continue;
+
+    seenProjectIds.add(project.id);
+    campaignProjects.push(project);
+  }
+
+  return campaignProjects;
 }
 
 export function buildTimelineV2Rows({
@@ -74,7 +94,7 @@ export function buildTimelineV2Rows({
   return filteredEmployees.map((employee) => {
     const resourceAssignments = assignmentsByEmployee.get(employee.id) ?? [];
     const employeeActuals = actualsByEmployee.get(employee.id) ?? [];
-    const resourceProjects = getResourceProjects(resourceAssignments, employeeActuals, projects);
+    const resourceProjects = getPlanCampaignProjects(resourceAssignments, projectById);
     const sortedProjects = sortResourceProjects({
       projects: resourceProjects,
       resourceAssignments,
@@ -92,9 +112,6 @@ export function buildTimelineV2Rows({
       const planAssignments = resourceAssignments.filter(
         (assignment) => assignment.projectId === project.id && !assignment.isTimeOff
       );
-      const matchingActualAssignments = employeeActuals.filter(
-        (assignment) => assignment.projectUuid === project.id && !assignment.isTimeOff
-      );
       const isHighlighted = isProjectHighlighted(project, highlightFilters);
 
       return {
@@ -107,7 +124,6 @@ export function buildTimelineV2Rows({
           project,
           brand,
           planAssignments,
-          actualAssignments: matchingActualAssignments,
           isHighlighted,
         },
       };

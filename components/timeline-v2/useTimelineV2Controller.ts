@@ -5,11 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { useCreateAssignment, useDeleteAssignment, useUpdateAssignment } from "@/lib/query/hooks/useAssignments";
-import { useCreateActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { shouldLoadPlannerAssignmentDetail } from "@/lib/timeline/planner-loading";
 import { getTimelineV2MonthlyDetailKey, fetchTimelineV2MonthlyAssignmentDetail, deleteTimelineV2AssignmentsById, saveTimelineV2MonthlyAllocation, saveTimelineV2MonthlyAdjustment } from "@/lib/timeline-v2/monthly-allocation-service";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { AssignmentCategory } from "@/types";
 import type { MonthlyAllocationData } from "@/components/timeline/MonthlyAllocationConfirmation";
@@ -19,15 +17,6 @@ type PlannedPopoverState = {
   projectId: string;
   startDate: Date;
   endDate: Date;
-} | null;
-
-type ActualPopoverState = {
-  resourceId: string;
-  projectId: string;
-  startDate: Date;
-  endDate: Date;
-  plannedHoursLimit: number;
-  currentActualHours: number;
 } | null;
 
 type MonthlyAllocationModalState = {
@@ -64,34 +53,6 @@ type PendingMonthlyAllocationSave = {
   resourceId: string;
 };
 
-async function updateActualAssignment({
-  uuid,
-  ...data
-}: Partial<ActualAssignment> & { uuid: string }): Promise<ActualAssignment> {
-  const response = await fetch(`/api/actual/${uuid}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to update actual assignment");
-  }
-
-  const result = await response.json();
-  return result.data;
-}
-
-async function deleteActualAssignment(uuid: string): Promise<void> {
-  const response = await fetch(`/api/actual/${uuid}`, {
-    method: "DELETE",
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to delete actual assignment");
-  }
-}
-
 export function useTimelineV2Controller({
   canEditAssignments,
   createdByUuid,
@@ -103,10 +64,8 @@ export function useTimelineV2Controller({
   const createAssignment = useCreateAssignment();
   const updateAssignment = useUpdateAssignment();
   const deleteAssignment = useDeleteAssignment();
-  const createActualAssignment = useCreateActualAssignment();
 
   const [plannedPopover, setPlannedPopover] = useState<PlannedPopoverState>(null);
-  const [actualPopover, setActualPopover] = useState<ActualPopoverState>(null);
   const [monthlyAllocationModal, setMonthlyAllocationModal] = useState<MonthlyAllocationModalState>(null);
   const [monthlyAllocationConfirm, setMonthlyAllocationConfirm] = useState<{
     data: MonthlyAllocationData;
@@ -123,7 +82,6 @@ export function useTimelineV2Controller({
   }, []);
 
   const closePlannedPopover = useCallback(() => setPlannedPopover(null), []);
-  const closeActualPopover = useCallback(() => setActualPopover(null), []);
   const closeMonthlyAllocationModal = useCallback(() => setMonthlyAllocationModal(null), []);
   const closeMonthlyAllocationConfirm = useCallback(() => setMonthlyAllocationConfirm(null), []);
 
@@ -134,17 +92,6 @@ export function useTimelineV2Controller({
     endDate: Date;
   }) => {
     setPlannedPopover(args);
-  }, []);
-
-  const handleCreateActualAssignment = useCallback((args: {
-    resourceId: string;
-    projectId: string;
-    startDate: Date;
-    endDate: Date;
-    plannedHoursLimit: number;
-    currentActualHours: number;
-  }) => {
-    setActualPopover(args);
   }, []);
 
   const handleCreateTimeOff = useCallback((args: {
@@ -284,39 +231,6 @@ export function useTimelineV2Controller({
     });
   }, [canEditAssignments, createAssignment, createdByUuid, plannedPopover]);
 
-  const handleSaveActualPopover = useCallback((data: {
-    startDate: string;
-    endDate: string;
-    hoursPerDay: number;
-    category: AssignmentCategory;
-    isBillable: boolean;
-    note?: string;
-  }) => {
-    if (!actualPopover || !canEditAssignments) {
-      setActualPopover(null);
-      return;
-    }
-
-    createActualAssignment.mutate({
-      employeeUuid: actualPopover.resourceId,
-      projectUuid: actualPopover.projectId,
-      taskUuid: null,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      hoursPerDay: data.hoursPerDay,
-      allocationPercentage: null,
-      isTimeOff: false,
-      timeOffTypeUuid: null,
-      category: data.category,
-      isBillable: data.isBillable,
-      status: "confirmed",
-      note: data.note || null,
-      createdByUuid,
-    });
-
-    setActualPopover(null);
-  }, [actualPopover, canEditAssignments, createActualAssignment, createdByUuid]);
-
   const handleDeletePlannedAssignment = useCallback((id: string) => {
     if (!canEditAssignments) return;
     deleteAssignment.mutate(id);
@@ -326,22 +240,6 @@ export function useTimelineV2Controller({
     if (!canEditAssignments) return;
     updateAssignment.mutate({ id, ...(updates as object) } as never);
   }, [canEditAssignments, updateAssignment]);
-
-  const handleUpdateActualAssignment = useCallback((uuid: string, updates: Partial<ActualAssignment>) => {
-    if (!canEditAssignments) return;
-    void updateActualAssignment({ uuid, ...updates }).then(() => {
-      queryClient.invalidateQueries({ queryKey: ["actual"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
-    });
-  }, [canEditAssignments, queryClient]);
-
-  const handleDeleteActualAssignment = useCallback((uuid: string) => {
-    if (!canEditAssignments) return;
-    void deleteActualAssignment(uuid).then(() => {
-      queryClient.invalidateQueries({ queryKey: ["actual"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
-    });
-  }, [canEditAssignments, queryClient]);
 
   const handleSaveMonthlyAllocation = useCallback((data: PendingMonthlyAllocationSave["data"], existingAssignment?: Assignment) => {
     const project = monthlyAllocationModal?.project;
@@ -485,26 +383,20 @@ export function useTimelineV2Controller({
 
   return {
     plannedPopover,
-    actualPopover,
     monthlyAllocationModal,
     monthlyAllocationConfirm,
     loadingMonthlyPlanDetailKey,
     canEditAssignments,
     handleCreatePlannedAssignment,
-    handleCreateActualAssignment,
     handleCreateTimeOff,
     handleOpenMonthlyAllocation,
     handleSavePlannedPopover,
-    handleSaveActualPopover,
     handleDeletePlannedAssignment,
     handleUpdatePlannedAssignment,
-    handleUpdateActualAssignment,
-    handleDeleteActualAssignment,
     handleSaveMonthlyAllocation,
     handleConfirmMonthlyAllocation,
     handleDeleteMonthlyAllocation,
     closePlannedPopover,
-    closeActualPopover,
     closeMonthlyAllocationModal,
     closeMonthlyAllocationConfirm,
     setMonthlyAllocationModal,

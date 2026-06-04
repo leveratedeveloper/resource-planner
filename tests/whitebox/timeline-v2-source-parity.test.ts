@@ -42,8 +42,18 @@ describe("timeline-v2 source parity", () => {
 
     expect(source).toContain("campaignGroups");
     expect(source).toContain("project.name");
+    expect(source).toContain("getPlanCampaignProjects");
     expect(source).not.toContain("groupProjectsByDeliverable");
     expect(source).not.toContain("extractDeliverables");
+  });
+
+  it("renders expanded campaign groups as a single plan-only campaign lane", () => {
+    const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+
+    expect(source).toContain('data-testid="resource-row-v2-campaign-row"');
+    expect(source).not.toContain('data-testid="resource-row-v2-campaign-plan-row"');
+    expect(source).not.toContain('data-testid="resource-row-v2-campaign-actual-row"');
+    expect(source).not.toContain("group.row.actualAssignments.map");
   });
 
   it("does not keep debug logs in v2 timeline files", () => {

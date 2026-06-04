@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -50,6 +51,26 @@ const assignment = (overrides: Partial<Assignment>): Assignment => ({
   updatedAt: "2026-06-01T00:00:00.000Z",
 });
 
+const actualAssignment = (overrides: Partial<ActualAssignment> = {}): ActualAssignment => ({
+  uuid: overrides.uuid ?? "actual-1",
+  employeeUuid: overrides.employeeUuid ?? "employee-1",
+  projectUuid: overrides.projectUuid ?? "project-actual-only",
+  taskUuid: null,
+  startDate: overrides.startDate ?? "2026-06-01",
+  endDate: overrides.endDate ?? "2026-06-05",
+  hoursPerDay: overrides.hoursPerDay ?? 8,
+  allocationPercentage: null,
+  isTimeOff: overrides.isTimeOff ?? false,
+  timeOffTypeUuid: null,
+  category: "Other",
+  isBillable: true,
+  status: "draft",
+  note: overrides.note ?? null,
+  createdByUuid: null,
+  createdAt: "2026-06-01T00:00:00.000Z",
+  updatedAt: "2026-06-01T00:00:00.000Z",
+});
+
 const project = (id: string): ProjectOption => ({
   id,
   name: `Project ${id}`,
@@ -92,5 +113,34 @@ describe("timeline-v2 row model", () => {
     expect(rows[0].campaignGroups[0].name).toBe("Project project-1");
     expect(rows[0].campaignGroups[0].row.project.id).toBe("project-1");
     expect(rows[0].campaignGroups[0].row.planAssignments.map((item) => item.id)).toEqual(["plan-1"]);
+  });
+
+  it("builds expanded campaign groups from planned assignments only", () => {
+    const plan = assignment({
+      id: "plan-1",
+      employeeId: "employee-1",
+      projectId: "project-plan",
+    });
+    const actual = actualAssignment({
+      uuid: "actual-1",
+      employeeUuid: "employee-1",
+      projectUuid: "project-actual-only",
+    });
+
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [plan],
+      actualAssignments: [actual],
+      projects: [project("project-plan"), project("project-actual-only")],
+      brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
+      expandedEmployeeIds: new Set(["employee-1"]),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: [new Date("2026-06-01T00:00:00")],
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].campaignGroups.map((group) => group.name)).toEqual(["Project project-plan"]);
+    expect(rows[0].campaignGroups[0].row.planAssignments).toEqual([plan]);
+    expect(rows[0].actualAssignments).toEqual([actual]);
   });
 });

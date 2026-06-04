@@ -44,7 +44,6 @@ export type TimelineV2CampaignRow = {
   project: ProjectOption;
   brand?: Brand;
   planAssignments: Assignment[];
-  actualAssignments: ActualAssignment[];
   isHighlighted: boolean;
 };
 

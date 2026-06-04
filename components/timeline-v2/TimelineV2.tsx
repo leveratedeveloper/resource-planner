@@ -27,7 +27,6 @@ import { TimelineBodyV2 } from "@/components/timeline-v2/TimelineBodyV2";
 import { TimelineInitialSkeletonV2, TimelineEmptyStateV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 import { useTimelineV2Controller } from "@/components/timeline-v2/useTimelineV2Controller";
 import { AssignmentPopover } from "@/components/timeline/AssignmentPopover";
-import { ActualAssignmentPopover } from "@/components/timeline/ActualAssignmentPopover";
 import { MonthlyAllocationModal } from "@/components/timeline/MonthlyAllocationModal";
 import { MonthlyAllocationConfirmation } from "@/components/timeline/MonthlyAllocationConfirmation";
 import { startOfWeek, startOfDay } from "date-fns";
@@ -388,10 +387,7 @@ export function TimelineV2({
           }}
           onUpdatePlanned={controller.handleUpdatePlannedAssignment}
           onDeletePlanned={controller.handleDeletePlannedAssignment}
-          onUpdateActual={controller.handleUpdateActualAssignment}
-          onDeleteActual={controller.handleDeleteActualAssignment}
           onOpenPlannedCreate={controller.handleCreatePlannedAssignment}
-          onOpenActualCreate={controller.handleCreateActualAssignment}
           onOpenTimeOffCreate={controller.handleCreateTimeOff}
           onOpenMonthlyAllocation={controller.handleOpenMonthlyAllocation}
           isFetchingNextEmployeePage={isFetchingNextEmployeePage}
@@ -407,20 +403,6 @@ export function TimelineV2({
           onClose={controller.closePlannedPopover}
           onSave={controller.handleSavePlannedPopover}
           isCreating={false}
-        />
-      ) : null}
-
-      {controller.actualPopover ? (
-        <ActualAssignmentPopover
-          resourceId={controller.actualPopover.resourceId}
-          projectId={controller.actualPopover.projectId}
-          startDate={controller.actualPopover.startDate}
-          endDate={controller.actualPopover.endDate}
-          onClose={controller.closeActualPopover}
-          onSave={controller.handleSaveActualPopover}
-          isCreating={false}
-          plannedHoursLimit={controller.actualPopover.plannedHoursLimit}
-          currentActualHours={controller.actualPopover.currentActualHours}
         />
       ) : null}
 

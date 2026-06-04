@@ -14,8 +14,7 @@ import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from
 const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
 const TIME_OFF_ROW_HEIGHT = 32;
 const CAMPAIGN_HEADER_ROW_HEIGHT = 28;
-const CAMPAIGN_PLAN_ROW_HEIGHT = 34;
-const CAMPAIGN_ACTUAL_ROW_HEIGHT = 34;
+const CAMPAIGN_ROW_HEIGHT = 34;
 
 type ResourceRowV2Props = {
   row: TimelineV2ResourceRow;
@@ -29,10 +28,7 @@ type ResourceRowV2Props = {
   onToggleExpanded: (resourceId: string) => void;
   onUpdatePlanned: (id: string, updates: unknown) => void;
   onDeletePlanned: (id: string) => void;
-  onUpdateActual: (uuid: string, updates: unknown) => void;
-  onDeleteActual: (uuid: string) => void;
   onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenActualCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date; plannedHoursLimit: number; currentActualHours: number }) => void;
   onOpenTimeOffCreate: (args: { resourceId: string; startDate: Date; endDate: Date }) => void;
   onOpenMonthlyAllocation: (args: {
     resourceId: string;
@@ -94,10 +90,7 @@ export function ResourceRowV2({
   onToggleExpanded,
   onUpdatePlanned,
   onDeletePlanned,
-  onUpdateActual,
-  onDeleteActual,
   onOpenPlannedCreate,
-  onOpenActualCreate,
   onOpenTimeOffCreate,
   onOpenMonthlyAllocation,
 }: ResourceRowV2Props) {
@@ -250,14 +243,12 @@ export function ResourceRowV2({
 
                   <div
                     className="flex bg-blue-50/10"
-                    style={{ height: CAMPAIGN_PLAN_ROW_HEIGHT }}
-                    data-testid="resource-row-v2-campaign-plan-row"
+                    style={{ height: CAMPAIGN_ROW_HEIGHT }}
+                    data-testid="resource-row-v2-campaign-row"
                     onClick={monthRangeView ? monthClickHandler : undefined}
                   >
-                    <div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-background pl-16" style={{ width: resourceColumnWidth, height: CAMPAIGN_PLAN_ROW_HEIGHT }}>
-                      <span className="text-xs font-medium text-muted-foreground">Plan</span>
-                    </div>
-                    <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: CAMPAIGN_PLAN_ROW_HEIGHT }}>
+                    <div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-background pl-16" style={{ width: resourceColumnWidth, height: CAMPAIGN_ROW_HEIGHT }} />
+                    <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: CAMPAIGN_ROW_HEIGHT }}>
                       {!monthRangeView ? columns.map((column) => (
                         <DraggableTimelineCell
                           key={`${group.id}-${column.id}-plan-cell`}
@@ -266,7 +257,7 @@ export function ResourceRowV2({
                           projectColor={campaign.color}
                           days={projectDays}
                           cellWidth={cellWidth}
-                          cellHeight={CAMPAIGN_PLAN_ROW_HEIGHT}
+                          cellHeight={CAMPAIGN_ROW_HEIGHT}
                           timeOffAssignments={row.timeOffAssignments}
                           disabled={!canEditAssignments}
                           isDragging={false}
@@ -300,7 +291,7 @@ export function ResourceRowV2({
                           assignment={assignment}
                           project={campaign}
                           days={projectDays}
-                          resourceRowHeight={CAMPAIGN_PLAN_ROW_HEIGHT}
+                          resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
                           cellWidth={cellWidth}
                           isWeekView={weekView}
                           onUpdate={onUpdatePlanned}
@@ -310,53 +301,6 @@ export function ResourceRowV2({
                           isUpdating={false}
                           isDeleting={false}
                           timeOffAssignments={row.timeOffAssignments}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    className="flex bg-emerald-50/10"
-                    style={{ height: CAMPAIGN_ACTUAL_ROW_HEIGHT }}
-                    data-testid="resource-row-v2-campaign-actual-row"
-                    onClick={!monthRangeView ? (event) => {
-                      if (!canEditAssignments) return;
-                      const containerRect = event.currentTarget.getBoundingClientRect();
-                      const x = event.clientX - containerRect.left;
-                      const index = Math.max(0, Math.min(columns.length - 1, Math.floor(x / cellWidth)));
-                      const date = columns[index]?.date ?? columns[0]?.date;
-                      onOpenActualCreate({
-                        resourceId: row.resource.id,
-                        projectId: campaign.id,
-                        startDate: date,
-                        endDate: date,
-                        plannedHoursLimit: 0,
-                        currentActualHours: 0,
-                      });
-                    } : undefined}
-                  >
-                    <div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-background pl-16" style={{ width: resourceColumnWidth, height: CAMPAIGN_ACTUAL_ROW_HEIGHT }}>
-                      <span className="text-xs font-medium text-muted-foreground">Actual</span>
-                    </div>
-                    <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: CAMPAIGN_ACTUAL_ROW_HEIGHT }}>
-                      {group.row.actualAssignments.map((assignment) => (
-                        <AssignmentBlockV2
-                          key={assignment.uuid}
-                          kind="actual"
-                          assignment={assignment}
-                          project={campaign}
-                          days={projectDays}
-                          resourceRowHeight={CAMPAIGN_ACTUAL_ROW_HEIGHT}
-                          cellWidth={cellWidth}
-                          isWeekView={weekView}
-                          onUpdate={onUpdateActual}
-                          onDelete={onDeleteActual}
-                          disabled={!canEditAssignments}
-                          isDeleting={false}
-                          isUpdating={false}
-                          plannedHoursLimit={undefined}
-                          currentActualHours={undefined}
-                          timeOffAssignments={[]}
                         />
                       ))}
                     </div>

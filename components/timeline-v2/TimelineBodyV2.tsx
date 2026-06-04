@@ -22,10 +22,7 @@ type TimelineBodyV2Props = {
   onToggleExpanded: (resourceId: string) => void;
   onUpdatePlanned: (id: string, updates: unknown) => void;
   onDeletePlanned: (id: string) => void;
-  onUpdateActual: (uuid: string, updates: unknown) => void;
-  onDeleteActual: (uuid: string) => void;
   onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenActualCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date; plannedHoursLimit: number; currentActualHours: number }) => void;
   onOpenTimeOffCreate: (args: { resourceId: string; startDate: Date; endDate: Date }) => void;
   onOpenMonthlyAllocation: (args: {
     resourceId: string;
@@ -57,10 +54,7 @@ export function TimelineBodyV2({
   onToggleExpanded,
   onUpdatePlanned,
   onDeletePlanned,
-  onUpdateActual,
-  onDeleteActual,
   onOpenPlannedCreate,
-  onOpenActualCreate,
   onOpenTimeOffCreate,
   onOpenMonthlyAllocation,
   isFetchingNextEmployeePage,
@@ -93,10 +87,7 @@ export function TimelineBodyV2({
                   onToggleExpanded={onToggleExpanded}
                   onUpdatePlanned={onUpdatePlanned}
                   onDeletePlanned={onDeletePlanned}
-                  onUpdateActual={onUpdateActual}
-                  onDeleteActual={onDeleteActual}
                   onOpenPlannedCreate={onOpenPlannedCreate}
-                  onOpenActualCreate={onOpenActualCreate}
                   onOpenTimeOffCreate={onOpenTimeOffCreate}
                   onOpenMonthlyAllocation={onOpenMonthlyAllocation}
                 />
