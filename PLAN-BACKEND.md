@@ -636,7 +636,7 @@ git commit -m "perf: use timeline-specific planner queries"
 - Create: `lib/query/server/planner-home-bootstrap.ts`
 - Create: `tests/whitebox/planner-home-bootstrap-source.test.ts`
 
-- [ ] **Step 1: Write the failing bootstrap source test**
+- [x] **Step 1: Write the failing bootstrap source test**
 
 Create `tests/whitebox/planner-home-bootstrap-source.test.ts`:
 
@@ -659,13 +659,13 @@ describe("planner home bootstrap server composer", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-source.test.ts`
 
 Expected: FAIL because `planner-home-bootstrap.ts` does not exist.
 
-- [ ] **Step 3: Create the bootstrap composer**
+- [x] **Step 3: Create the bootstrap composer**
 
 Create `lib/query/server/planner-home-bootstrap.ts`:
 
@@ -821,13 +821,13 @@ export async function fetchPlannerHomeBootstrap(
 }
 ```
 
-- [ ] **Step 4: Run bootstrap source test**
+- [x] **Step 4: Run bootstrap source test**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-source.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/query/server/planner-home-bootstrap.ts tests/whitebox/planner-home-bootstrap-source.test.ts
