@@ -1,4 +1,7 @@
-import { getActualAssignments, getAssignments } from "@/lib/mysql-assignments/queries";
+import {
+  getTimelineActualAssignments,
+  getTimelineAssignments,
+} from "@/lib/mysql-assignments/queries";
 import { toLocalDateString } from "@/lib/utils";
 import type { SessionData } from "@/lib/auth/session";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
@@ -114,13 +117,16 @@ function transformActual(mysqlActual: ApiRecord): ActualAssignment {
 
 export async function fetchPlannerAssignments(
   session: SessionData,
-  dateRange: { startDate: string; endDate: string }
+  dateRange: { startDate: string; endDate: string },
+  filters: PlannerTimelineRequest["filters"] = {}
 ): Promise<Assignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
-  const assignments = (await getAssignments({
+  const assignments = (await getTimelineAssignments({
     employee_uuid: employeeUuid,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
+    status: filters?.status,
+    category: filters?.category,
   })) as ApiRecord[];
 
   return assignments.map(transformAssignment);
@@ -128,46 +134,19 @@ export async function fetchPlannerAssignments(
 
 export async function fetchPlannerActualAssignments(
   session: SessionData,
-  dateRange: { startDate: string; endDate: string }
+  dateRange: { startDate: string; endDate: string },
+  filters: PlannerTimelineRequest["filters"] = {}
 ): Promise<ActualAssignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
-  const actuals = (await getActualAssignments({
+  const actuals = (await getTimelineActualAssignments({
     employee_uuid: employeeUuid,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
+    status: filters?.status,
+    category: filters?.category,
   })) as ApiRecord[];
 
   return actuals.map(transformActual);
-}
-
-function filterPlannerAssignments(
-  assignments: Assignment[],
-  request: PlannerTimelineRequest
-): Assignment[] {
-  return assignments.filter((assignment) => {
-    if (request.filters?.category && assignment.category !== request.filters.category) {
-      return false;
-    }
-    if (request.filters?.status && assignment.status !== request.filters.status) {
-      return false;
-    }
-    return true;
-  });
-}
-
-function filterPlannerActualAssignments(
-  actualAssignments: ActualAssignment[],
-  request: PlannerTimelineRequest
-): ActualAssignment[] {
-  return actualAssignments.filter((assignment) => {
-    if (request.filters?.category && assignment.category !== request.filters.category) {
-      return false;
-    }
-    if (request.filters?.status && assignment.status !== request.filters.status) {
-      return false;
-    }
-    return true;
-  });
 }
 
 export async function fetchPlannerTimeline(
@@ -182,23 +161,21 @@ export async function fetchPlannerTimeline(
     startDate: request.startDate,
     endDate: request.endDate,
   };
-  const plannedPromise = fetchPlannerAssignments(session, dateRange).then((assignments) => {
+  const plannedPromise = fetchPlannerAssignments(session, dateRange, request.filters).then((assignments) => {
     timing.phase("planned_assignments_query", { count: assignments.length });
     return assignments;
   });
-  const actualPromise = fetchPlannerActualAssignments(session, dateRange).then((actualAssignments) => {
+  const actualPromise = fetchPlannerActualAssignments(session, dateRange, request.filters).then((actualAssignments) => {
     timing.phase("actual_assignments_query", { count: actualAssignments.length });
     return actualAssignments;
   });
 
   const [assignments, actualAssignments] = await Promise.all([plannedPromise, actualPromise]);
-  const filteredAssignments = filterPlannerAssignments(assignments, request);
-  const filteredActualAssignments = filterPlannerActualAssignments(actualAssignments, request);
 
   if (request.resolution === "month") {
-    const summarizedAssignments = summarizeMonthlyAssignments(filteredAssignments, dateRange);
+    const summarizedAssignments = summarizeMonthlyAssignments(assignments, dateRange);
     const summarizedActualAssignments = summarizeMonthlyActualAssignments(
-      filteredActualAssignments,
+      actualAssignments,
       dateRange
     );
     timing.phase("monthly_summary", {
@@ -214,14 +191,14 @@ export async function fetchPlannerTimeline(
   }
 
   timing.phase("monthly_summary", {
-    assignmentCount: filteredAssignments.length,
-    actualAssignmentCount: filteredActualAssignments.length,
+    assignmentCount: assignments.length,
+    actualAssignmentCount: actualAssignments.length,
     skipped: true,
   });
 
   return {
     request,
-    assignments: filteredAssignments,
-    actualAssignments: filteredActualAssignments,
+    assignments,
+    actualAssignments,
   };
 }

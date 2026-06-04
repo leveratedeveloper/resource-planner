@@ -27,6 +27,59 @@ type AllowedUpdateColumn = typeof ALLOWED_UPDATE_COLUMNS[number];
 // Timetrack API base URL for validation
 const TIMETRACK_API_URL = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
 
+const TIMELINE_ASSIGNMENT_COLUMNS = [
+  'uuid',
+  'employee_uuid',
+  'project_uuid',
+  'task_uuid',
+  'start_date',
+  'end_date',
+  'hours_per_day',
+  'total_hours',
+  'allocation_percentage',
+  'is_time_off',
+  'is_adjustment',
+  'time_off_type_uuid',
+  'category',
+  'is_billable',
+  'status',
+  'note',
+  'created_by_uuid',
+  'created_at',
+  'updated_at',
+].join(', ');
+
+const TIMELINE_ACTUAL_COLUMNS = [
+  'uuid',
+  'employee_uuid',
+  'project_uuid',
+  'task_uuid',
+  'start_date',
+  'end_date',
+  'hours_per_day',
+  'total_hours',
+  'allocation_percentage',
+  'is_time_off',
+  'time_off_type_uuid',
+  'category',
+  'is_billable',
+  'status',
+  'note',
+  'created_by_uuid',
+  'created_at',
+  'updated_at',
+].join(', ');
+
+type TimelineAssignmentFilters = {
+  employee_uuid?: string;
+  project_uuid?: string;
+  project_uuids?: string[];
+  start_date: string;
+  end_date: string;
+  status?: string | null;
+  category?: string | null;
+};
+
 /**
  * Validate employee and project existence in MySQL API
  */
@@ -107,6 +160,38 @@ export async function getAssignments(filters?: {
   }
 
   query += ' ORDER BY created_at DESC';
+
+  const [rows] = await assignmentsDb.execute(query, params);
+  return rows;
+}
+
+export async function getTimelineAssignments(filters: TimelineAssignmentFilters) {
+  let query = `SELECT ${TIMELINE_ASSIGNMENT_COLUMNS} FROM assignments WHERE end_date >= ? AND start_date <= ?`;
+  const params: any[] = [filters.start_date, filters.end_date];
+
+  if (filters.employee_uuid) {
+    query += ' AND employee_uuid = ?';
+    params.push(filters.employee_uuid);
+  }
+  if (filters.project_uuid) {
+    query += ' AND project_uuid = ?';
+    params.push(filters.project_uuid);
+  }
+  if (filters.project_uuids && filters.project_uuids.length > 0) {
+    const placeholders = filters.project_uuids.map(() => '?').join(',');
+    query += ` AND project_uuid IN (${placeholders})`;
+    params.push(...filters.project_uuids);
+  }
+  if (filters.status) {
+    query += ' AND status = ?';
+    params.push(filters.status);
+  }
+  if (filters.category) {
+    query += ' AND category = ?';
+    params.push(filters.category);
+  }
+
+  query += ' ORDER BY employee_uuid, start_date, project_uuid';
 
   const [rows] = await assignmentsDb.execute(query, params);
   return rows;
@@ -378,6 +463,38 @@ export async function getActualAssignments(filters?: {
   }
 
   query += ' ORDER BY start_date DESC';
+  const [rows] = await assignmentsDb.execute(query, params);
+  return rows;
+}
+
+export async function getTimelineActualAssignments(filters: TimelineAssignmentFilters) {
+  let query = `SELECT ${TIMELINE_ACTUAL_COLUMNS} FROM actual WHERE end_date >= ? AND start_date <= ?`;
+  const params: any[] = [filters.start_date, filters.end_date];
+
+  if (filters.employee_uuid) {
+    query += ' AND employee_uuid = ?';
+    params.push(filters.employee_uuid);
+  }
+  if (filters.project_uuid) {
+    query += ' AND project_uuid = ?';
+    params.push(filters.project_uuid);
+  }
+  if (filters.project_uuids && filters.project_uuids.length > 0) {
+    const placeholders = filters.project_uuids.map(() => '?').join(',');
+    query += ` AND project_uuid IN (${placeholders})`;
+    params.push(...filters.project_uuids);
+  }
+  if (filters.status) {
+    query += ' AND status = ?';
+    params.push(filters.status);
+  }
+  if (filters.category) {
+    query += ' AND category = ?';
+    params.push(filters.category);
+  }
+
+  query += ' ORDER BY employee_uuid, start_date, project_uuid';
+
   const [rows] = await assignmentsDb.execute(query, params);
   return rows;
 }

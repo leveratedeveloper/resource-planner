@@ -358,7 +358,7 @@ Run: `npm run test -- tests/whitebox/planner-timeline-loading.test.ts tests/whit
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/mysql-assignments/db.ts tests/whitebox/assignments-db-connection.test.ts
@@ -372,7 +372,7 @@ git commit -m "perf: reuse postgres connections for planner data"
 - Modify: `lib/query/server/planner-prefetch.ts`
 - Create: `tests/whitebox/planner-assignment-projection.test.ts`
 
-- [ ] **Step 1: Write the failing projection test**
+- [x] **Step 1: Write the failing projection test**
 
 Create `tests/whitebox/planner-assignment-projection.test.ts`:
 
@@ -405,13 +405,13 @@ expect(queriesSource).not.toContain("export async function getTimelineAssignment
 
 The corrected test must assert the new functions are present and the prefetch layer no longer uses the generic broad queries.
 
-- [ ] **Step 2: Run the corrected test and verify it fails**
+- [x] **Step 2: Run the corrected test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/planner-assignment-projection.test.ts`
 
 Expected: FAIL because timeline-specific query functions do not exist.
 
-- [ ] **Step 3: Add timeline-specific query functions**
+- [x] **Step 3: Add timeline-specific query functions**
 
 Add this to `lib/mysql-assignments/queries.ts` near the existing assignment read functions:
 
@@ -542,7 +542,7 @@ export async function getTimelineActualAssignments(filters: TimelineAssignmentFi
 }
 ```
 
-- [ ] **Step 4: Use projections from the planner prefetch layer**
+- [x] **Step 4: Use projections from the planner prefetch layer**
 
 Change the import in `lib/query/server/planner-prefetch.ts`:
 
@@ -611,19 +611,19 @@ const actualPromise = fetchPlannerActualAssignments(session, dateRange, request.
 
 Remove `filterPlannerAssignments` and `filterPlannerActualAssignments` only after tests prove no caller relies on post-fetch filtering.
 
-- [ ] **Step 5: Run projection test**
+- [x] **Step 5: Run projection test**
 
 Run: `npm run test -- tests/whitebox/planner-assignment-projection.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Run planner tests**
+- [x] **Step 6: Run planner tests**
 
 Run: `npm run test -- tests/whitebox/planner-timeline-loading.test.ts tests/whitebox/timeline-v2-source-parity.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add lib/mysql-assignments/queries.ts lib/query/server/planner-prefetch.ts tests/whitebox/planner-assignment-projection.test.ts

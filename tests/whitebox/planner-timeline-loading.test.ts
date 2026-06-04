@@ -96,11 +96,14 @@ describe("planner timeline loading contract", () => {
 
   it("does not use projectId as a destructive planner assignment payload filter", () => {
     const plannerPrefetchSource = readFileSync("lib/query/server/planner-prefetch.ts", "utf8");
+    const plannerQueriesSource = readFileSync("lib/mysql-assignments/queries.ts", "utf8");
 
     expect(plannerPrefetchSource).not.toContain("assignment.projectId !== request.filters.projectId");
     expect(plannerPrefetchSource).not.toContain("assignment.projectUuid !== request.filters.projectId");
-    expect(plannerPrefetchSource).toContain("assignment.category !== request.filters.category");
-    expect(plannerPrefetchSource).toContain("assignment.status !== request.filters.status");
+    expect(plannerPrefetchSource).toContain("category: filters?.category");
+    expect(plannerPrefetchSource).toContain("status: filters?.status");
+    expect(plannerQueriesSource).toContain("AND category = ?");
+    expect(plannerQueriesSource).toContain("AND status = ?");
   });
 
   it("keeps brand and project ids out of the planner request because they are resource filters", () => {
