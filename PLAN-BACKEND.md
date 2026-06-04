@@ -238,7 +238,7 @@ git commit -m "chore: add planner backend timing metrics"
 - Modify: `lib/mysql-assignments/db.ts`
 - Create: `tests/whitebox/assignments-db-connection.test.ts`
 
-- [ ] **Step 1: Write the failing connection test**
+- [x] **Step 1: Write the failing connection test**
 
 Create `tests/whitebox/assignments-db-connection.test.ts`:
 
@@ -258,13 +258,13 @@ describe("assignments database connection management", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/assignments-db-connection.test.ts`
 
 Expected: FAIL because `db.ts` currently creates a new PostgreSQL client per query.
 
-- [ ] **Step 3: Replace per-query PostgreSQL clients with a pool**
+- [x] **Step 3: Replace per-query PostgreSQL clients with a pool**
 
 In `lib/mysql-assignments/db.ts`, replace the unused `PostgreSQLPool` import and `getPostgresClient` implementation with:
 
@@ -346,13 +346,13 @@ async end() {
 },
 ```
 
-- [ ] **Step 4: Run connection test**
+- [x] **Step 4: Run connection test**
 
 Run: `npm run test -- tests/whitebox/assignments-db-connection.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run planner tests**
+- [x] **Step 5: Run planner tests**
 
 Run: `npm run test -- tests/whitebox/planner-timeline-loading.test.ts tests/whitebox/planner-backend-observability.test.ts`
 
