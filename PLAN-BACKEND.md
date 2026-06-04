@@ -1511,7 +1511,7 @@ git commit -m "chore: clean home backend loading paths"
 - Modify: `tests/whitebox/planner-startup.test.ts`
 - Create: `tests/whitebox/planner-startup-retirement.test.ts`
 
-- [ ] **Step 1: Write the retirement test**
+- [x] **Step 1: Write the retirement test**
 
 Create `tests/whitebox/planner-startup-retirement.test.ts`:
 
@@ -1532,13 +1532,13 @@ describe("planner startup prefetch retirement", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/planner-startup-retirement.test.ts`
 
 Expected: FAIL because `planner-startup.ts` still contains the unused prefetch helpers.
 
-- [ ] **Step 3: Remove unused startup hydration helpers**
+- [x] **Step 3: Remove unused startup hydration helpers**
 
 In `lib/query/server/planner-startup.ts`, keep `getInitialPlannerRequest` only. Remove:
 
@@ -1586,7 +1586,7 @@ import {
 } from "@/lib/timeline/planner-loading";
 ```
 
-- [ ] **Step 4: Update startup tests**
+- [x] **Step 4: Update startup tests**
 
 In `tests/whitebox/planner-startup.test.ts`, remove tests that assert `prefetchCriticalPlannerStartup` behavior. Keep the `getInitialPlannerRequest` coverage:
 
@@ -1610,13 +1610,13 @@ describe("planner startup", () => {
 });
 ```
 
-- [ ] **Step 5: Run startup tests**
+- [x] **Step 5: Run startup tests**
 
 Run: `npm run test -- tests/whitebox/planner-startup.test.ts tests/whitebox/planner-startup-retirement.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/query/server/planner-startup.ts tests/whitebox/planner-startup.test.ts tests/whitebox/planner-startup-retirement.test.ts
