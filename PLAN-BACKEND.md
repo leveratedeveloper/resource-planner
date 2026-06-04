@@ -1241,7 +1241,7 @@ git commit -m "feat: gate timeline v2 home bootstrap loading"
 - Create: `migrations/add_timeline_query_indexes.sql`
 - Create: `tests/whitebox/timeline-query-indexes.test.ts`
 
-- [ ] **Step 1: Write the failing index test**
+- [x] **Step 1: Write the failing index test**
 
 Create `tests/whitebox/timeline-query-indexes.test.ts`:
 
@@ -1264,13 +1264,13 @@ describe("timeline query indexes", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/timeline-query-indexes.test.ts`
 
 Expected: FAIL because the migration file does not exist.
 
-- [ ] **Step 3: Create the migration**
+- [x] **Step 3: Create the migration**
 
 Create `migrations/add_timeline_query_indexes.sql`:
 
@@ -1307,13 +1307,13 @@ CREATE INDEX IF NOT EXISTS idx_actual_timeline_range_gist
 
 Do not add the GiST migration blindly; it should be based on measured query plans and table size.
 
-- [ ] **Step 4: Run index test**
+- [x] **Step 4: Run index test**
 
 Run: `npm run test -- tests/whitebox/timeline-query-indexes.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add migrations/add_timeline_query_indexes.sql tests/whitebox/timeline-query-indexes.test.ts
