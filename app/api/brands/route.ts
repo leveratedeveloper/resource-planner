@@ -31,7 +31,6 @@ export async function GET(request: Request) {
 
     // Check cache
     if (useCache && brandsCache && (Date.now() - brandsCache.timestamp) < CACHE_TTL) {
-      console.log('[Brands API] Returning cached data');
       return NextResponse.json({
         success: true,
         data: brandsCache.data,
@@ -55,8 +54,6 @@ export async function GET(request: Request) {
       search: search || undefined,
       include: 'all', // Add this to bypass filtering and ensure all brands appear
     });
-
-    console.log('[Brands API] MySQL response:', JSON.stringify(response, null, 2));
 
     // Check for API errors from the client
     if (response.error) {
@@ -91,16 +88,6 @@ export async function GET(request: Request) {
 
     // Calculate hasMore based on whether we have data and there are more pages
     const hasMore = mergedBrands.length > 0 && currentPage < lastPage;
-
-    console.log('[Brands API] Processed response:', {
-      dataLength: mergedBrands.length,
-      total,
-      currentPage,
-      lastPage,
-      hasMore,
-      hasMeta: !!meta,
-      sampleBrand: mergedBrands[0] ? Object.keys(mergedBrands[0]) : [],
-    });
 
     // Transform MySQL response to match expected format
     // Note: Use brand_id (numeric) to match with campaigns/pitches
@@ -139,15 +126,12 @@ export async function GET(request: Request) {
       };
     });
 
-    console.log('[Brands API] Final transformed brands sample:', transformedBrands.slice(0, 3).map((b: any) => ({ id: b.id, name: b.name, original: mergedBrands.find((mb: any) => mb.brand_name === b.name)?.id || mergedBrands.find((mb: any) => mb.brand_name === b.name)?.brand_id })));
-
     // Store in cache (only first page, no search)
     if (useCache) {
       brandsCache = {
         data: transformedBrands,
         timestamp: Date.now(),
       };
-      console.log('[Brands API] Cached', transformedBrands.length, 'brands');
     }
 
     return NextResponse.json({

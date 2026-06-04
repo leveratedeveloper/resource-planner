@@ -379,8 +379,6 @@ export function useTimelineV2Controller({
     setMonthlyAllocationModal(null);
   }, [monthlyAllocationModal, queryClient]);
 
-  const openMonthlyAllocationConfirm = useCallback(() => setMonthlyAllocationConfirm((value) => value), []);
-
   return {
     plannedPopover,
     monthlyAllocationModal,
@@ -401,6 +399,5 @@ export function useTimelineV2Controller({
     closeMonthlyAllocationConfirm,
     setMonthlyAllocationModal,
     setPendingMonthlyAllocationSave,
-    openMonthlyAllocationConfirm,
   };
 }

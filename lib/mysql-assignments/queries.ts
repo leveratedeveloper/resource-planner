@@ -24,9 +24,6 @@ const ALLOWED_UPDATE_COLUMNS = [
 
 type AllowedUpdateColumn = typeof ALLOWED_UPDATE_COLUMNS[number];
 
-// Timetrack API base URL for validation
-const TIMETRACK_API_URL = process.env.TIMETRACK_API_URL || 'http://127.0.0.1:8000/api/v1';
-
 const TIMELINE_ASSIGNMENT_COLUMNS = [
   'uuid',
   'employee_uuid',
@@ -79,44 +76,6 @@ type TimelineAssignmentFilters = {
   status?: string | null;
   category?: string | null;
 };
-
-/**
- * Validate employee and project existence in MySQL API
- */
-async function validateAssignmentData(data: {
-  employee_uuid: string;
-  project_uuid?: string | null;
-}): Promise<void> {
-  try {
-    // Cek employee
-    const employeeRes = await fetch(`${TIMETRACK_API_URL}/employees/${data.employee_uuid}`, {
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    if (!employeeRes.ok) {
-      throw new Error(`Employee ${data.employee_uuid} not found`);
-    }
-
-    // Cek project (jika ada)
-    if (data.project_uuid) {
-      const projectRes = await fetch(`${TIMETRACK_API_URL}/campaigns/${data.project_uuid}`, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-      if (!projectRes.ok) {
-        throw new Error(`Project ${data.project_uuid} not found`);
-      }
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      throw error;
-    }
-    console.warn('[Assignments] Validation failed, continuing:', error);
-    // Continue even if validation fails - the MySQL API might be down
-  }
-}
 
 /**
  * Get assignments with optional filters
@@ -240,14 +199,6 @@ export async function createAssignment(data: {
 
   const uuid = randomUUID();
 
-  console.log('[createAssignment] Input:', {
-    employee_uuid: data.employee_uuid,
-    start_date: data.start_date,
-    end_date: data.end_date,
-    hours_per_day: data.hours_per_day,
-    total_hours_input: data.total_hours
-  });
-
   // Calculate total_hours if not provided
   const hoursPerDay = parseFloat(String(data.hours_per_day || '8.00'));
   const startDate = new Date(data.start_date);
@@ -289,16 +240,7 @@ export async function createAssignment(data: {
     now,  // updated_at
   ]);
 
-  console.log('[createAssignment] Inserted to DB, fetching result...');
   const result = await getAssignment(uuid);
-
-  console.log('[createAssignment] Result from DB:', {
-    uuid: result.uuid,
-    start_date: result.start_date,
-    end_date: result.end_date,
-    hours_per_day: result.hours_per_day,
-    total_hours: result.total_hours
-  });
 
   return result;
 }

@@ -1330,7 +1330,7 @@ git commit -m "perf: add timeline query indexes"
 - Modify: `lib/query/hooks/useBrands.ts`
 - Create: `tests/whitebox/home-backend-cleanup.test.ts`
 
-- [ ] **Step 1: Write the failing cleanup test**
+- [x] **Step 1: Write the failing cleanup test**
 
 Create `tests/whitebox/home-backend-cleanup.test.ts`:
 
@@ -1356,13 +1356,13 @@ describe("home backend cleanup", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/home-backend-cleanup.test.ts`
 
 Expected: FAIL because the cleanup candidates are still present.
 
-- [ ] **Step 3: Remove unused PostgreSQL client import**
+- [x] **Step 3: Remove unused PostgreSQL client import**
 
 In `lib/mysql-assignments/db.ts`, make sure the import is:
 
@@ -1370,7 +1370,7 @@ In `lib/mysql-assignments/db.ts`, make sure the import is:
 import { Pool as PostgreSQLPool } from 'pg';
 ```
 
-- [ ] **Step 4: Remove unused assignment validation helper**
+- [x] **Step 4: Remove unused assignment validation helper**
 
 Delete this unused function from `lib/mysql-assignments/queries.ts`:
 
@@ -1410,7 +1410,7 @@ async function validateAssignmentData(data: {
 
 Also remove `const TIMETRACK_API_URL = ...` if no remaining code in the file uses it.
 
-- [ ] **Step 5: Remove high-volume create-assignment logs**
+- [x] **Step 5: Remove high-volume create-assignment logs**
 
 Remove these debug logs from `lib/mysql-assignments/queries.ts`:
 
@@ -1436,7 +1436,7 @@ console.log('[createAssignment] Result from DB:', {
 
 Keep error logs in catch blocks where they help diagnose failed requests.
 
-- [ ] **Step 6: Remove unused timeline controller no-op**
+- [x] **Step 6: Remove unused timeline controller no-op**
 
 Delete this from `components/timeline-v2/useTimelineV2Controller.ts`:
 
@@ -1446,7 +1446,7 @@ const openMonthlyAllocationConfirm = useCallback(() => setMonthlyAllocationConfi
 
 Remove `openMonthlyAllocationConfirm` from the returned object.
 
-- [ ] **Step 7: Remove high-volume brand route logs**
+- [x] **Step 7: Remove high-volume brand route logs**
 
 In `app/api/brands/route.ts`, remove logs that dump raw TimeTrack responses or transformed samples:
 
@@ -1467,7 +1467,7 @@ console.log('[Brands API] Cached', transformedBrands.length, 'brands');
 
 Keep a single timing-based log only if `createRequestTiming` is added to the route.
 
-- [ ] **Step 8: Remove paginated brands hook logs**
+- [x] **Step 8: Remove paginated brands hook logs**
 
 In `lib/query/hooks/useBrands.ts`, remove:
 
@@ -1485,19 +1485,19 @@ console.log('[fetchBrandsPaginated] Result:', {
 
 Throwing `new Error("Failed to fetch brands")` is enough for TanStack Query to surface the failed state.
 
-- [ ] **Step 9: Run cleanup test**
+- [x] **Step 9: Run cleanup test**
 
 Run: `npm run test -- tests/whitebox/home-backend-cleanup.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 10: Run targeted tests**
+- [x] **Step 10: Run targeted tests**
 
 Run: `npm run test -- tests/whitebox/timeline-v2-source-parity.test.ts tests/whitebox/planner-home-bootstrap-route.test.ts tests/whitebox/planner-assignment-projection.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add lib/mysql-assignments/db.ts lib/mysql-assignments/queries.ts components/timeline-v2/useTimelineV2Controller.ts app/api/brands/route.ts lib/query/hooks/useBrands.ts tests/whitebox/home-backend-cleanup.test.ts
