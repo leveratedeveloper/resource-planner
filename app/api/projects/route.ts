@@ -3,9 +3,7 @@ import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { getSession } from "@/lib/auth/session";
 import {
   mapCampaignToProject,
-  mapCampaignToProjectSummary,
   mapPitchToProject,
-  mapPitchToProjectSummary,
   type CampaignApiRecord,
   type PitchApiRecord,
 } from "@/lib/projects/project-mappers";
@@ -26,8 +24,6 @@ export async function GET(request: Request) {
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
     const search = searchParams.get("search");
-    const fields = searchParams.get("fields");
-    const isSummary = fields === "summary";
 
     // Get API client with session token
     const client = getMySqlApiClient(async () => session.access_token);
@@ -43,14 +39,14 @@ export async function GET(request: Request) {
         per_page: perPage,
         search: search || undefined,
         brand_id: brandId || undefined,
-        include: isSummary ? undefined : "channels",
+        include: "channels",
       }),
       client.getPitches({
         page,
         per_page: perPage,
         search: search || undefined,
         brand_id: brandId || undefined,
-        include: isSummary ? undefined : "channels",
+        include: "channels",
       }),
     ]);
 
@@ -76,12 +72,12 @@ export async function GET(request: Request) {
 
     // Transform campaigns to projects
     const campaignProjects = (campaignsData as CampaignApiRecord[]).map((campaign) =>
-      isSummary ? mapCampaignToProjectSummary(campaign) : mapCampaignToProject(campaign)
+      mapCampaignToProject(campaign)
     );
 
     // Transform pitches to projects
     const pitchProjects = (pitchesData as PitchApiRecord[]).map((pitch) =>
-      isSummary ? mapPitchToProjectSummary(pitch) : mapPitchToProject(pitch)
+      mapPitchToProject(pitch)
     );
 
     // Combine both project types

@@ -40,7 +40,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <QueryProvider>
+        <QueryProvider cacheOwnerKey={initialSession?.employee.uuid ?? null}>
           <AuthProvider initialSession={initialSession} hasResolvedInitialSession>
             {children}
             <ToastProvider />

@@ -55,4 +55,38 @@ describe("project setup team member helpers", () => {
     expect(teamMembers[0].allocationPercentage).toContain("36%");
     expect(teamMembers[1].allocationPercentage).toContain("0%");
   });
+
+  it("formats monthly allocation percentages for a bounded date range", () => {
+    const employeeMap = buildEmployeeAssignmentMap(
+      [
+        {
+          id: "employee-1",
+          fullName: "Ada Lovelace",
+          position: "Developer",
+          department: { name: "Engineering" },
+        },
+      ],
+      [
+        {
+          employeeId: "employee-1",
+          startDate: "2026-01-05",
+          endDate: "2026-01-09",
+          hoursPerDay: "8",
+          isTimeOff: false,
+        },
+      ]
+    );
+
+    const result = buildProjectTeamMembers({
+      employeeMap,
+      projectAssignments: [{ employeeId: "employee-1" }],
+      pendingAssignments: [],
+      dateRange: {
+        from: new Date("2026-01-01T00:00:00"),
+        to: new Date("2026-01-31T00:00:00"),
+      },
+    });
+
+    expect(result[0].allocationPercentage).toEqual(["23%"]);
+  });
 });

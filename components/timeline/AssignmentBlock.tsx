@@ -33,6 +33,7 @@ interface AssignmentBlockProps {
   isUpdating?: boolean; // Show updating state (during drag/resize)
   showProjectName?: boolean; // Show project name in block (default: true, set false when already shown in row header)
   disabled?: boolean; // Disable all interactive features (click, resize, drag)
+  isHighlighted?: boolean; // Emphasize blocks matching the active project or brand filter
 }
 
 export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
@@ -48,6 +49,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   isDeleting = false,
   isUpdating = false,
   disabled = false,
+  isHighlighted = false,
 }) => {
   const blockRef = useRef<HTMLDivElement>(null);
 
@@ -606,6 +608,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
                 isDragging ? "cursor-grabbing opacity-70 ring-2 ring-blue-400 scale-[1.01]" : "cursor-grab",
                 isDeleting && "opacity-50 pointer-events-none animate-pulse",
                 isUpdating && !isResizing && !isDragging && "opacity-80 ring-1 ring-blue-300",
+                isHighlighted && "ring-2 ring-amber-400 border-amber-200 shadow-md",
                 disabled && "pointer-events-none cursor-not-allowed"
               )}
               style={{
@@ -614,7 +617,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
                 backgroundColor: bgColor,
                 top: 4,
                 height: resourceRowHeight - 4,
-                zIndex: isResizing || isDragging ? 40 : 10,
+                zIndex: isResizing || isDragging ? 40 : isHighlighted ? 20 : 10,
               }}
               onPointerDown={disabled ? undefined : handleDragStart}
               onClick={disabled ? undefined : handleBlockClick}

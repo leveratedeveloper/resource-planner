@@ -70,9 +70,23 @@ describe("critical planner startup", () => {
     expect(mocks.fetchPlannerTimeline).toHaveBeenCalledWith(session, plannerRequest);
   });
 
-  it("keeps one durable home client outside the planner startup fallback", () => {
+  it("renders the home planner timeline without blocking on server prefetch", () => {
     const pageSource = readFileSync("app/page.tsx", "utf8");
 
     expect(pageSource.match(/<HomeClient/g)).toHaveLength(1);
+    expect(pageSource).toContain("<HomePlannerTimeline");
+    expect(pageSource).not.toContain("prefetchCriticalPlannerStartup");
+    expect(pageSource).not.toContain("<Suspense");
+  });
+
+  it("keeps resource scope filters out of the initial planner request", () => {
+    const request = getInitialPlannerRequest("2026-05-21");
+
+    expect(request.filters).toEqual({
+      category: null,
+      status: null,
+    });
+    expect(JSON.stringify(request)).not.toContain("projectId");
+    expect(JSON.stringify(request)).not.toContain("brandId");
   });
 });

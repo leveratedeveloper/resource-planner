@@ -125,14 +125,16 @@ function formatMonthlyPercentages(
   monthlyHours: Record<string, number>,
   dateRange: DateRange | undefined,
 ): string[] {
-  const hasDateRange = dateRange?.from && dateRange?.to;
-  const isSingleMonth = hasDateRange && isSameMonth(dateRange.from, dateRange.to);
+  const rangeFrom = dateRange?.from;
+  const rangeTo = dateRange?.to;
+  const hasDateRange = !!rangeFrom && !!rangeTo;
+  const isSingleMonth = hasDateRange ? isSameMonth(rangeFrom, rangeTo) : false;
 
   const isInDateRange = (monthKey: string) => {
-    if (!dateRange?.from || !dateRange?.to) return true;
+    if (!rangeFrom || !rangeTo) return true;
     const monthDate = startOfMonth(new Date(monthKey));
-    const rangeStart = startOfMonth(dateRange.from);
-    const rangeEnd = startOfMonth(dateRange.to);
+    const rangeStart = startOfMonth(rangeFrom);
+    const rangeEnd = startOfMonth(rangeTo);
     return monthDate >= rangeStart && monthDate <= rangeEnd;
   };
 
@@ -161,10 +163,10 @@ function formatMonthlyPercentages(
     return monthlyPercentages;
   }
 
-  if (dateRange?.from && dateRange?.to) {
+  if (rangeFrom && rangeTo) {
     const monthsInRange = eachMonthOfInterval({
-      start: startOfMonth(dateRange.from),
-      end: startOfMonth(dateRange.to),
+      start: startOfMonth(rangeFrom),
+      end: startOfMonth(rangeTo),
     });
     return monthsInRange.map((month) => {
       const prefix = isSingleMonth ? "" : `${format(month, "MMM")}: `;

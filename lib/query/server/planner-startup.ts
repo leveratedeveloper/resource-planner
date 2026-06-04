@@ -38,7 +38,6 @@ export function getInitialPlannerRequest(initialTimelineAnchor: string): Planner
     startDate: initialDateRange.startDate,
     endDate: initialDateRange.endDate,
     filters: {
-      projectId: null,
       category: null,
       status: null,
     },

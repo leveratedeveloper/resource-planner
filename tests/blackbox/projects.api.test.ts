@@ -33,8 +33,8 @@ describe("Blackbox: GET /api/projects", () => {
     }
   });
 
-  it("supports summary fields with compact shape", async () => {
-    const res = await fetch(`${BASE_URL}/api/projects?fields=summary`);
+  it("supports compact summaries through the summary endpoint", async () => {
+    const res = await fetch(`${BASE_URL}/api/projects/summary`);
     if (res.status === 401) {
       expect(res.status).toBe(401);
       return;

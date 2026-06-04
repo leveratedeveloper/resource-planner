@@ -3,6 +3,7 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { clearMainPageCaches } from "@/lib/query/main-page-cache";
 
 export interface SessionData {
   access_token: string;
@@ -50,6 +51,7 @@ export function shouldFetchAuthSession({
 }
 
 export function clearAuthSessionAfterLogout(queryClient: QueryClient): void {
+  clearMainPageCaches();
   queryClient.clear();
   queryClient.setQueryData(["session"], null);
 }
