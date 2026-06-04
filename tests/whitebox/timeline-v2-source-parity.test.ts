@@ -51,9 +51,24 @@ describe("timeline-v2 source parity", () => {
     const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
 
     expect(source).toContain('data-testid="resource-row-v2-campaign-row"');
-    expect(source).not.toContain('data-testid="resource-row-v2-campaign-plan-row"');
-    expect(source).not.toContain('data-testid="resource-row-v2-campaign-actual-row"');
-    expect(source).not.toContain("group.row.actualAssignments.map");
+    expect(source).toContain('data-testid="resource-row-v2-campaign-label"');
+    expect(source).toContain("{campaign.name}");
+    expect(source).not.toContain("CAMPAIGN_HEADER_ROW_HEIGHT");
+    expect(source).not.toContain("getCampaignHeaderHeight");
+    expect(source).not.toContain('data-testid="resource-row-v2-campaign-group"');
+  });
+
+  it("keeps v2 assignment blocks non-resizable and click-isolated", () => {
+    const assignmentBlockV2Source = readFileSync("components/timeline-v2/AssignmentBlockV2.tsx", "utf8");
+    const assignmentBlockSource = readFileSync("components/timeline/AssignmentBlock.tsx", "utf8");
+
+    expect(assignmentBlockV2Source).toContain("resizable = false");
+    expect(assignmentBlockV2Source).toContain("resizable={resizable}");
+    expect(assignmentBlockSource).toContain("resizable = true");
+    expect(assignmentBlockSource).toContain("if (!resizable) return;");
+    expect(assignmentBlockSource).toContain("e.stopPropagation();");
+    expect(assignmentBlockSource).toContain("setIsTooltipOpen(false);");
+    expect(assignmentBlockSource).toContain("!disabled && resizable");
   });
 
   it("does not keep debug logs in v2 timeline files", () => {

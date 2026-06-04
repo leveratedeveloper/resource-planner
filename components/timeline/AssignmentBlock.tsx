@@ -26,7 +26,7 @@ interface AssignmentBlockProps {
   resourceRowHeight: number;
   cellWidth?: number;
   isWeekView?: boolean; // true for quarter/halfYear/year views where each cell = 1 week
-  onUpdate?: (id: string, updates: any) => void;
+  onUpdate?: (id: string, updates: unknown) => void;
   onDelete?: (id: string) => void;
   timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
   isDeleting?: boolean; // Show deleting state
@@ -34,6 +34,7 @@ interface AssignmentBlockProps {
   showProjectName?: boolean; // Show project name in block (default: true, set false when already shown in row header)
   disabled?: boolean; // Disable all interactive features (click, resize, drag)
   isHighlighted?: boolean; // Emphasize blocks matching the active project or brand filter
+  resizable?: boolean; // Allow resize handles and resize pointer behavior
 }
 
 export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
@@ -50,6 +51,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   isUpdating = false,
   disabled = false,
   isHighlighted = false,
+  resizable = true,
 }) => {
   const blockRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +72,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
   // Edit dialog state
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
 
   const hasDraggedRef = useRef(false);
   const hasResizedRef = useRef(false);
@@ -138,9 +141,15 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   }, [days, findVisibleIndex, isWeekView]);
 
   const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
-  hasTimeOffInRangeRef.current = hasTimeOffInRange;
   const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
-  hasTimeOffOnDateRef.current = hasTimeOffOnDate;
+
+  useEffect(() => {
+    hasTimeOffInRangeRef.current = hasTimeOffInRange;
+  }, [hasTimeOffInRange]);
+
+  useEffect(() => {
+    hasTimeOffOnDateRef.current = hasTimeOffOnDate;
+  }, [hasTimeOffOnDate]);
 
   // Date calculations
   const startDate = startOfDay(new Date(assignment.startDate));
@@ -248,7 +257,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown Project");
 
   let workingDays = 0;
-  let currentDate = new Date(startDate);
+  const currentDate = new Date(startDate);
   while (currentDate <= endDate) {
     const day = currentDate.getDay();
     if (day !== 0 && day !== 6) workingDays++;
@@ -263,8 +272,10 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   // Resize handlers
   const handleResizeStart = useCallback((edge: 'left' | 'right', e: React.PointerEvent) => {
     if (disabled) return; // Prevent resize when disabled
+    if (!resizable) return;
     e.preventDefault();
     e.stopPropagation();
+    setIsTooltipOpen(false);
 
     const target = e.target as HTMLElement;
     try {
@@ -308,7 +319,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           const daysToMove = deltaColumns * 7;
 
           if (edge === 'left') {
-            let newStartDate = addDays(startDate, daysToMove);
+            const newStartDate = addDays(startDate, daysToMove);
             if (hasTimeOffInRangeRef.current(newStartDate, endDate)) {
               setIsResizing(null);
               setTempOffset(0);
@@ -321,7 +332,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               return;
             }
           } else {
-            let newEndDate = addDays(endDate, daysToMove);
+            const newEndDate = addDays(endDate, daysToMove);
             if (hasTimeOffInRangeRef.current(startDate, newEndDate)) {
               setIsResizing(null);
               setTempOffset(0);
@@ -400,7 +411,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, isWeekendDate]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, isWeekView, days, findVisibleIndex, findCorrectVisibleIndex, isWeekendDate, disabled, resizable]);
 
   // Edit dialog handlers
   const handleSave = useCallback((updates: Partial<Assignment>) => {
@@ -437,7 +448,9 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
   // Click handler
   const handleBlockClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
+    e.stopPropagation();
     if (disabled) return; // Prevent click when disabled
+    setIsTooltipOpen(false);
     if (!hasDraggedRef.current && !hasResizedRef.current) {
       setIsEditDialogOpen(true);
     }
@@ -454,6 +467,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     e.preventDefault();
     e.stopPropagation();
+    setIsTooltipOpen(false);
 
     try {
       target.setPointerCapture(e.pointerId);
@@ -538,8 +552,8 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             }
           }
 
-          let newStartDate = days[newStartIdx];
-          let newEndDate = days[newEndIdx];
+          const newStartDate = days[newStartIdx];
+          const newEndDate = days[newEndIdx];
 
           if (!newStartDate || !newEndDate) {
             setIsDragging(false);
@@ -585,7 +599,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate]);
+  }, [cellWidth, onUpdate, assignment.id, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate, disabled]);
 
   // Check if assignment overlaps with visible timeline range
   // If no overlap, don't render the block (prevents blocks appearing in wrong columns)
@@ -596,7 +610,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   return (
     <>
       <TooltipProvider>
-        <Tooltip>
+        <Tooltip open={isEditDialogOpen || showWeekendConfirm ? false : isTooltipOpen} onOpenChange={setIsTooltipOpen}>
           <TooltipTrigger asChild>
             <div
               ref={blockRef}
@@ -625,7 +639,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               data-assignment-id={assignment.id}
             >
               {/* Left resize handle */}
-              {!disabled && (
+              {!disabled && resizable && (
                 <div
                   data-resize-handle="left"
                   data-testid="assignment-resize-left"
@@ -646,7 +660,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               </div>
 
               {/* Right resize handle */}
-              {!disabled && (
+              {!disabled && resizable && (
                 <div
                   data-resize-handle="right"
                   data-testid="assignment-resize-right"
@@ -677,7 +691,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
                 )}
                 {assignment.note && (
                   <div className="mt-2 text-xs text-slate-400 italic border-t border-slate-700 pt-2 line-clamp-3 overflow-hidden">
-                    "{assignment.note}"
+                    &quot;{assignment.note}&quot;
                   </div>
                 )}
               </div>
@@ -699,7 +713,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       </TooltipProvider>
 
       {/* Weekend confirmation popover */}
-      {showWeekendConfirm && blockRef.current && (
+      {showWeekendConfirm && (
         <Popover open={showWeekendConfirm} onOpenChange={setShowWeekendConfirm}>
           <PopoverAnchor
             virtualRef={{

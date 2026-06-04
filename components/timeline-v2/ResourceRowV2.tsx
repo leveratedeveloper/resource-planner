@@ -13,7 +13,6 @@ import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from
 
 const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
 const TIME_OFF_ROW_HEIGHT = 32;
-const CAMPAIGN_HEADER_ROW_HEIGHT = 28;
 const CAMPAIGN_ROW_HEIGHT = 34;
 
 type ResourceRowV2Props = {
@@ -49,10 +48,6 @@ function isMonthRangeView(viewMode: TimelineV2ViewMode) {
 
 function isWeekView(viewMode: TimelineV2ViewMode) {
   return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
-}
-
-function getCampaignHeaderHeight(viewMode: TimelineV2ViewMode) {
-  return isMonthRangeView(viewMode) ? CAMPAIGN_HEADER_ROW_HEIGHT : CAMPAIGN_HEADER_ROW_HEIGHT;
 }
 
 function countWeekdays(start: Date, end: Date) {
@@ -229,81 +224,87 @@ export function ResourceRowV2({
               };
 
               return (
-                <div key={group.id} className="border-b" data-testid="resource-row-v2-campaign-group">
-                  <div className={cn("flex", group.isHighlighted ? "bg-amber-50/80" : "bg-gray-100/50")} style={{ height: getCampaignHeaderHeight(viewMode) }}>
-                    <div className={cn("sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r pl-12", group.isHighlighted ? "bg-amber-50/90" : "bg-gray-100/50")} style={{ width: resourceColumnWidth, height: getCampaignHeaderHeight(viewMode) }}>
-                      <Icon icon="lucide:package" className={cn("h-3.5 w-3.5", group.isHighlighted ? "text-amber-600" : "text-blue-600")} />
-                      <div className="min-w-0">
-                        <div className={cn("truncate text-xs font-bold uppercase tracking-wider", group.isHighlighted ? "text-amber-800" : "text-blue-800")}>{campaign.name}</div>
-                        <div className="truncate text-[10px] text-muted-foreground">{brand?.name || group.brandName || ""}</div>
-                      </div>
+                <div
+                  key={group.id}
+                  className={cn("flex border-b bg-blue-50/10", group.isHighlighted && "bg-amber-50/70")}
+                  style={{ height: CAMPAIGN_ROW_HEIGHT }}
+                  data-testid="resource-row-v2-campaign-row"
+                  onClick={monthRangeView ? monthClickHandler : undefined}
+                >
+                  <div
+                    className={cn(
+                      "sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-background pl-12 pr-3",
+                      group.isHighlighted && "bg-amber-50/90"
+                    )}
+                    style={{ width: resourceColumnWidth, height: CAMPAIGN_ROW_HEIGHT }}
+                    data-testid="resource-row-v2-campaign-label"
+                    onClick={(event) => event.stopPropagation()}
+                    title={brand?.name || group.brandName ? `${campaign.name} · ${brand?.name || group.brandName}` : campaign.name}
+                  >
+                    <Icon icon="lucide:package" className={cn("h-3.5 w-3.5 shrink-0", group.isHighlighted ? "text-amber-600" : "text-blue-600")} />
+                    <div className="min-w-0">
+                      <div className={cn("truncate text-xs font-bold uppercase tracking-wider", group.isHighlighted ? "text-amber-800" : "text-blue-800")}>{campaign.name}</div>
+                      {brand?.name || group.brandName ? (
+                        <div className="truncate text-[10px] text-muted-foreground">{brand?.name || group.brandName}</div>
+                      ) : null}
                     </div>
-                    <div className="flex-1" style={{ width: `${columns.length * cellWidth}px` }} />
                   </div>
 
-                  <div
-                    className="flex bg-blue-50/10"
-                    style={{ height: CAMPAIGN_ROW_HEIGHT }}
-                    data-testid="resource-row-v2-campaign-row"
-                    onClick={monthRangeView ? monthClickHandler : undefined}
-                  >
-                    <div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-background pl-16" style={{ width: resourceColumnWidth, height: CAMPAIGN_ROW_HEIGHT }} />
-                    <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: CAMPAIGN_ROW_HEIGHT }}>
-                      {!monthRangeView ? columns.map((column) => (
-                        <DraggableTimelineCell
-                          key={`${group.id}-${column.id}-plan-cell`}
-                          day={column.date}
-                          projectId={campaign.id}
-                          projectColor={campaign.color}
-                          days={projectDays}
-                          cellWidth={cellWidth}
-                          cellHeight={CAMPAIGN_ROW_HEIGHT}
-                          timeOffAssignments={row.timeOffAssignments}
-                          disabled={!canEditAssignments}
-                          isDragging={false}
-                          isInDragRange={false}
-                          onDragComplete={(startDay, endDay) => {
-                            if (!canEditAssignments) return;
-                            onOpenPlannedCreate({
-                              resourceId: row.resource.id,
-                              projectId: campaign.id,
-                              startDate: startDay,
-                              endDate: endDay,
-                            });
-                          }}
-                          onMouseDown={(dayIndex) => {
-                            if (!canEditAssignments) return;
-                            const date = columns[Math.max(0, Math.min(dayIndex, columns.length - 1))].date;
-                            onOpenPlannedCreate({
-                              resourceId: row.resource.id,
-                              projectId: campaign.id,
-                              startDate: date,
-                              endDate: date,
-                            });
-                          }}
-                          rowType="plan"
-                        />
-                      )) : null}
-                      {group.row.planAssignments.map((assignment) => (
-                        <AssignmentBlockV2
-                          key={assignment.id}
-                          kind="plan"
-                          assignment={assignment}
-                          project={campaign}
-                          days={projectDays}
-                          resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
-                          cellWidth={cellWidth}
-                          isWeekView={weekView}
-                          onUpdate={onUpdatePlanned}
-                          onDelete={onDeletePlanned}
-                          disabled={!canEditAssignments}
-                          isHighlighted={group.isHighlighted}
-                          isUpdating={false}
-                          isDeleting={false}
-                          timeOffAssignments={row.timeOffAssignments}
-                        />
-                      ))}
-                    </div>
+                  <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: CAMPAIGN_ROW_HEIGHT }}>
+                    {!monthRangeView ? columns.map((column) => (
+                      <DraggableTimelineCell
+                        key={`${group.id}-${column.id}-plan-cell`}
+                        day={column.date}
+                        projectId={campaign.id}
+                        projectColor={campaign.color}
+                        days={projectDays}
+                        cellWidth={cellWidth}
+                        cellHeight={CAMPAIGN_ROW_HEIGHT}
+                        timeOffAssignments={row.timeOffAssignments}
+                        disabled={!canEditAssignments}
+                        isDragging={false}
+                        isInDragRange={false}
+                        onDragComplete={(startDay, endDay) => {
+                          if (!canEditAssignments) return;
+                          onOpenPlannedCreate({
+                            resourceId: row.resource.id,
+                            projectId: campaign.id,
+                            startDate: startDay,
+                            endDate: endDay,
+                          });
+                        }}
+                        onMouseDown={(dayIndex) => {
+                          if (!canEditAssignments) return;
+                          const date = columns[Math.max(0, Math.min(dayIndex, columns.length - 1))].date;
+                          onOpenPlannedCreate({
+                            resourceId: row.resource.id,
+                            projectId: campaign.id,
+                            startDate: date,
+                            endDate: date,
+                          });
+                        }}
+                        rowType="plan"
+                      />
+                    )) : null}
+                    {group.row.planAssignments.map((assignment) => (
+                      <AssignmentBlockV2
+                        key={assignment.id}
+                        kind="plan"
+                        assignment={assignment}
+                        project={campaign}
+                        days={projectDays}
+                        resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
+                        cellWidth={cellWidth}
+                        isWeekView={weekView}
+                        onUpdate={onUpdatePlanned}
+                        onDelete={onDeletePlanned}
+                        disabled={!canEditAssignments}
+                        isHighlighted={group.isHighlighted}
+                        isUpdating={false}
+                        isDeleting={false}
+                        timeOffAssignments={row.timeOffAssignments}
+                      />
+                    ))}
                   </div>
                 </div>
               );

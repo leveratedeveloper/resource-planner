@@ -16,6 +16,7 @@ type BaseProps = {
   isHighlighted?: boolean;
   isDeleting?: boolean;
   isUpdating?: boolean;
+  resizable?: boolean;
   onUpdate?: (id: string, updates: unknown) => void;
   onDelete?: (id: string) => void;
 };
@@ -91,6 +92,7 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
     isUpdating = false,
     disabled = false,
     isHighlighted = false,
+    resizable = false,
   } = props;
 
   return (
@@ -108,6 +110,7 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
       isUpdating={isUpdating}
       disabled={disabled}
       isHighlighted={isHighlighted}
+      resizable={resizable}
     />
   );
 }
