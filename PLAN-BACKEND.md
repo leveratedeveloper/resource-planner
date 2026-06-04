@@ -990,7 +990,7 @@ git commit -m "feat: add planner home bootstrap route"
 - Modify: `lib/query/hooks/index.ts`
 - Create: `tests/whitebox/planner-home-bootstrap-hook.test.ts`
 
-- [ ] **Step 1: Write the failing hook test**
+- [x] **Step 1: Write the failing hook test**
 
 Create `tests/whitebox/planner-home-bootstrap-hook.test.ts`:
 
@@ -1011,13 +1011,13 @@ describe("planner home bootstrap hook", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-hook.test.ts`
 
 Expected: FAIL because the hook does not exist.
 
-- [ ] **Step 3: Create the hook**
+- [x] **Step 3: Create the hook**
 
 Create `lib/query/hooks/usePlannerHomeBootstrap.ts`:
 
@@ -1073,7 +1073,7 @@ export function usePlannerHomeBootstrap(
 }
 ```
 
-- [ ] **Step 4: Export the hook**
+- [x] **Step 4: Export the hook**
 
 Add this line to `lib/query/hooks/index.ts`:
 
@@ -1081,13 +1081,13 @@ Add this line to `lib/query/hooks/index.ts`:
 export * from "./usePlannerHomeBootstrap";
 ```
 
-- [ ] **Step 5: Run hook test**
+- [x] **Step 5: Run hook test**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-hook.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/query/hooks/usePlannerHomeBootstrap.ts lib/query/hooks/index.ts tests/whitebox/planner-home-bootstrap-hook.test.ts
