@@ -840,7 +840,7 @@ git commit -m "feat: add planner home bootstrap composer"
 - Create: `app/api/planner/home-bootstrap/route.ts`
 - Create: `tests/whitebox/planner-home-bootstrap-route.test.ts`
 
-- [ ] **Step 1: Write the failing route test**
+- [x] **Step 1: Write the failing route test**
 
 Create `tests/whitebox/planner-home-bootstrap-route.test.ts`:
 
@@ -862,13 +862,13 @@ describe("planner home bootstrap route", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-route.test.ts`
 
 Expected: FAIL because the route does not exist.
 
-- [ ] **Step 3: Create the route**
+- [x] **Step 3: Create the route**
 
 Create `app/api/planner/home-bootstrap/route.ts`:
 
@@ -964,19 +964,19 @@ export async function GET(request: NextRequest) {
 }
 ```
 
-- [ ] **Step 4: Run route test**
+- [x] **Step 4: Run route test**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-route.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run planner route tests**
+- [x] **Step 5: Run planner route tests**
 
 Run: `npm run test -- tests/whitebox/planner-home-bootstrap-source.test.ts tests/whitebox/planner-home-bootstrap-route.test.ts tests/whitebox/planner-timeline-loading.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/api/planner/home-bootstrap/route.ts tests/whitebox/planner-home-bootstrap-route.test.ts
