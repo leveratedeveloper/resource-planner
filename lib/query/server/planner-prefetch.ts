@@ -10,6 +10,10 @@ import {
   type PlannerTimelineResponse,
 } from "@/lib/timeline/planner-loading";
 
+type PlannerTiming = {
+  phase: (phase: string, context?: Record<string, unknown>) => void;
+};
+
 type ApiRecord = Record<string, unknown>;
 
 function text(value: unknown, fallback = ""): string {
@@ -168,26 +172,52 @@ function filterPlannerActualAssignments(
 
 export async function fetchPlannerTimeline(
   session: SessionData,
-  request: PlannerTimelineRequest
+  request: PlannerTimelineRequest,
+  options: { timing?: PlannerTiming } = {}
 ): Promise<PlannerTimelineResponse> {
+  const timing: PlannerTiming = options.timing ?? {
+    phase: () => undefined,
+  };
   const dateRange = {
     startDate: request.startDate,
     endDate: request.endDate,
   };
-  const [assignments, actualAssignments] = await Promise.all([
-    fetchPlannerAssignments(session, dateRange),
-    fetchPlannerActualAssignments(session, dateRange),
-  ]);
+  const plannedPromise = fetchPlannerAssignments(session, dateRange).then((assignments) => {
+    timing.phase("planned_assignments_query", { count: assignments.length });
+    return assignments;
+  });
+  const actualPromise = fetchPlannerActualAssignments(session, dateRange).then((actualAssignments) => {
+    timing.phase("actual_assignments_query", { count: actualAssignments.length });
+    return actualAssignments;
+  });
+
+  const [assignments, actualAssignments] = await Promise.all([plannedPromise, actualPromise]);
   const filteredAssignments = filterPlannerAssignments(assignments, request);
   const filteredActualAssignments = filterPlannerActualAssignments(actualAssignments, request);
 
   if (request.resolution === "month") {
+    const summarizedAssignments = summarizeMonthlyAssignments(filteredAssignments, dateRange);
+    const summarizedActualAssignments = summarizeMonthlyActualAssignments(
+      filteredActualAssignments,
+      dateRange
+    );
+    timing.phase("monthly_summary", {
+      assignmentCount: summarizedAssignments.length,
+      actualAssignmentCount: summarizedActualAssignments.length,
+    });
+
     return {
       request,
-      assignments: summarizeMonthlyAssignments(filteredAssignments, dateRange),
-      actualAssignments: summarizeMonthlyActualAssignments(filteredActualAssignments, dateRange),
+      assignments: summarizedAssignments,
+      actualAssignments: summarizedActualAssignments,
     };
   }
+
+  timing.phase("monthly_summary", {
+    assignmentCount: filteredAssignments.length,
+    actualAssignmentCount: filteredActualAssignments.length,
+    skipped: true,
+  });
 
   return {
     request,

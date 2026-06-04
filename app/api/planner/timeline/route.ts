@@ -49,15 +49,19 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate,
       filters,
-    });
-    timing.phase("timeline_fetch", {
-      viewMode,
+    }, { timing });
+
+    const body = { success: true, data };
+    const responseBytes = Buffer.byteLength(JSON.stringify(body), "utf8");
+
+    timing.phase("response_payload", {
+      bytes: responseBytes,
       assignmentCount: data.assignments.length,
       actualAssignmentCount: data.actualAssignments.length,
     });
     timing.total({ result: "success" });
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(body);
   } catch (error) {
     timing.total({ result: "error" });
     console.error("[API /planner/timeline] Failed to load planner timeline:", error);
