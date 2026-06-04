@@ -7,6 +7,7 @@ import {
   useBrands,
   useEmployees,
   useInfiniteEmployees,
+  usePlannerHomeBootstrap,
   usePlannerTimeline,
   useProjectsByBrand,
   useProjectOptions,
@@ -102,6 +103,7 @@ export function TimelineV2({
     if (columns.columns.length === 0) return 100;
     return containerWidth / columns.columns.length;
   }, [columns.columns.length, containerWidth]);
+  const shouldUseHomeBootstrap = process.env.NEXT_PUBLIC_PLANNER_HOME_BOOTSTRAP === "true";
 
   const useCompleteEmployeeList = shouldUseCompleteEmployeeList({
     brandId,
@@ -111,7 +113,7 @@ export function TimelineV2({
   });
 
   const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
-    enabled: useCompleteEmployeeList,
+    enabled: !shouldUseHomeBootstrap && useCompleteEmployeeList,
   });
   const {
     data: incrementalEmployeePages,
@@ -119,9 +121,7 @@ export function TimelineV2({
     hasNextPage: hasNextEmployeePage,
     isFetchingNextPage: isFetchingNextEmployeePage,
     fetchNextPage: fetchNextEmployeePage,
-  } = useInfiniteEmployees(searchQuery, { enabled: !useCompleteEmployeeList });
-  const employees = useCompleteEmployeeList ? completeEmployees : getLoadedTimelineEmployees(incrementalEmployeePages?.pages);
-  const isLoadingEmployees = useCompleteEmployeeList ? isLoadingCompleteEmployees : isLoadingIncrementalEmployees;
+  } = useInfiniteEmployees(searchQuery, { enabled: !shouldUseHomeBootstrap && !useCompleteEmployeeList });
 
   const { data: brands = [] } = useBrands();
   const { data: projects = [] } = useProjectOptions();
@@ -153,15 +153,44 @@ export function TimelineV2({
     };
   }, [assignmentDateRange, viewMode]);
 
+  const bootstrapRequest = useMemo(() => {
+    if (!plannerRequest) return undefined;
+
+    return {
+      ...plannerRequest,
+      employeeLimit: 24,
+      employeeOffset: 0,
+      brandId,
+      department,
+      projectId,
+      search: searchQuery ?? null,
+    };
+  }, [brandId, department, plannerRequest, projectId, searchQuery]);
   const {
-    data: plannerTimeline,
+    data: plannerHomeBootstrap,
+    isLoading: isLoadingPlannerHomeBootstrap,
+    isFetching: isFetchingPlannerHomeBootstrap,
+  } = usePlannerHomeBootstrap(bootstrapRequest, {
+    enabled: shouldUseHomeBootstrap && shouldEnableTimelineAssignments(assignmentDateRange),
+  });
+  const {
+    data: queriedPlannerTimeline,
     isFetching: isFetchingPlannerTimeline,
     isRefetchError: isPlannerTimelineRefetchError,
     isShowingPreviousData: isPlannerTimelineApplyingFilters,
   } = usePlannerTimeline(plannerRequest, {
-    enabled: shouldEnableTimelineAssignments(assignmentDateRange),
+    enabled: !shouldUseHomeBootstrap && shouldEnableTimelineAssignments(assignmentDateRange),
   });
 
+  const bootstrapEmployees = shouldUseHomeBootstrap ? plannerHomeBootstrap?.employees : undefined;
+  const bootstrapPlannerTimeline = shouldUseHomeBootstrap ? plannerHomeBootstrap?.plannerTimeline : undefined;
+  const employees = bootstrapEmployees ?? (
+    useCompleteEmployeeList
+      ? completeEmployees
+      : getLoadedTimelineEmployees(incrementalEmployeePages?.pages)
+  );
+  const isLoadingEmployees = useCompleteEmployeeList ? isLoadingCompleteEmployees : isLoadingIncrementalEmployees;
+  const plannerTimeline = bootstrapPlannerTimeline ?? queriedPlannerTimeline;
   const dateFilteredAssignments = useMemo(() => plannerTimeline?.assignments ?? [], [plannerTimeline]);
   const visibleActualAssignments = useMemo(() => plannerTimeline?.actualAssignments ?? [], [plannerTimeline]);
 
@@ -241,7 +270,7 @@ export function TimelineV2({
   }, [rowStateResetKey, rowVirtualizer]);
 
   useEffect(() => {
-    if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
+    if (shouldUseHomeBootstrap || useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
     const lastVirtualRow = virtualRows[virtualRows.length - 1];
     const shouldPrefetchInitialRows = !isLoadingEmployees && visibleEmployees.length < 20;
     const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleEmployees.length - 10;
@@ -254,6 +283,7 @@ export function TimelineV2({
     hasNextEmployeePage,
     isFetchingNextEmployeePage,
     isLoadingEmployees,
+    shouldUseHomeBootstrap,
     useCompleteEmployeeList,
     virtualRows,
     visibleEmployees.length,
@@ -262,15 +292,17 @@ export function TimelineV2({
   const rowLoadingState = getResourceRowLoadingState({
     hasPlannerData: !!plannerTimeline,
     isPlannerApplyingFilters: isPlannerTimelineApplyingFilters,
-    isPlannerRefreshing: !!plannerTimeline && isFetchingPlannerTimeline,
+    isPlannerRefreshing: !!plannerTimeline && (isFetchingPlannerTimeline || isFetchingPlannerHomeBootstrap),
     hasPlannerRefreshError: !!plannerTimeline && isPlannerTimelineRefetchError,
   });
-  const isInitialTimelineLoading = isLoadingEmployees || isLoadingBrandProjectLookup || rowLoadingState.showInitialSkeleton;
+  const isInitialTimelineLoading =
+    (shouldUseHomeBootstrap && isLoadingPlannerHomeBootstrap) ||
+    (!shouldUseHomeBootstrap && (isLoadingEmployees || isLoadingBrandProjectLookup || rowLoadingState.showInitialSkeleton));
   const plannerFreshnessState = isPlannerTimelineRefetchError
     ? { tone: "warning" as const, message: "Showing saved planner data. Refresh failed." }
     : isPlannerTimelineApplyingFilters
       ? { tone: "syncing" as const, message: "Applying filters..." }
-      : !!plannerTimeline && isFetchingPlannerTimeline
+      : !!plannerTimeline && (isFetchingPlannerTimeline || isFetchingPlannerHomeBootstrap)
         ? { tone: "syncing" as const, message: "Updating planner..." }
         : null;
 

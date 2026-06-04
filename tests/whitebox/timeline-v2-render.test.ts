@@ -27,6 +27,11 @@ vi.mock("@/lib/query/hooks", () => ({
     isRefetchError: false,
     isShowingPreviousData: false,
   }),
+  usePlannerHomeBootstrap: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+  }),
   useProjectsByBrand: () => ({ data: [], isLoading: false }),
   useProjectOptions: () => ({ data: [], isLoading: false }),
 }));

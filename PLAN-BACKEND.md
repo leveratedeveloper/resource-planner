@@ -1100,7 +1100,7 @@ git commit -m "feat: add planner home bootstrap hook"
 - Modify: `components/timeline-v2/TimelineV2.tsx`
 - Create: `tests/whitebox/timeline-v2-bootstrap-source.test.ts`
 
-- [ ] **Step 1: Write the failing source test**
+- [x] **Step 1: Write the failing source test**
 
 Create `tests/whitebox/timeline-v2-bootstrap-source.test.ts`:
 
@@ -1120,13 +1120,13 @@ describe("TimelineV2 bootstrap integration", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `npm run test -- tests/whitebox/timeline-v2-bootstrap-source.test.ts`
 
 Expected: FAIL because `TimelineV2` does not use the bootstrap hook.
 
-- [ ] **Step 3: Import the bootstrap hook**
+- [x] **Step 3: Import the bootstrap hook**
 
 Modify the existing hook import in `components/timeline-v2/TimelineV2.tsx`:
 
@@ -1142,7 +1142,7 @@ import {
 } from "@/lib/query/hooks";
 ```
 
-- [ ] **Step 4: Add the bootstrap request**
+- [x] **Step 4: Add the bootstrap request**
 
 Add this near `plannerRequest`:
 
@@ -1172,7 +1172,7 @@ const {
 });
 ```
 
-- [ ] **Step 5: Prefer bootstrap data when enabled**
+- [x] **Step 5: Prefer bootstrap data when enabled**
 
 Add these local values before row construction:
 
@@ -1216,19 +1216,19 @@ const isInitialTimelineLoading =
 
 Do not remove the old queries in this task. This feature flag lets the team compare old and new loading behavior in production-like environments.
 
-- [ ] **Step 6: Run bootstrap integration test**
+- [x] **Step 6: Run bootstrap integration test**
 
 Run: `npm run test -- tests/whitebox/timeline-v2-bootstrap-source.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 7: Run V2 tests**
+- [x] **Step 7: Run V2 tests**
 
 Run: `npm run test -- tests/whitebox/timeline-v2-render.test.ts tests/whitebox/timeline-v2-row-model.test.ts tests/whitebox/planner-timeline-loading.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add components/timeline-v2/TimelineV2.tsx tests/whitebox/timeline-v2-bootstrap-source.test.ts
