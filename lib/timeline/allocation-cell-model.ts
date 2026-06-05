@@ -71,7 +71,7 @@ export function getAllocationCellModel({
   let daysWithScheduleCount = 0;
 
   const hasTimeOff =
-    !isWeekView &&
+    !isMonthRangeView &&
     daysToCheck.some((currentDay) =>
       assignments.some(
         (assignment) =>

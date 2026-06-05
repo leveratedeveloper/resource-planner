@@ -87,17 +87,57 @@ describe("timeline allocation cell model", () => {
     expect(model.kind).toBe("time-off");
   });
 
-  it("aggregates month-range cells across the whole month", () => {
+  it("keeps month-range cells in allocation mode when time off overlaps planned work", () => {
     const model = getAllocationCellModel({
       day: new Date("2026-04-01T00:00:00"),
       resource,
-      assignments: [assignment({ startDate: "2026-04-15", endDate: "2026-04-20", isTimeOff: true, projectId: null, isBillable: false })],
+      assignments: [
+        assignment({
+          startDate: "2026-04-01",
+          endDate: "2026-04-30",
+          hoursPerDay: "4",
+        }),
+        assignment({
+          id: "off-1",
+          projectId: null,
+          isTimeOff: true,
+          isBillable: false,
+          startDate: "2026-04-10",
+          endDate: "2026-04-12",
+        }),
+      ],
       actualAssignments: [],
       isMonthRangeView: true,
       isWeekView: false,
     });
 
-    expect(model.kind).toBe("time-off");
+    expect(model).toMatchObject({
+      kind: "allocation",
+      planPct: 0.5,
+      planLabel: "50%",
+    });
+  });
+
+  it("returns an empty month cell when time off is the only record in the month", () => {
+    const model = getAllocationCellModel({
+      day: new Date("2026-04-01T00:00:00"),
+      resource,
+      assignments: [
+        assignment({
+          id: "off-1",
+          projectId: null,
+          isTimeOff: true,
+          isBillable: false,
+          startDate: "2026-04-10",
+          endDate: "2026-04-12",
+        }),
+      ],
+      actualAssignments: [],
+      isMonthRangeView: true,
+      isWeekView: false,
+    });
+
+    expect(model.kind).toBe("empty");
   });
 
   it("computes daily planned and actual percentages", () => {
