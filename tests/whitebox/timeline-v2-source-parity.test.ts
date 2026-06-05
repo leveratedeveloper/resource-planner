@@ -37,12 +37,20 @@ describe("timeline-v2 source parity", () => {
     expect(source).toContain("timeline-v2-weekend-toggle");
   });
 
+  it("uses a deterministic Today scroll helper and no timeout", () => {
+    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+
+    expect(source).toContain("getTimelineV2TodayScrollLeft");
+    expect(source).not.toContain("setTimeout(");
+  });
+
   it("groups expanded resource rows by campaigns instead of deliverables", () => {
     const source = readFileSync("lib/timeline-v2/row-model.ts", "utf8");
 
     expect(source).toContain("campaignGroups");
     expect(source).toContain("project.name");
     expect(source).toContain("getPlanCampaignProjects");
+    expect(source).not.toContain("filterTimelineEmployees");
     expect(source).not.toContain("groupProjectsByDeliverable");
     expect(source).not.toContain("extractDeliverables");
   });
@@ -56,6 +64,23 @@ describe("timeline-v2 source parity", () => {
     expect(source).not.toContain("CAMPAIGN_HEADER_ROW_HEIGHT");
     expect(source).not.toContain("getCampaignHeaderHeight");
     expect(source).not.toContain('data-testid="resource-row-v2-campaign-group"');
+    expect(source).toContain("TimelineExpandedSkeletonV2");
+    expect(source).not.toContain('<div data-testid="timeline-v2-expanded-loading" />');
+  });
+
+  it("uses the correct week-mode helper in ResourceRowV2", () => {
+    const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+
+    expect(source).toContain("function isWeekView(viewMode: TimelineV2ViewMode) {");
+    expect(source).toContain('return viewMode === "week";');
+  });
+
+  it("memoizes the hot row renderers", () => {
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+    const allocationCellSource = readFileSync("components/timeline-v2/AllocationCellV2.tsx", "utf8");
+
+    expect(resourceRowSource).toContain("React.memo");
+    expect(allocationCellSource).toContain("React.memo");
   });
 
   it("keeps v2 assignment blocks non-resizable and click-isolated", () => {

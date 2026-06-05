@@ -55,6 +55,9 @@ test-db-koneksi.ts
 # database
 db/
 
+# agent notes
+.agent/
+
 # OpenNext
 .open-next
 

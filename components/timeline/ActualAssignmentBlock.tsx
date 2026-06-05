@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { EditActualAssignmentDialog } from "./EditActualAssignmentDialog";
+import { getAssignmentBlockPosition, getAssignmentVisibleIndex } from "@/lib/timeline/assignment-positioning";
 
 interface ActualAssignmentBlockProps {
   assignment: ActualAssignment;
@@ -26,6 +27,7 @@ interface ActualAssignmentBlockProps {
   resourceRowHeight: number;
   cellWidth?: number;
   isWeekView?: boolean;
+  isMonthRangeView?: boolean;
   onUpdate?: (uuid: string, updates: Partial<ActualAssignment>) => void;
   onDelete?: (uuid: string) => void;
   timeOffAssignments?: ActualAssignment[];
@@ -43,6 +45,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
   resourceRowHeight,
   cellWidth = 100,
   isWeekView = false,
+  isMonthRangeView = false,
   onUpdate,
   onDelete,
   timeOffAssignments = [],
@@ -93,9 +96,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
 
   const startDate = startOfDay(new Date(assignment.startDate));
   const endDate = startOfDay(new Date(assignment.endDate));
-  const timelineStart = startOfDay(days[0]);
-  const timelineEnd = startOfDay(days[days.length - 1]);
-
   const hasTimeOffOnDate = useCallback((date: Date) => {
     return timeOffAssignments.some(a =>
       isWithinInterval(startOfDay(date), {
@@ -122,109 +122,36 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
   }, []);
 
   const findVisibleIndex = useCallback((date: Date) => {
-    const dateMs = startOfDay(date).getTime();
-    return days.findIndex(d => startOfDay(d).getTime() === dateMs);
-  }, [days]);
+    return getAssignmentVisibleIndex({
+      date,
+      days,
+      isWeekView,
+      isMonthRangeView,
+    });
+  }, [days, isMonthRangeView, isWeekView]);
 
   const findCorrectVisibleIndex = useCallback((date: Date) => {
-    if (isWeekView) {
-      const dateWeek = startOfWeek(date, { weekStartsOn: 1 });
-      const exactIdx = days.findIndex(d => startOfDay(d).getTime() === dateWeek.getTime());
-      if (exactIdx >= 0) return exactIdx;
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= dateWeek.getTime()) {
-          return i;
-        }
-      }
-      return -1;
-    } else {
-      const exactIdx = findVisibleIndex(date);
-      if (exactIdx >= 0) return exactIdx;
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (startOfDay(days[i]).getTime() <= date.getTime()) {
-          return i;
-        }
-      }
-      return -1;
-    }
-  }, [days, findVisibleIndex, isWeekView]);
+    return getAssignmentVisibleIndex({
+      date,
+      days,
+      isWeekView,
+      isMonthRangeView,
+    });
+  }, [days, isMonthRangeView, isWeekView]);
 
   const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
   hasTimeOffInRangeRef.current = hasTimeOffInRange;
 
-  let startVisibleIdx: number;
-  let endVisibleIdx: number;
-  let visibleDuration: number;
   const durationDays = differenceInDays(startDate, endDate) + 1;
-
-  if (isWeekView) {
-    const assignmentStartWeek = startOfWeek(startDate, { weekStartsOn: 1 });
-    const assignmentEndWeek = startOfWeek(endDate, { weekStartsOn: 1 });
-
-    startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentStartWeek.getTime());
-    endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === assignmentEndWeek.getTime());
-
-    if (startVisibleIdx === -1) {
-      const assignmentStartWeekTime = assignmentStartWeek.getTime();
-      if (assignmentStartWeekTime < timelineStart.getTime()) {
-        startVisibleIdx = 0;
-      } else {
-        for (let i = 0; i < days.length; i++) {
-          if (startOfDay(days[i]).getTime() >= assignmentStartWeekTime) {
-            startVisibleIdx = i;
-            break;
-          }
-        }
-        if (startVisibleIdx === -1) startVisibleIdx = 0;
-      }
-    }
-
-    if (endVisibleIdx === -1) {
-      const assignmentEndWeekTime = assignmentEndWeek.getTime();
-      if (assignmentEndWeekTime > timelineEnd.getTime()) {
-        endVisibleIdx = days.length - 1;
-      } else {
-        for (let i = days.length - 1; i >= 0; i--) {
-          if (startOfDay(days[i]).getTime() <= assignmentEndWeekTime) {
-            endVisibleIdx = i;
-            break;
-          }
-        }
-        if (endVisibleIdx === -1) endVisibleIdx = days.length - 1;
-      }
-    }
-
-    startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
-    endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
-    visibleDuration = endVisibleIdx - startVisibleIdx + 1;
-  } else {
-    startVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === startDate.getTime());
-    endVisibleIdx = days.findIndex(d => startOfDay(d).getTime() === endDate.getTime());
-
-    if (startVisibleIdx === -1) {
-      const startDateStr = toLocalDateString(startDate);
-      startVisibleIdx = days.findIndex(d => {
-        return toLocalDateString(startOfDay(d)) === startDateStr;
-      });
-    }
-    if (endVisibleIdx === -1) {
-      const endDateStr = toLocalDateString(endDate);
-      endVisibleIdx = days.findIndex(d => {
-        return toLocalDateString(startOfDay(d)) === endDateStr;
-      });
-    }
-
-    if (startVisibleIdx === -1) {
-      startVisibleIdx = 0;
-    }
-    if (endVisibleIdx === -1) {
-      endVisibleIdx = days.length - 1;
-    }
-
-    startVisibleIdx = Math.max(0, Math.min(days.length - 1, startVisibleIdx));
-    endVisibleIdx = Math.max(0, Math.min(days.length - 1, endVisibleIdx));
-    visibleDuration = endVisibleIdx - startVisibleIdx + 1;
-  }
+  const blockPosition = getAssignmentBlockPosition({
+    startDate,
+    endDate,
+    days,
+    isWeekView,
+    isMonthRangeView,
+  });
+  const startVisibleIdx = blockPosition?.startVisibleIdx ?? 0;
+  const endVisibleIdx = blockPosition?.endVisibleIdx ?? 0;
 
   let displayOffset = startVisibleIdx >= 0 ? startVisibleIdx : 0;
   let displayDuration = endVisibleIdx >= 0 && startVisibleIdx >= 0
@@ -242,7 +169,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
 
   displayDuration = Math.max(1, displayDuration);
 
-  const cellPercentage = 100 / days.length;
+  const cellPercentage = 100 / Math.max(days.length, 1);
   const LEFT_OFFSET = `${displayOffset * cellPercentage}%`;
   const WIDTH = `${displayDuration * cellPercentage}%`;
 

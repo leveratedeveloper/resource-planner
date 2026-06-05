@@ -1,13 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Icon } from "@iconify/react";
 import { endOfMonth, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBlockV2 } from "@/components/timeline-v2/AssignmentBlockV2";
 import { AllocationCellV2 } from "@/components/timeline-v2/AllocationCellV2";
 import { ResourceIdentityCellV2 } from "@/components/timeline-v2/ResourceIdentityCellV2";
-import { TimelineRowLoadingCellsV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
+import { TimelineExpandedSkeletonV2, TimelineRowLoadingCellsV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 import { DraggableTimelineCell } from "@/components/timeline/DraggableTimelineCell";
 import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
@@ -47,7 +47,7 @@ function isMonthRangeView(viewMode: TimelineV2ViewMode) {
 }
 
 function isWeekView(viewMode: TimelineV2ViewMode) {
-  return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+  return viewMode === "week";
 }
 
 function countWeekdays(start: Date, end: Date) {
@@ -73,7 +73,7 @@ function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"]
   }, 0);
 }
 
-export function ResourceRowV2({
+export const ResourceRowV2 = React.memo(function ResourceRowV2({
   row,
   columns,
   resourceColumnWidth,
@@ -92,6 +92,7 @@ export function ResourceRowV2({
   const isExpanded = row.isExpanded;
   const weekView = isWeekView(viewMode);
   const monthRangeView = isMonthRangeView(viewMode);
+  const projectDays = useMemo(() => columns.map((item) => item.date), [columns]);
 
   return (
     <div className="relative z-0 border-b" data-testid="resource-row-v2" data-resource-id={row.resource.id}>
@@ -176,6 +177,7 @@ export function ResourceRowV2({
                     resourceRowHeight={TIME_OFF_ROW_HEIGHT}
                     cellWidth={cellWidth}
                     isWeekView={weekView}
+                    isMonthRangeView={monthRangeView}
                     onUpdate={onUpdatePlanned}
                     onDelete={onDeletePlanned}
                     disabled={!canEditAssignments}
@@ -189,12 +191,11 @@ export function ResourceRowV2({
           </div>
 
             {showExpandedLoading ? (
-            <div data-testid="timeline-v2-expanded-loading" />
+            <TimelineExpandedSkeletonV2 width={resourceColumnWidth} />
           ) : (
             row.campaignGroups.map((group) => {
               const campaign = group.row.project;
               const brand = group.row.brand;
-              const projectDays = columns.map((item) => item.date);
               const monthClickHandler = (event: React.MouseEvent<HTMLDivElement>) => {
                 if (!monthRangeView || !canEditAssignments) return;
                 const containerRect = event.currentTarget.getBoundingClientRect();
@@ -296,6 +297,7 @@ export function ResourceRowV2({
                         resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
                         cellWidth={cellWidth}
                         isWeekView={weekView}
+                        isMonthRangeView={monthRangeView}
                         onUpdate={onUpdatePlanned}
                         onDelete={onDeletePlanned}
                         disabled={!canEditAssignments}
@@ -314,4 +316,4 @@ export function ResourceRowV2({
       ) : null}
     </div>
   );
-}
+});

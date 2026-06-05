@@ -40,7 +40,7 @@ function getAllocationStyle(
   return { text: "text-white", border, bgColor: `rgba(22, 163, 74, ${opacity})` };
 }
 
-export function AllocationCellV2({
+export const AllocationCellV2 = React.memo(function AllocationCellV2({
   day,
   resource,
   assignments,
@@ -83,4 +83,4 @@ export function AllocationCellV2({
       </div>
     </div>
   );
-}
+});

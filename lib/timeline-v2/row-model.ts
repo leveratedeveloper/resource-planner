@@ -3,7 +3,6 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { filterTimelineEmployees } from "@/lib/timeline/employees";
 import {
   isProjectHighlighted,
   sortResourceProjects,
@@ -67,7 +66,6 @@ export function buildTimelineV2Rows({
   expandedEmployeeIds,
   filters,
   days,
-  selectedBrandProjectIds,
 }: {
   employees: Employee[];
   assignments: Assignment[];
@@ -77,21 +75,12 @@ export function buildTimelineV2Rows({
   expandedEmployeeIds: Set<string>;
   filters: TimelineV2Filters;
   days: Date[];
-  selectedBrandProjectIds?: Set<string>;
 }): TimelineV2ResourceRow[] {
   const projectById = new Map(projects.map((project) => [project.id, project]));
-  const filteredEmployees = filterTimelineEmployees({
-    employees,
-    dateFilteredAssignments: assignments,
-    visibleActualAssignments: actualAssignments,
-    projectById,
-    selectedBrandProjectIds,
-    filters,
-  });
   const assignmentsByEmployee = groupTimelineV2AssignmentsByEmployee(assignments);
   const actualsByEmployee = groupTimelineV2ActualAssignmentsByEmployee(actualAssignments);
 
-  return filteredEmployees.map((employee) => {
+  return employees.map((employee) => {
     const resourceAssignments = assignmentsByEmployee.get(employee.id) ?? [];
     const employeeActuals = actualsByEmployee.get(employee.id) ?? [];
     const resourceProjects = getPlanCampaignProjects(resourceAssignments, projectById);

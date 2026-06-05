@@ -143,4 +143,20 @@ describe("timeline-v2 row model", () => {
     expect(rows[0].campaignGroups[0].row.planAssignments).toEqual([plan]);
     expect(rows[0].actualAssignments).toEqual([actual]);
   });
+
+  it("keeps the employees it receives without re-filtering them away", () => {
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [],
+      actualAssignments: [],
+      projects: [],
+      brandById: new Map(),
+      expandedEmployeeIds: new Set(),
+      filters: { brandId: "brand-mismatch", department: null, projectId: null, searchQuery: "" },
+      days: [new Date("2026-06-01T00:00:00")],
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].resource.name).toBe("Ada Lovelace");
+  });
 });

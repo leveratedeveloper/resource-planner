@@ -12,6 +12,7 @@ type BaseProps = {
   resourceRowHeight: number;
   cellWidth?: number;
   isWeekView?: boolean;
+  isMonthRangeView?: boolean;
   disabled?: boolean;
   isHighlighted?: boolean;
   isDeleting?: boolean;
@@ -48,6 +49,7 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
       resourceRowHeight,
       cellWidth,
       isWeekView,
+      isMonthRangeView,
       onUpdate,
       onDelete,
       timeOffAssignments = [],
@@ -66,6 +68,7 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
         resourceRowHeight={resourceRowHeight}
         cellWidth={cellWidth}
         isWeekView={isWeekView}
+        isMonthRangeView={isMonthRangeView}
         onUpdate={onUpdate as never}
         onDelete={onDelete}
         timeOffAssignments={timeOffAssignments}
@@ -85,6 +88,7 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
     resourceRowHeight,
     cellWidth,
     isWeekView,
+    isMonthRangeView,
     onUpdate,
     onDelete,
     timeOffAssignments = [],
@@ -103,6 +107,7 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
       resourceRowHeight={resourceRowHeight}
       cellWidth={cellWidth}
       isWeekView={isWeekView}
+      isMonthRangeView={isMonthRangeView}
       onUpdate={onUpdate as never}
       onDelete={onDelete}
       timeOffAssignments={timeOffAssignments}

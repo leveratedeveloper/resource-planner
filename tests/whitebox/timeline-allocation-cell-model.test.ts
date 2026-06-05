@@ -87,6 +87,19 @@ describe("timeline allocation cell model", () => {
     expect(model.kind).toBe("time-off");
   });
 
+  it("aggregates month-range cells across the whole month", () => {
+    const model = getAllocationCellModel({
+      day: new Date("2026-04-01T00:00:00"),
+      resource,
+      assignments: [assignment({ startDate: "2026-04-15", endDate: "2026-04-20", isTimeOff: true, projectId: null, isBillable: false })],
+      actualAssignments: [],
+      isMonthRangeView: true,
+      isWeekView: false,
+    });
+
+    expect(model.kind).toBe("time-off");
+  });
+
   it("computes daily planned and actual percentages", () => {
     const model = getAllocationCellModel({
       day: new Date("2026-05-18T00:00:00"),

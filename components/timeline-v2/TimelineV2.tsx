@@ -19,7 +19,14 @@ import { getTimelineRowStateResetKey, hasEmployeeFlag, setEmployeeFlag } from "@
 import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/timeline/initial-load";
 import { getTimelineV2Columns, getTimelineV2Resolution } from "@/lib/timeline-v2/date-range";
 import { buildTimelineV2Rows } from "@/lib/timeline-v2/row-model";
-import { TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH, TIMELINE_V2_ROW_ESTIMATE, clampTimelineV2ResourceColumnWidth } from "@/lib/timeline-v2/layout";
+import {
+  TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH,
+  clampTimelineV2ResourceColumnWidth,
+  getTimelineV2CellWidth,
+  getTimelineV2EstimatedRowHeight,
+  getTimelineV2TodayScrollLeft,
+  getTimelineV2VisibleWidth,
+} from "@/lib/timeline-v2/layout";
 import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 import { TimelineToolbarV2 } from "@/components/timeline-v2/TimelineToolbarV2";
 import { TimelineDataStatusV2 } from "@/components/timeline-v2/TimelineDataStatusV2";
@@ -60,34 +67,43 @@ export function TimelineV2({
   const [currentDate, setCurrentDate] = useState<Date>(() => getInitialDate(initialTimelineAnchor));
   const [viewMode, setViewMode] = useState<TimelineV2ViewMode>(DEFAULT_TIMELINE_VIEW);
   const [showWeekends, setShowWeekends] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(1400);
+  const [hasLoadedWeekendPreference, setHasLoadedWeekendPreference] = useState(false);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const [resourceColumnWidth, setResourceColumnWidth] = useState(TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH);
   const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Set<string>>(new Set());
+  const scrollSyncSourceRef = useRef<"header" | "body" | null>(null);
+  const todayScrollTargetRef = useRef<Date | null>(null);
+  const todayScrollRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const savedShowWeekends = localStorage.getItem("showWeekends");
     if (savedShowWeekends !== null) {
       setShowWeekends(savedShowWeekends === "true");
     }
+    setHasLoadedWeekendPreference(true);
   }, []);
 
   useEffect(() => {
     const rootContainer = timelineRootRef.current;
     if (!rootContainer) return;
 
+    let frame = 0;
     const updateWidth = () => {
-      requestAnimationFrame(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
         if (!rootContainer) return;
         const rootWidth = rootContainer.clientWidth;
-        const availableWidth = rootWidth - resourceColumnWidth;
-        setContainerWidth(Math.max(availableWidth, 100));
+        setContainerWidth(getTimelineV2VisibleWidth(rootWidth, resourceColumnWidth));
       });
     };
 
     const observer = new ResizeObserver(() => updateWidth());
     observer.observe(rootContainer);
     updateWidth();
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [resourceColumnWidth]);
 
   const columns = useMemo(
@@ -100,9 +116,10 @@ export function TimelineV2({
   );
 
   const cellWidth = useMemo(() => {
-    if (columns.columns.length === 0) return 100;
-    return containerWidth / columns.columns.length;
+    if (!containerWidth) return 100;
+    return getTimelineV2CellWidth(containerWidth, columns.columns.length);
   }, [columns.columns.length, containerWidth]);
+  const isLayoutReady = hasLoadedWeekendPreference && containerWidth !== null;
   const shouldUseHomeBootstrap = process.env.NEXT_PUBLIC_PLANNER_HOME_BOOTSTRAP === "true";
 
   const useCompleteEmployeeList = shouldUseCompleteEmployeeList({
@@ -236,7 +253,6 @@ export function TimelineV2({
         expandedEmployeeIds,
         filters: { brandId, department, projectId, searchQuery },
         days: columns.columns.map((column) => column.date),
-        selectedBrandProjectIds,
       }),
     [
       brandById,
@@ -247,18 +263,18 @@ export function TimelineV2({
       filteredAssignments,
       projectId,
       searchQuery,
-      selectedBrandProjectIds,
       timelineProjects,
       visibleActualAssignments,
       visibleEmployees,
     ]
   );
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => bodyScrollRef.current,
-    estimateSize: () => TIMELINE_V2_ROW_ESTIMATE,
-    overscan: 8,
+    estimateSize: (index) => getTimelineV2EstimatedRowHeight(rows[index]),
+    overscan: 10,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
 
@@ -268,6 +284,48 @@ export function TimelineV2({
     setExpandedEmployeeIds(new Set());
     rowVirtualizer.scrollToOffset(0);
   }, [rowStateResetKey, rowVirtualizer]);
+
+  useEffect(() => {
+    return () => {
+      if (todayScrollRafRef.current !== null) {
+        cancelAnimationFrame(todayScrollRafRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isLayoutReady || !todayScrollTargetRef.current) return;
+
+    const today = todayScrollTargetRef.current;
+    todayScrollTargetRef.current = null;
+
+    if (todayScrollRafRef.current !== null) {
+      cancelAnimationFrame(todayScrollRafRef.current);
+    }
+
+    todayScrollRafRef.current = requestAnimationFrame(() => {
+      const container = bodyScrollRef.current;
+      if (!container) {
+        todayScrollRafRef.current = null;
+        return;
+      }
+
+      const todayIndex = columns.columns.findIndex((column) => startOfDay(column.date).getTime() === startOfDay(today).getTime());
+      if (todayIndex < 0) {
+        todayScrollRafRef.current = null;
+        return;
+      }
+
+      const scrollLeft = getTimelineV2TodayScrollLeft({
+        todayIndex,
+        cellWidth,
+        viewportWidth: container.offsetWidth,
+      });
+
+      container.scrollTo({ left: scrollLeft, behavior: "smooth" });
+      todayScrollRafRef.current = null;
+    });
+  }, [cellWidth, columns.columns, isLayoutReady]);
 
   useEffect(() => {
     if (shouldUseHomeBootstrap || useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
@@ -296,6 +354,7 @@ export function TimelineV2({
     hasPlannerRefreshError: !!plannerTimeline && isPlannerTimelineRefetchError,
   });
   const isInitialTimelineLoading =
+    !isLayoutReady ||
     (shouldUseHomeBootstrap && isLoadingPlannerHomeBootstrap) ||
     (!shouldUseHomeBootstrap && (isLoadingEmployees || isLoadingBrandProjectLookup || rowLoadingState.showInitialSkeleton));
   const plannerFreshnessState = isPlannerTimelineRefetchError
@@ -312,30 +371,31 @@ export function TimelineV2({
   });
 
   const handleBodyScroll = useCallback(() => {
-    if (bodyScrollRef.current && headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
+    if (!bodyScrollRef.current || !headerScrollRef.current) return;
+    if (scrollSyncSourceRef.current === "header") {
+      scrollSyncSourceRef.current = null;
+      return;
     }
+
+    scrollSyncSourceRef.current = "body";
+    headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
   }, []);
 
   const handleHeaderScroll = useCallback(() => {
-    if (headerScrollRef.current && bodyScrollRef.current) {
-      bodyScrollRef.current.scrollLeft = headerScrollRef.current.scrollLeft;
+    if (!headerScrollRef.current || !bodyScrollRef.current) return;
+    if (scrollSyncSourceRef.current === "body") {
+      scrollSyncSourceRef.current = null;
+      return;
     }
+
+    scrollSyncSourceRef.current = "header";
+    bodyScrollRef.current.scrollLeft = headerScrollRef.current.scrollLeft;
   }, []);
 
   const handleToday = useCallback(() => {
-    const today = new Date();
-    setCurrentDate(startOfWeek(today, { weekStartsOn: 1 }));
-    setTimeout(() => {
-      if (!bodyScrollRef.current) return;
-      const todayIndex = columns.columns.findIndex((column) => startOfDay(column.date).getTime() === startOfDay(today).getTime());
-      if (todayIndex < 0) return;
-      const container = bodyScrollRef.current;
-      const containerWidthPx = container.offsetWidth;
-      const scrollLeft = (todayIndex * cellWidth) - (containerWidthPx / 2) + (cellWidth / 2);
-      container.scrollTo({ left: Math.max(0, scrollLeft), behavior: "smooth" });
-    }, 100);
-  }, [cellWidth, columns.columns]);
+    todayScrollTargetRef.current = new Date();
+    setCurrentDate(startOfWeek(todayScrollTargetRef.current, { weekStartsOn: 1 }));
+  }, []);
 
   const handleDateChange = useCallback((date: Date) => {
     setCurrentDate(startOfWeek(date, { weekStartsOn: 1 }));
@@ -383,14 +443,16 @@ export function TimelineV2({
         <TimelineDataStatusV2 tone={plannerFreshnessState.tone} message={plannerFreshnessState.message} />
       ) : null}
 
-      <TimelineHeaderV2
-        columns={columns.columns}
-        cellWidth={cellWidth}
-        resourceColumnWidth={resourceColumnWidth}
-        headerScrollRef={headerScrollRef}
-        onHeaderScroll={handleHeaderScroll}
-        onResourceColumnResizeStart={handleResourceColumnResizeStart}
-      />
+      {isLayoutReady ? (
+        <TimelineHeaderV2
+          columns={columns.columns}
+          cellWidth={cellWidth}
+          resourceColumnWidth={resourceColumnWidth}
+          headerScrollRef={headerScrollRef}
+          onHeaderScroll={handleHeaderScroll}
+          onResourceColumnResizeStart={handleResourceColumnResizeStart}
+        />
+      ) : null}
 
       {isInitialTimelineLoading ? (
         <div className="flex-1 overflow-auto">

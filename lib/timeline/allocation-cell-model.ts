@@ -44,8 +44,8 @@ function getDaysToCheck(
   isWeekView: boolean,
   isMonthRangeView: boolean
 ): Date[] {
-  if (!isWeekView) return [startOfDay(day)];
   if (isMonthRangeView) return getMonthDays(day);
+  if (!isWeekView) return [startOfDay(day)];
   return [startOfDay(day)];
 }
 
