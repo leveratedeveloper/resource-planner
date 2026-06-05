@@ -1,7 +1,9 @@
-import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import type { SessionData } from "@/lib/auth/session";
 import { fetchOrderedEmployeeSlice } from "@/lib/employees/ordered-directory";
 import { fetchProjectSummaries } from "@/lib/projects/project-summary-fetcher";
+import { requestPlannerDirectoryRepair } from "@/lib/planner-directory/repair";
+import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
+import { classifyPlannerDirectoryFreshness } from "@/lib/planner-directory/freshness";
 import { fetchPlannerTimeline } from "@/lib/query/server/planner-prefetch";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
@@ -41,6 +43,13 @@ export type PlannerHomeBootstrapResponse = {
   projectsById: Record<string, MinimalTimelineProject>;
   plannerTimeline: PlannerTimelineResponse;
   metadataPartial: boolean;
+  metadataFreshness: {
+    state: "healthy" | "stale" | "syncing" | "unavailable";
+    lastSuccessfulSyncAt: string | null;
+    latestSyncAt: string | null;
+    stale: boolean;
+    issueCount: number;
+  };
   freshness: {
     timeTrackFetchedAt: string;
     plannerFetchedAt: string;
@@ -97,8 +106,18 @@ export async function fetchPlannerHomeBootstrap(
   session: SessionData,
   request: PlannerHomeBootstrapRequest
 ): Promise<PlannerHomeBootstrapResponse> {
-  const client = getMySqlApiClient(async () => session.access_token);
   const fetchedAt = new Date().toISOString();
+  const [latestSuccessfulSync, latestInFlightSync] = await Promise.all([
+    plannerDirectoryRepository.getLatestSuccessfulSync(),
+    plannerDirectoryRepository.getLatestInFlightSync(),
+  ]);
+  const metadataFreshness = classifyPlannerDirectoryFreshness({
+    lastSuccessfulSyncAt: latestSuccessfulSync?.finishedAt ?? latestSuccessfulSync?.startedAt ?? null,
+    latestSyncAt: latestInFlightSync?.startedAt ?? latestSuccessfulSync?.startedAt ?? null,
+    isSyncing: !!latestInFlightSync,
+    issueCount: latestSuccessfulSync?.issueCount ?? 0,
+    now: fetchedAt,
+  });
 
   const [employeeSlice, plannerTimeline, projectSummaryResult] = await Promise.all([
     fetchOrderedEmployeeSlice(session, {
@@ -108,7 +127,6 @@ export async function fetchPlannerHomeBootstrap(
     }),
     fetchPlannerTimeline(session, request),
     fetchProjectSummaries({
-      client,
       brandId: request.brandId || undefined,
       search: undefined,
       pageSize: 100,
@@ -132,11 +150,30 @@ export async function fetchPlannerHomeBootstrap(
   const missingReferencedProjectCount = Array.from(referencedProjectIds).filter(
     (projectId) => !projectsById[projectId]
   ).length;
+  const missingReferencedProjectIds = Array.from(referencedProjectIds).filter(
+    (projectId) => !projectsById[projectId]
+  );
   const brandsById: Record<string, MinimalTimelineBrand> = {};
 
   for (const project of Object.values(projectsById)) {
     const brand = toPartialBrandFromProject(project);
     if (brand) brandsById[brand.id] = brand;
+  }
+
+  if (missingReferencedProjectIds.length > 0) {
+    void Promise.all(
+      missingReferencedProjectIds.slice(0, 3).map((projectId) =>
+        requestPlannerDirectoryRepair({
+          session,
+          entityType: "project",
+          sourceId: projectId,
+          triggerSource: "bootstrap",
+          triggeredBy: session.employee.uuid,
+        }).catch((error) => {
+          console.error("[Planner bootstrap] Failed to request project repair:", error);
+        })
+      )
+    );
   }
 
   return {
@@ -148,6 +185,7 @@ export async function fetchPlannerHomeBootstrap(
     projectsById,
     plannerTimeline,
     metadataPartial: projectSummaryResult.truncated || missingReferencedProjectCount > 0,
+    metadataFreshness,
     freshness: {
       timeTrackFetchedAt: fetchedAt,
       plannerFetchedAt: fetchedAt,

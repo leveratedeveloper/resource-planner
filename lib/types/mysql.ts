@@ -32,7 +32,8 @@ export interface MySqlPaginationMeta {
 // ============ BRAND ENTITY ============
 
 export interface MySqlBrand {
-  id: number; // Note: API returns 'id' not 'brand_id'
+  id?: number; // Some endpoints return `id`
+  brand_id?: number; // Timetrack list endpoints return `brand_id`
   uuid: string;
   company_name: string;
   client_code: string | number;

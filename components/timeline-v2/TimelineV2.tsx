@@ -357,13 +357,42 @@ export function TimelineV2({
     !isLayoutReady ||
     (shouldUseHomeBootstrap && isLoadingPlannerHomeBootstrap) ||
     (!shouldUseHomeBootstrap && (isLoadingEmployees || isLoadingBrandProjectLookup || rowLoadingState.showInitialSkeleton));
-  const plannerFreshnessState = isPlannerTimelineRefetchError
-    ? { tone: "warning" as const, message: "Showing saved planner data. Refresh failed." }
-    : isPlannerTimelineApplyingFilters
-      ? { tone: "syncing" as const, message: "Applying filters..." }
-      : !!plannerTimeline && (isFetchingPlannerTimeline || isFetchingPlannerHomeBootstrap)
-        ? { tone: "syncing" as const, message: "Updating planner..." }
-        : null;
+  const plannerFreshnessState = useMemo(() => {
+    if (shouldUseHomeBootstrap && plannerHomeBootstrap?.metadataFreshness) {
+      const freshness = plannerHomeBootstrap.metadataFreshness;
+      if (freshness.state === "syncing") {
+        return { tone: "syncing" as const, message: "Updating planner directory..." };
+      }
+      if (freshness.state === "stale") {
+        return { tone: "warning" as const, message: "Showing saved planner data. Directory sync is stale." };
+      }
+      if (freshness.state === "unavailable") {
+        return { tone: "warning" as const, message: "Showing saved planner data. Directory sync is unavailable." };
+      }
+    }
+
+    if (isPlannerTimelineRefetchError) {
+      return { tone: "warning" as const, message: "Showing saved planner data. Refresh failed." };
+    }
+
+    if (isPlannerTimelineApplyingFilters) {
+      return { tone: "syncing" as const, message: "Applying filters..." };
+    }
+
+    if (!!plannerTimeline && (isFetchingPlannerTimeline || isFetchingPlannerHomeBootstrap)) {
+      return { tone: "syncing" as const, message: "Updating planner..." };
+    }
+
+    return null;
+  }, [
+    isFetchingPlannerHomeBootstrap,
+    isFetchingPlannerTimeline,
+    isPlannerTimelineApplyingFilters,
+    isPlannerTimelineRefetchError,
+    plannerHomeBootstrap?.metadataFreshness,
+    plannerTimeline,
+    shouldUseHomeBootstrap,
+  ]);
 
   const controller = useTimelineV2Controller({
     canEditAssignments: rowLoadingState.canEditAssignments && !!session?.access?.can_view_all,

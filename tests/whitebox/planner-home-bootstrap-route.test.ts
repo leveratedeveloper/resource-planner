@@ -11,5 +11,6 @@ describe("planner home bootstrap route", () => {
     expect(source).toContain("employeeOffset");
     expect(source).toContain("Buffer.byteLength");
     expect(source).toContain("metadataPartial");
+    expect(source).not.toContain("getMySqlApiClient");
   });
 });

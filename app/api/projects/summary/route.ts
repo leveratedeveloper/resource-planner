@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { getMySqlApiClient } from "@/lib/mysql/api-client";
 import { fetchProjectSummaries } from "@/lib/projects/project-summary-fetcher";
 
 export async function GET(request: Request) {
@@ -14,9 +13,7 @@ export async function GET(request: Request) {
     const brandId = searchParams.get("brandId") || undefined;
     const search = searchParams.get("search") || undefined;
 
-    const client = getMySqlApiClient(async () => session.access_token);
     const result = await fetchProjectSummaries({
-      client,
       brandId,
       search,
     });
