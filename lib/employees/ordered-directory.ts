@@ -2,7 +2,6 @@ import type { SessionData } from "@/lib/auth/session";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { PlannerDirectoryDepartmentRow, PlannerDirectoryEmployeeRow } from "@/lib/planner-directory/types";
 import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
-import { sortEmployeeRecordsByName } from "@/lib/timeline/employees";
 import type { EmployeeDirectorySlice } from "@/lib/employees/directory-cache";
 
 const PAGE_SIZE_FALLBACK = 50;
@@ -58,26 +57,6 @@ function toEmployee(
   };
 }
 
-function matchesSearch(employee: Employee, query: string): boolean {
-  const text = query.toLowerCase().trim();
-  if (!text) return true;
-
-  if (employee.fullName.toLowerCase().includes(text)) return true;
-  if (employee.position?.toLowerCase().includes(text)) return true;
-  if (employee.department?.name?.toLowerCase().includes(text)) return true;
-
-  return false;
-}
-
-function paginate<T>(items: T[], offset: number, limit: number) {
-  const data = items.slice(offset, offset + limit);
-  return {
-    data,
-    total: items.length,
-    hasMore: offset + limit < items.length,
-  };
-}
-
 export async function fetchOrderedEmployeeSlice(
   session: SessionData,
   {
@@ -90,37 +69,24 @@ export async function fetchOrderedEmployeeSlice(
     search?: string;
   }
 ): Promise<OrderedEmployeeSlice> {
-  const [employees, departments] = await Promise.all([
-    plannerDirectoryRepository.listEmployees(),
+  const pageSize = limit > 0 ? limit : PAGE_SIZE_FALLBACK;
+  const requestedOffset = Math.max(offset, 0);
+
+  const [employeeSlice, departments] = await Promise.all([
+    plannerDirectoryRepository.listEmployeesForBootstrap({
+      offset: session.access.can_view_all ? requestedOffset : 0,
+      limit: session.access.can_view_all ? pageSize : 1,
+      search: session.access.can_view_all ? search?.trim() || undefined : undefined,
+      employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
+    }),
     plannerDirectoryRepository.listDepartments(),
   ]);
   const departmentsById = new Map(departments.map((department) => [department.departmentId, department]));
 
-  if (!session.access.can_view_all) {
-    const current = employees
-      .filter((employee) => employee.employeeUuid === session.employee.uuid)
-      .map((employee) => toEmployee(employee, departmentsById));
-
-    return {
-      data: current,
-      total: current.length,
-      hasMore: false,
-      cacheStatus: "miss",
-    };
-  }
-
-  const query = search?.trim().toLowerCase();
-  const mapped = sortEmployeeRecordsByName(
-    employees.map((employee) => toEmployee(employee, departmentsById)).filter((employee) => !query || matchesSearch(employee, query))
-  );
-
-  const pageSize = limit > 0 ? limit : PAGE_SIZE_FALLBACK;
-  const sliced = paginate(mapped, Math.max(offset, 0), pageSize);
-
   return {
-    data: sliced.data,
-    total: sliced.total,
-    hasMore: sliced.hasMore,
+    data: employeeSlice.data.map((employee) => toEmployee(employee, departmentsById)),
+    total: employeeSlice.total,
+    hasMore: employeeSlice.hasMore,
     cacheStatus: "miss",
   };
 }
