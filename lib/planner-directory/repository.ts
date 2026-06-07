@@ -212,6 +212,49 @@ function buildReadWhereClause(
   return clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 }
 
+function escapeLikePattern(value: string): string {
+  return `%${value.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+}
+
+function buildLikeSearchClause(
+  columns: string[],
+  search: string | null | undefined,
+  dialect: SqlDialect,
+  params: unknown[]
+): string {
+  const term = search?.trim();
+  if (!term) {
+    return "";
+  }
+
+  const pattern = escapeLikePattern(term);
+  const comparisons = columns.map((column) => {
+    params.push(pattern);
+    const placeholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    return `LOWER(COALESCE(${column}, '')) LIKE ${placeholder} ESCAPE '\\'`;
+  });
+
+  return comparisons.length > 0 ? `(${comparisons.join(" OR ")})` : "";
+}
+
+function buildInClause(
+  column: string,
+  values: string[],
+  dialect: SqlDialect,
+  params: unknown[]
+): string {
+  if (values.length === 0) {
+    return "";
+  }
+
+  const placeholders = values.map((value) => {
+    params.push(value);
+    return dialect === "postgresql" ? `$${params.length}` : "?";
+  });
+
+  return `${column} IN (${placeholders.join(", ")})`;
+}
+
 async function upsertRowsInBatches(
   db: PlannerDirectoryDb,
   dialect: SqlDialect,
@@ -680,6 +723,165 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     }));
   }
 
+  async function listEmployeesForBootstrap(args: {
+    offset: number;
+    limit: number;
+    search?: string | null;
+    employeeUuid?: string | null;
+  }): Promise<{
+    data: PlannerDirectoryEmployeeRow[];
+    total: number;
+    hasMore: boolean;
+  }> {
+    const params: unknown[] = [];
+    const whereClauses = ["e.archived_at IS NULL"];
+
+    if (args.employeeUuid) {
+      params.push(args.employeeUuid);
+      whereClauses.push(`e.employee_uuid = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    const searchClause = buildLikeSearchClause(
+      ["e.full_name", "e.nickname", "e.position", "d.name"],
+      args.search,
+      dialect,
+      params
+    );
+    if (searchClause) {
+      whereClauses.push(searchClause);
+    }
+
+    params.push(args.limit);
+    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    params.push(args.offset);
+    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+
+    const result = await db.query(
+      `
+        SELECT e.*
+        , COUNT(*) OVER() AS total_count
+        FROM planner_employees e
+        LEFT JOIN planner_departments d ON d.department_id = e.department_id
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY e.full_name ASC
+        LIMIT ${limitPlaceholder}
+        OFFSET ${offsetPlaceholder}
+      `,
+      params
+    );
+
+    const rows = readRows<DbRow>(result);
+    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
+
+    return {
+      data: rows.map((row) => ({
+      employeeUuid: String(row.employee_uuid),
+      sourceEmployeeId: row.source_employee_id ? String(row.source_employee_id) : null,
+      employeeNumber: row.employee_number ? String(row.employee_number) : null,
+      nik: row.nik ? String(row.nik) : null,
+      fullName: String(row.full_name ?? ""),
+      nickname: row.nickname ? String(row.nickname) : null,
+      email: row.email ? String(row.email) : null,
+      photo: row.photo ? String(row.photo) : null,
+      position: row.position ? String(row.position) : null,
+      departmentId: row.department_id ? String(row.department_id) : null,
+      weeklyCapacity: Number(row.weekly_capacity ?? 40),
+      employmentStatus: String(row.employment_status ?? "active"),
+      visibility: String(row.visibility ?? "active"),
+      workStartDate: row.work_start_date ? String(row.work_start_date) : null,
+      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+      sourceHash: String(row.source_hash ?? ""),
+      syncedAt: String(row.synced_at ?? ""),
+      lastSeenAt: String(row.last_seen_at ?? ""),
+      archivedAt: row.archived_at ? String(row.archived_at) : null,
+      })),
+      total,
+      hasMore: total > args.offset + rows.length,
+    };
+  }
+
+  async function listProjectsForBootstrap(args: {
+    brandId?: string | null;
+    search?: string | null;
+    referencedProjectIds?: string[];
+  }): Promise<PlannerDirectoryProjectRow[]> {
+    const params: unknown[] = [];
+    const whereClauses = ["p.archived_at IS NULL"];
+
+    if (args.brandId) {
+      params.push(args.brandId);
+      whereClauses.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    const searchClause = buildLikeSearchClause(["p.name", "b.name", "b.company_name"], args.search, dialect, params);
+    if (searchClause) {
+      whereClauses.push(searchClause);
+    }
+
+    if (args.referencedProjectIds && args.referencedProjectIds.length > 0) {
+      const referencedClause = buildInClause("p.source_project_id", args.referencedProjectIds, dialect, params);
+      if (referencedClause) {
+        whereClauses.push(referencedClause);
+      }
+    }
+
+    const result = await db.query(
+      `
+        SELECT p.*
+        FROM planner_projects p
+        LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY p.name ASC
+      `,
+      params
+    );
+
+    return readRows<DbRow>(result).map((row) => ({
+      projectKey: String(row.project_key),
+      sourceProjectId: String(row.source_project_id ?? ""),
+      sourceType: String(row.source_type ?? "campaign") as PlannerDirectoryProjectRow["sourceType"],
+      name: String(row.name ?? ""),
+      brandId: row.brand_id ? String(row.brand_id) : null,
+      color: row.color ? String(row.color) : null,
+      status: String(row.status ?? "active"),
+      startDate: row.start_date ? String(row.start_date) : null,
+      endDate: row.end_date ? String(row.end_date) : null,
+      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+      sourceHash: String(row.source_hash ?? ""),
+      syncedAt: String(row.synced_at ?? ""),
+      lastSeenAt: String(row.last_seen_at ?? ""),
+      archivedAt: row.archived_at ? String(row.archived_at) : null,
+    }));
+  }
+
+  async function listBrandsByIds(brandIds: string[]): Promise<PlannerDirectoryBrandRow[]> {
+    if (brandIds.length === 0) {
+      return [];
+    }
+
+    const params: unknown[] = [];
+    const clause = buildInClause("brand_id", brandIds, dialect, params);
+    const result = await db.query(
+      `SELECT * FROM planner_brands WHERE ${clause} ORDER BY name ASC`,
+      params
+    );
+
+    return readRows<DbRow>(result).map((row) => ({
+      brandId: String(row.brand_id),
+      sourceBrandId: row.source_brand_id ? String(row.source_brand_id) : null,
+      sourceUuid: row.source_uuid ? String(row.source_uuid) : null,
+      name: String(row.name ?? ""),
+      companyName: row.company_name ? String(row.company_name) : null,
+      color: row.color ? String(row.color) : null,
+      status: String(row.status ?? "active"),
+      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+      sourceHash: String(row.source_hash ?? ""),
+      syncedAt: String(row.synced_at ?? ""),
+      lastSeenAt: String(row.last_seen_at ?? ""),
+      archivedAt: row.archived_at ? String(row.archived_at) : null,
+    }));
+  }
+
   return {
     upsertDepartments,
     upsertBrands,
@@ -696,6 +898,9 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     listBrands,
     listProjects,
     listEmployees,
+    listEmployeesForBootstrap,
+    listProjectsForBootstrap,
+    listBrandsByIds,
   };
 }
 

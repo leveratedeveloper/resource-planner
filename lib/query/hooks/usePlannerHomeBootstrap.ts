@@ -38,12 +38,18 @@ async function fetchPlannerHomeBootstrap(
 
 export function usePlannerHomeBootstrap(
   request?: PlannerHomeBootstrapRequest,
-  options: { enabled?: boolean } = {}
+  options: {
+    enabled?: boolean;
+    initialData?: PlannerHomeBootstrapResponse | null;
+    initialDataUpdatedAt?: number;
+  } = {}
 ) {
   return useQuery({
     queryKey: request ? getPlannerHomeBootstrapQueryKey(request) : ["planner-home-bootstrap", "disabled"],
     queryFn: () => fetchPlannerHomeBootstrap(request!),
     enabled: !!request && (options.enabled ?? true),
     placeholderData: keepPreviousData,
+    initialData: options.initialData ?? undefined,
+    initialDataUpdatedAt: options.initialDataUpdatedAt,
   });
 }

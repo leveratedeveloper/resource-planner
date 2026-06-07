@@ -201,4 +201,47 @@ describe("planner directory repository", () => {
     expect(insertCalls[0]?.[1]).toBeInstanceOf(Array);
     expect((insertCalls[0]?.[1] as unknown[]).length).toBeGreaterThan(0);
   });
+
+  it("queries a paginated employee bootstrap slice from the local directory", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listEmployeesForBootstrap({
+      offset: 0,
+      limit: 24,
+      search: "ada",
+    });
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("FROM planner_employees"),
+      expect.arrayContaining(["%ada%", 24, 0])
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("LEFT JOIN planner_departments"),
+      expect.any(Array)
+    );
+  });
+
+  it("queries local projects and brands for bootstrap without touching Timetrack", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listProjectsForBootstrap({
+      brandId: "brand-9",
+      search: "launch",
+      referencedProjectIds: ["campaign-1", "pitch-2"],
+    });
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("FROM planner_projects"),
+      expect.arrayContaining(["brand-9", "%launch%", "campaign-1", "pitch-2"])
+    );
+
+    await repository.listBrandsByIds(["brand-9", "brand-10"]);
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("FROM planner_brands"),
+      expect.arrayContaining(["brand-9", "brand-10"])
+    );
+  });
 });

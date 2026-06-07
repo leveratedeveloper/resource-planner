@@ -2,9 +2,9 @@
 
 import React from "react";
 import Link from "next/link";
-import { useBrands } from "@/lib/query/hooks/useBrands";
-import { useDepartments } from "@/lib/query/hooks/useDepartments";
-import { useProjectOptions } from "@/lib/query/hooks/useProjects";
+import type { Brand } from "@/lib/query/hooks/useBrands";
+import type { Department } from "@/lib/query/hooks/useDepartments";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { useAuth } from "@/context/AuthContext";
 import { canAccessDashboard, isFullAccess } from "@/lib/auth/client-access";
 import {
@@ -28,6 +28,9 @@ import { ExportButton } from "@/components/export";
 import { TimelineScopeSelect } from "@/components/filters/TimelineScopeSelect";
 
 interface FilterBarProps {
+  brands: Brand[];
+  departments: Department[];
+  projects: ProjectOption[];
   selectedBrandId: string | null;
   onBrandChange: (brandId: string | null) => void;
   selectedDepartment: string | null;
@@ -40,6 +43,9 @@ interface FilterBarProps {
 }
 
 const FilterBarComponent = ({
+  brands,
+  departments,
+  projects,
   selectedBrandId,
   onBrandChange,
   selectedDepartment,
@@ -50,9 +56,6 @@ const FilterBarComponent = ({
   projectId,
   onProjectChange,
 }: FilterBarProps) => {
-  const { data: brands = [] } = useBrands();
-  const { data: departments = [] } = useDepartments();
-  const { data: projects = [] } = useProjectOptions();
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
   const hasDashboardAccess = canAccessDashboard(session);

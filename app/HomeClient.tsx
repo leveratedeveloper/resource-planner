@@ -13,9 +13,16 @@ import { SetupManager } from "@/components/setup/SetupManager";
 import { TimelineV2 } from "@/components/timeline-v2";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useDebounce } from "@/hooks/use-debounce";
+import { usePlannerHomeBootstrap } from "@/lib/query/hooks";
+import type { Brand } from "@/lib/query/hooks/useBrands";
+import type { Department } from "@/lib/query/hooks/useDepartments";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import { getInitialPlannerRequest } from "@/lib/query/server/planner-startup";
+import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
 interface HomeClientProps {
   initialTimelineAnchor: string;
+  initialBootstrap?: PlannerHomeBootstrapResponse | null;
   children?: ReactNode;
 }
 
@@ -39,8 +46,10 @@ function useHomePlannerFilters() {
 
 export function HomePlannerTimeline({
   initialTimelineAnchor,
+  initialBootstrap,
 }: {
   initialTimelineAnchor: string;
+  initialBootstrap?: PlannerHomeBootstrapResponse | null;
 }) {
   const filters = useHomePlannerFilters();
 
@@ -55,6 +64,7 @@ export function HomePlannerTimeline({
   return (
     <TimelineV2
       initialTimelineAnchor={initialTimelineAnchor}
+      initialBootstrap={initialBootstrap ?? undefined}
       brandId={filters.brandId}
       department={filters.department}
       searchQuery={filters.searchQuery}
@@ -63,8 +73,75 @@ export function HomePlannerTimeline({
   );
 }
 
+function toBrandOption(brand: PlannerHomeBootstrapResponse["brandsById"][string]): Brand {
+  return {
+    id: brand.brandId,
+    businessUnitId: null,
+    name: brand.name,
+    companyName: brand.companyName,
+    brandAddress: null,
+    clientCode: null,
+    color: brand.color ?? "#64748b",
+    logo: null,
+    website: null,
+    contactName: null,
+    contactTitle: null,
+    contactEmail: null,
+    contactPhone: null,
+    picFinanceName: null,
+    picFinancePhone: null,
+    industryCategory: null,
+    description: null,
+    status:
+      brand.status === "active"
+        ? "active"
+        : brand.status === "inactive"
+          ? "inactive"
+          : "prospect",
+    createdAt: brand.sourceUpdatedAt ?? brand.syncedAt,
+    updatedAt: brand.sourceUpdatedAt ?? brand.syncedAt,
+  };
+}
+
+function toDepartmentOption(
+  department: PlannerHomeBootstrapResponse["departmentsById"][string]
+): Department {
+  return {
+    id: department.departmentId,
+    businessUnitId: null,
+    name: department.name,
+    code: department.code ?? "",
+    color: department.color ?? "#64748b",
+    description: null,
+    isActive: department.isActive,
+    createdAt: department.sourceUpdatedAt ?? department.syncedAt,
+    updatedAt: department.sourceUpdatedAt ?? department.syncedAt,
+  };
+}
+
+function toProjectOption(
+  project: PlannerHomeBootstrapResponse["projectsById"][string]
+): ProjectOption {
+  return {
+    id: project.sourceProjectId,
+    name: project.name,
+    color: project.color ?? "#64748b",
+    status:
+      project.status === "completed" ||
+      project.status === "cancelled" ||
+      project.status === "active" ||
+      project.status === "planning" ||
+      project.status === "on_hold"
+        ? project.status
+        : "planning",
+    projectType: project.sourceType,
+    brandId: project.brandId,
+  };
+}
+
 export function HomeClient({
   initialTimelineAnchor,
+  initialBootstrap,
   children,
 }: HomeClientProps) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -74,6 +151,25 @@ export function HomeClient({
   const [isSetupOpen, setIsSetupOpen] = useState(false);
 
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
+  const bootstrapRequest = useMemo(
+    () => ({
+      ...getInitialPlannerRequest(initialTimelineAnchor),
+      employeeLimit: 24,
+      employeeOffset: 0,
+      brandId: null,
+      department: null,
+      projectId: null,
+      search: null,
+    }),
+    [initialTimelineAnchor]
+  );
+
+  const { data: plannerHomeBootstrap } = usePlannerHomeBootstrap(bootstrapRequest, {
+    initialData: initialBootstrap ?? undefined,
+    initialDataUpdatedAt: initialBootstrap
+      ? Date.parse(initialBootstrap.freshness.directoryFetchedAt)
+      : undefined,
+  });
 
   useEffect(() => {
     console.info("[Timing]", {
@@ -93,10 +189,27 @@ export function HomeClient({
     [debouncedSearch, filterProjectId, selectedBrandId, selectedDepartment]
   );
 
+  const bootstrapData = plannerHomeBootstrap ?? initialBootstrap ?? null;
+  const brands = useMemo(
+    () => Object.values(bootstrapData?.brandsById ?? {}).map(toBrandOption),
+    [bootstrapData]
+  );
+  const departments = useMemo(
+    () => Object.values(bootstrapData?.departmentsById ?? {}).map(toDepartmentOption),
+    [bootstrapData]
+  );
+  const projects = useMemo(
+    () => Object.values(bootstrapData?.projectsById ?? {}).map(toProjectOption),
+    [bootstrapData]
+  );
+
   return (
     <HomePlannerContext.Provider value={plannerFilters}>
       <div className="flex flex-col h-screen bg-background">
         <FilterBar
+          brands={brands}
+          departments={departments}
+          projects={projects}
           selectedBrandId={selectedBrandId}
           onBrandChange={setSelectedBrandId}
           selectedDepartment={selectedDepartment}
@@ -109,7 +222,12 @@ export function HomeClient({
         />
 
         <main className="flex-1 overflow-hidden">
-          {children ?? <HomePlannerTimeline initialTimelineAnchor={initialTimelineAnchor} />}
+          {children ?? (
+            <HomePlannerTimeline
+              initialTimelineAnchor={initialTimelineAnchor}
+              initialBootstrap={initialBootstrap ?? undefined}
+            />
+          )}
         </main>
 
         <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
