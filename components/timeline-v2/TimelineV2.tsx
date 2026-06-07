@@ -249,11 +249,20 @@ export function TimelineV2({
       ? Date.parse(plannerHomeBootstrap.freshness.directoryFetchedAt)
       : undefined,
   });
-  const employees = useCompleteEmployeeList
-    ? completeEmployees.length > 0
-      ? completeEmployees
-      : plannerHomeBootstrap?.employees ?? []
-    : getLoadedTimelineEmployees(incrementalEmployeePages?.pages);
+  const employees = useMemo(
+    () =>
+      useCompleteEmployeeList
+        ? completeEmployees.length > 0
+          ? completeEmployees
+          : plannerHomeBootstrap?.employees ?? []
+        : getLoadedTimelineEmployees(incrementalEmployeePages?.pages),
+    [
+      completeEmployees,
+      incrementalEmployeePages?.pages,
+      plannerHomeBootstrap?.employees,
+      useCompleteEmployeeList,
+    ]
+  );
   const isLoadingEmployees = useCompleteEmployeeList
     ? isLoadingCompleteEmployees
     : isLoadingIncrementalEmployees;
