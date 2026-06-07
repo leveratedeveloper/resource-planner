@@ -15,7 +15,15 @@ vi.mock("@/lib/query/hooks", () => ({
   useBrands: () => ({ data: [], isLoading: false }),
   useEmployees: () => ({ data: [], isLoading: false }),
   useInfiniteEmployees: () => ({
-    data: { pages: [] },
+    data: {
+      pages: [
+        {
+          data: [],
+          total: 0,
+          hasMore: false,
+        },
+      ],
+    },
     isLoading: false,
     hasNextPage: false,
     isFetchingNextPage: false,
@@ -28,9 +36,43 @@ vi.mock("@/lib/query/hooks", () => ({
     isShowingPreviousData: false,
   }),
   usePlannerHomeBootstrap: () => ({
-    data: undefined,
+    data: {
+      employees: [],
+      employeeTotal: 0,
+      employeeHasMore: false,
+      departmentsById: {},
+      brandsById: {},
+      projectsById: {},
+      plannerTimeline: { assignments: [], actualAssignments: [], request: { viewMode: "quarter", resolution: "month", startDate: "2026-04-01", endDate: "2026-06-30", filters: { category: null, status: null } } },
+      metadataPartial: false,
+      metadataFreshness: {
+        state: "healthy",
+        lastSuccessfulSyncAt: null,
+        latestSyncAt: null,
+        stale: false,
+        issueCount: 0,
+      },
+      freshness: {
+        directoryFetchedAt: "2026-06-05T00:00:00.000Z",
+        plannerFetchedAt: "2026-06-05T00:00:00.000Z",
+      },
+      request: {
+        viewMode: "quarter",
+        resolution: "month",
+        startDate: "2026-04-01",
+        endDate: "2026-06-30",
+        filters: { category: null, status: null },
+        employeeLimit: 24,
+        employeeOffset: 0,
+        brandId: null,
+        department: null,
+        projectId: null,
+        search: null,
+      },
+    },
     isLoading: false,
     isFetching: false,
+    isRefetchError: false,
   }),
   useProjectsByBrand: () => ({ data: [], isLoading: false }),
   useProjectOptions: () => ({ data: [], isLoading: false }),
@@ -94,6 +136,6 @@ describe("timeline-v2 render smoke test", () => {
     expect(html).toContain("timeline-v2-root");
     expect(html).toContain("timeline-v2-header-controls");
     expect(html).toContain("timeline-v2-today-button");
-    expect(html).toContain("timeline-v2-empty-state");
+    expect(html).toContain("timeline-v2-initial-skeleton");
   });
 });

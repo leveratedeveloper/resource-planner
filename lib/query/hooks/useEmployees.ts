@@ -118,7 +118,13 @@ async function fetchEmployeesPaginated({ pageParam = 0, search }: { pageParam?: 
   };
 }
 
-export function useInfiniteEmployees(search?: string, options?: { enabled?: boolean }) {
+type UseInfiniteEmployeesOptions = {
+  enabled?: boolean;
+  initialPage?: PaginatedResponse<Employee> | null;
+  initialPageUpdatedAt?: number;
+};
+
+export function useInfiniteEmployees(search?: string, options?: UseInfiniteEmployeesOptions) {
   return useInfiniteQuery({
     queryKey: [...queryKeys.employeesInfinite, search],
     queryFn: ({ pageParam }) => fetchEmployeesPaginated({ pageParam, search }),
@@ -128,5 +134,12 @@ export function useInfiniteEmployees(search?: string, options?: { enabled?: bool
       return allPages.reduce((acc, page) => acc + page.data.length, 0);
     },
     enabled: options?.enabled ?? true,
+    initialData: options?.initialPage
+      ? {
+          pages: [options.initialPage],
+          pageParams: [0],
+        }
+      : undefined,
+    initialDataUpdatedAt: options?.initialPageUpdatedAt,
   });
 }

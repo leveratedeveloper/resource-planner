@@ -132,11 +132,13 @@ describe("planner timeline loading contract", () => {
   it("loads selected brand projects before calculating brand-filtered resources", () => {
     const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
-    expect(timelineSource).toContain("useProjectsByBrand(brandId ?? \"\")");
-    expect(timelineSource).toContain("isLoadingSelectedBrandProjects");
-    expect(timelineSource).toContain("isLoadingBrandProjectLookup");
+    expect(timelineSource).toContain("usePlannerHomeBootstrap");
+    expect(timelineSource).toContain("bootstrapPlannerTimeline");
+    expect(timelineSource).toContain("bootstrapEmployeePage");
     expect(timelineSource).toContain("selectedBrandProjectIds");
-    expect(timelineSource).toContain("isLoadingEmployees || isLoadingBrandProjectLookup");
+    expect(timelineSource).not.toContain("useProjectsByBrand(brandId ?? \"\")");
+    expect(timelineSource).not.toContain("isLoadingSelectedBrandProjects");
+    expect(timelineSource).not.toContain("isLoadingBrandProjectLookup");
   });
 
   it("returns one monthly render block per month for assignments crossing a boundary", () => {
@@ -275,9 +277,12 @@ describe("planner timeline loading contract", () => {
 
   it("shows filter application state instead of calculating from stale planner data", () => {
     const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const loadingStateSource = readFileSync("lib/timeline/resource-row-loading.ts", "utf8");
 
-    expect(timelineSource).toContain("isShowingPreviousData: isPlannerTimelineApplyingFilters");
-    expect(timelineSource).toContain("Applying filters...");
+    expect(timelineSource).toContain("isPlannerApplyingFilters: isFetchingPlannerHomeBootstrap");
+    expect(timelineSource).toContain("isPlannerRefreshing: !!plannerTimeline && isFetchingPlannerHomeBootstrap");
+    expect(loadingStateSource).toContain("showInitialSkeleton");
+    expect(loadingStateSource).toContain("showTimelineLoading: isRefreshInProgress");
     expect(timelineSource).toContain("<TimelineDataStatusV2");
   });
 
@@ -303,6 +308,16 @@ describe("planner timeline loading contract", () => {
     expect(timelineSource).toContain("showExpandedLoading={rowLoadingState.showExpandedLoading}");
     expect(resourceRowSource).toContain("showTimelineLoading");
     expect(resourceRowSource).toContain("showExpandedLoading");
-    expect(resourceRowSource).toContain("data-testid=\"timeline-v2-expanded-loading\"");
+    expect(resourceRowSource).toContain("TimelineExpandedSkeletonV2");
+    expect(resourceRowSource).toContain("TimelineRowLoadingCellsV2");
+  });
+
+  it("keeps infinite employee expansion active after bootstrap seeds the first page", () => {
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+
+    expect(timelineSource).toContain("initialPage: bootstrapEmployeePage");
+    expect(timelineSource).toContain("hasNextEmployeePage");
+    expect(timelineSource).toContain("fetchNextEmployeePage()");
+    expect(timelineSource).not.toContain("if (shouldUseHomeBootstrap || !!plannerHomeBootstrap");
   });
 });

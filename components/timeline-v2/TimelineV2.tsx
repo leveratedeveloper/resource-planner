@@ -4,16 +4,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuth } from "@/context/AuthContext";
 import {
-  useBrands,
   useEmployees,
   useInfiniteEmployees,
   usePlannerHomeBootstrap,
-  usePlannerTimeline,
-  useProjectsByBrand,
-  useProjectOptions,
 } from "@/lib/query/hooks";
+import type { Brand } from "@/lib/query/hooks/useBrands";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { filterTimelineEmployees, getLoadedTimelineEmployees, shouldUseCompleteEmployeeList } from "@/lib/timeline/employees";
-import { mergeProjectsById, getProjectById, getProjectIdSet } from "@/lib/timeline/project-index";
 import { getResourceRowLoadingState } from "@/lib/timeline/resource-row-loading";
 import { getTimelineRowStateResetKey, hasEmployeeFlag, setEmployeeFlag } from "@/lib/timeline/row-state";
 import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/timeline/initial-load";
@@ -38,11 +35,13 @@ import { AssignmentPopover } from "@/components/timeline/AssignmentPopover";
 import { MonthlyAllocationModal } from "@/components/timeline/MonthlyAllocationModal";
 import { MonthlyAllocationConfirmation } from "@/components/timeline/MonthlyAllocationConfirmation";
 import { startOfWeek, startOfDay } from "date-fns";
+import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
 const DEFAULT_TIMELINE_VIEW: TimelineV2ViewMode = "quarter";
 
 type TimelineV2Props = {
   initialTimelineAnchor: string;
+  initialBootstrap?: PlannerHomeBootstrapResponse | null;
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
@@ -53,8 +52,57 @@ function getInitialDate(anchor: string) {
   return new Date(`${anchor}T00:00:00`);
 }
 
+function toBrandOption(brand: PlannerHomeBootstrapResponse["brandsById"][string]): Brand {
+  return {
+    id: brand.brandId,
+    businessUnitId: null,
+    name: brand.name,
+    companyName: brand.companyName,
+    brandAddress: null,
+    clientCode: null,
+    color: brand.color ?? "#64748b",
+    logo: null,
+    website: null,
+    contactName: null,
+    contactTitle: null,
+    contactEmail: null,
+    contactPhone: null,
+    picFinanceName: null,
+    picFinancePhone: null,
+    industryCategory: null,
+    description: null,
+    status:
+      brand.status === "active"
+        ? "active"
+        : brand.status === "inactive"
+          ? "inactive"
+          : "prospect",
+    createdAt: brand.sourceUpdatedAt ?? brand.syncedAt,
+    updatedAt: brand.sourceUpdatedAt ?? brand.syncedAt,
+  };
+}
+
+function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][string]): ProjectOption {
+  return {
+    id: project.sourceProjectId,
+    name: project.name,
+    color: project.color ?? "#64748b",
+    status:
+      project.status === "completed" ||
+      project.status === "cancelled" ||
+      project.status === "active" ||
+      project.status === "planning" ||
+      project.status === "on_hold"
+        ? project.status
+        : "planning",
+    projectType: project.sourceType,
+    brandId: project.brandId,
+  };
+}
+
 export function TimelineV2({
   initialTimelineAnchor,
+  initialBootstrap,
   brandId,
   department,
   searchQuery,
@@ -120,35 +168,8 @@ export function TimelineV2({
     return getTimelineV2CellWidth(containerWidth, columns.columns.length);
   }, [columns.columns.length, containerWidth]);
   const isLayoutReady = hasLoadedWeekendPreference && containerWidth !== null;
-  const shouldUseHomeBootstrap = process.env.NEXT_PUBLIC_PLANNER_HOME_BOOTSTRAP === "true";
-
-  const useCompleteEmployeeList = shouldUseCompleteEmployeeList({
-    brandId,
-    department,
-    projectId,
-    searchQuery,
-  });
-
-  const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
-    enabled: !shouldUseHomeBootstrap && useCompleteEmployeeList,
-  });
-  const {
-    data: incrementalEmployeePages,
-    isLoading: isLoadingIncrementalEmployees,
-    hasNextPage: hasNextEmployeePage,
-    isFetchingNextPage: isFetchingNextEmployeePage,
-    fetchNextPage: fetchNextEmployeePage,
-  } = useInfiniteEmployees(searchQuery, { enabled: !shouldUseHomeBootstrap && !useCompleteEmployeeList });
-
-  const { data: brands = [] } = useBrands();
-  const { data: projects = [] } = useProjectOptions();
-  const { data: selectedBrandProjects = [], isLoading: isLoadingSelectedBrandProjects } = useProjectsByBrand(brandId ?? "");
-  const isLoadingBrandProjectLookup = !!brandId && isLoadingSelectedBrandProjects;
-  const timelineProjects = useMemo(() => mergeProjectsById({ projects, selectedBrandProjects }), [projects, selectedBrandProjects]);
-  const selectedBrandProjectIds = useMemo(() => getProjectIdSet(selectedBrandProjects), [selectedBrandProjects]);
-  const projectById = useMemo(() => getProjectById(timelineProjects), [timelineProjects]);
-  const brandById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand])), [brands]);
-
+  const shouldUseHomeBootstrap =
+    process.env.NEXT_PUBLIC_PLANNER_HOME_BOOTSTRAP === "true" || !!initialBootstrap;
   const assignmentDateRange = useMemo<TimelineAssignmentDateRange | undefined>(() => {
     if (!columns.startDate || !columns.endDate) return undefined;
     return {
@@ -157,7 +178,7 @@ export function TimelineV2({
     };
   }, [columns.endDate, columns.startDate]);
 
-  const plannerRequest = useMemo(() => {
+  const bootstrapRequest = useMemo(() => {
     if (!assignmentDateRange || !shouldEnableTimelineAssignments(assignmentDateRange)) {
       return undefined;
     }
@@ -167,47 +188,95 @@ export function TimelineV2({
       resolution: getTimelineV2Resolution(viewMode),
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
-    };
-  }, [assignmentDateRange, viewMode]);
-
-  const bootstrapRequest = useMemo(() => {
-    if (!plannerRequest) return undefined;
-
-    return {
-      ...plannerRequest,
+      filters: {
+        category: null,
+        status: null,
+      },
       employeeLimit: 24,
       employeeOffset: 0,
       brandId,
       department,
       projectId,
-      search: searchQuery ?? null,
+      search: searchQuery?.trim() || null,
     };
-  }, [brandId, department, plannerRequest, projectId, searchQuery]);
+  }, [assignmentDateRange, brandId, department, projectId, searchQuery, viewMode]);
+
+  const useCompleteEmployeeList = shouldUseCompleteEmployeeList({
+    brandId,
+    department,
+    projectId,
+    searchQuery,
+  });
+
   const {
     data: plannerHomeBootstrap,
     isLoading: isLoadingPlannerHomeBootstrap,
     isFetching: isFetchingPlannerHomeBootstrap,
+    isRefetchError: isPlannerHomeBootstrapRefetchError,
   } = usePlannerHomeBootstrap(bootstrapRequest, {
-    enabled: shouldUseHomeBootstrap && shouldEnableTimelineAssignments(assignmentDateRange),
-  });
-  const {
-    data: queriedPlannerTimeline,
-    isFetching: isFetchingPlannerTimeline,
-    isRefetchError: isPlannerTimelineRefetchError,
-    isShowingPreviousData: isPlannerTimelineApplyingFilters,
-  } = usePlannerTimeline(plannerRequest, {
-    enabled: !shouldUseHomeBootstrap && shouldEnableTimelineAssignments(assignmentDateRange),
+    enabled: shouldUseHomeBootstrap && !!bootstrapRequest,
+    initialData: initialBootstrap ?? undefined,
+    initialDataUpdatedAt: initialBootstrap
+      ? Date.parse(initialBootstrap.freshness.directoryFetchedAt)
+      : undefined,
   });
 
-  const bootstrapEmployees = shouldUseHomeBootstrap ? plannerHomeBootstrap?.employees : undefined;
-  const bootstrapPlannerTimeline = shouldUseHomeBootstrap ? plannerHomeBootstrap?.plannerTimeline : undefined;
-  const employees = bootstrapEmployees ?? (
-    useCompleteEmployeeList
-      ? completeEmployees
-      : getLoadedTimelineEmployees(incrementalEmployeePages?.pages)
+  const bootstrapPlannerTimeline = plannerHomeBootstrap?.plannerTimeline;
+  const bootstrapEmployeePage = useMemo(
+    () =>
+      plannerHomeBootstrap
+        ? {
+            data: plannerHomeBootstrap.employees,
+            total: plannerHomeBootstrap.employeeTotal,
+            hasMore: plannerHomeBootstrap.employeeHasMore,
+          }
+        : null,
+    [plannerHomeBootstrap]
   );
-  const isLoadingEmployees = useCompleteEmployeeList ? isLoadingCompleteEmployees : isLoadingIncrementalEmployees;
-  const plannerTimeline = bootstrapPlannerTimeline ?? queriedPlannerTimeline;
+  const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
+    enabled: useCompleteEmployeeList,
+  });
+  const {
+    data: incrementalEmployeePages,
+    isLoading: isLoadingIncrementalEmployees,
+    hasNextPage: hasNextEmployeePage,
+    isFetchingNextPage: isFetchingNextEmployeePage,
+    fetchNextPage: fetchNextEmployeePage,
+  } = useInfiniteEmployees(searchQuery, {
+    enabled: !useCompleteEmployeeList,
+    initialPage: bootstrapEmployeePage,
+    initialPageUpdatedAt: plannerHomeBootstrap
+      ? Date.parse(plannerHomeBootstrap.freshness.directoryFetchedAt)
+      : undefined,
+  });
+  const employees = useCompleteEmployeeList
+    ? completeEmployees.length > 0
+      ? completeEmployees
+      : plannerHomeBootstrap?.employees ?? []
+    : getLoadedTimelineEmployees(incrementalEmployeePages?.pages);
+  const isLoadingEmployees = useCompleteEmployeeList
+    ? isLoadingCompleteEmployees
+    : isLoadingIncrementalEmployees;
+  const timelineBrands = useMemo(
+    () => Object.values(plannerHomeBootstrap?.brandsById ?? {}).map(toBrandOption),
+    [plannerHomeBootstrap]
+  );
+  const timelineProjects = useMemo(
+    () => Object.values(plannerHomeBootstrap?.projectsById ?? {}).map(toProjectOption),
+    [plannerHomeBootstrap]
+  );
+  const selectedBrandProjectIds = useMemo(
+    () =>
+      new Set(
+        timelineProjects
+          .filter((project) => !brandId || project.brandId === brandId)
+          .map((project) => project.id)
+      ),
+    [brandId, timelineProjects]
+  );
+  const projectById = useMemo(() => new Map(timelineProjects.map((project) => [project.id, project])), [timelineProjects]);
+  const brandById = useMemo(() => new Map(timelineBrands.map((brand) => [brand.id, brand])), [timelineBrands]);
+  const plannerTimeline = bootstrapPlannerTimeline;
   const dateFilteredAssignments = useMemo(() => plannerTimeline?.assignments ?? [], [plannerTimeline]);
   const visibleActualAssignments = useMemo(() => plannerTimeline?.actualAssignments ?? [], [plannerTimeline]);
 
@@ -328,7 +397,7 @@ export function TimelineV2({
   }, [cellWidth, columns.columns, isLayoutReady]);
 
   useEffect(() => {
-    if (shouldUseHomeBootstrap || useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
+    if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
     const lastVirtualRow = virtualRows[virtualRows.length - 1];
     const shouldPrefetchInitialRows = !isLoadingEmployees && visibleEmployees.length < 20;
     const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleEmployees.length - 10;
@@ -341,7 +410,6 @@ export function TimelineV2({
     hasNextEmployeePage,
     isFetchingNextEmployeePage,
     isLoadingEmployees,
-    shouldUseHomeBootstrap,
     useCompleteEmployeeList,
     virtualRows,
     visibleEmployees.length,
@@ -349,16 +417,16 @@ export function TimelineV2({
 
   const rowLoadingState = getResourceRowLoadingState({
     hasPlannerData: !!plannerTimeline,
-    isPlannerApplyingFilters: isPlannerTimelineApplyingFilters,
-    isPlannerRefreshing: !!plannerTimeline && (isFetchingPlannerTimeline || isFetchingPlannerHomeBootstrap),
-    hasPlannerRefreshError: !!plannerTimeline && isPlannerTimelineRefetchError,
+    isPlannerApplyingFilters: isFetchingPlannerHomeBootstrap,
+    isPlannerRefreshing: !!plannerTimeline && isFetchingPlannerHomeBootstrap,
+    hasPlannerRefreshError: !!plannerTimeline && isPlannerHomeBootstrapRefetchError,
   });
   const isInitialTimelineLoading =
     !isLayoutReady ||
-    (shouldUseHomeBootstrap && isLoadingPlannerHomeBootstrap) ||
-    (!shouldUseHomeBootstrap && (isLoadingEmployees || isLoadingBrandProjectLookup || rowLoadingState.showInitialSkeleton));
+    isLoadingPlannerHomeBootstrap ||
+    (!plannerHomeBootstrap && (isLoadingEmployees || rowLoadingState.showInitialSkeleton));
   const plannerFreshnessState = useMemo(() => {
-    if (shouldUseHomeBootstrap && plannerHomeBootstrap?.metadataFreshness) {
+    if (plannerHomeBootstrap?.metadataFreshness) {
       const freshness = plannerHomeBootstrap.metadataFreshness;
       if (freshness.state === "syncing") {
         return { tone: "syncing" as const, message: "Updating planner directory..." };
@@ -371,27 +439,20 @@ export function TimelineV2({
       }
     }
 
-    if (isPlannerTimelineRefetchError) {
+    if (isPlannerHomeBootstrapRefetchError) {
       return { tone: "warning" as const, message: "Showing saved planner data. Refresh failed." };
     }
 
-    if (isPlannerTimelineApplyingFilters) {
-      return { tone: "syncing" as const, message: "Applying filters..." };
-    }
-
-    if (!!plannerTimeline && (isFetchingPlannerTimeline || isFetchingPlannerHomeBootstrap)) {
+    if (!!plannerTimeline && isFetchingPlannerHomeBootstrap) {
       return { tone: "syncing" as const, message: "Updating planner..." };
     }
 
     return null;
   }, [
     isFetchingPlannerHomeBootstrap,
-    isFetchingPlannerTimeline,
-    isPlannerTimelineApplyingFilters,
-    isPlannerTimelineRefetchError,
+    isPlannerHomeBootstrapRefetchError,
     plannerHomeBootstrap?.metadataFreshness,
     plannerTimeline,
-    shouldUseHomeBootstrap,
   ]);
 
   const controller = useTimelineV2Controller({
