@@ -1,17 +1,21 @@
 import type {
   PlannerDirectoryFreshness,
   PlannerFreshnessState,
+  PlannerSyncMode,
 } from "@/lib/planner-directory/types";
 
 const DEFAULT_STALE_AFTER_MS = 15 * 60 * 1000;
+const DEFAULT_SYNCING_STALE_AFTER_MS = 30 * 60 * 1000;
 
 type FreshnessInput = {
   lastSuccessfulSyncAt?: string | null;
   latestSyncAt?: string | null;
   isSyncing?: boolean;
+  syncMode?: PlannerSyncMode | null;
   issueCount?: number;
   now?: string | Date;
   staleAfterMs?: number;
+  syncingStaleAfterMs?: number;
 };
 
 function toTime(value: string | Date | undefined): number {
@@ -29,7 +33,16 @@ export function classifyPlannerDirectoryFreshness(input: FreshnessInput): Planne
   let state: PlannerFreshnessState = "unavailable";
   let stale = false;
 
-  if (input.isSyncing) {
+  const syncingStartedAt = toTime(latestSyncAt ?? undefined);
+  const syncingStaleAfterMs = input.syncingStaleAfterMs ?? DEFAULT_SYNCING_STALE_AFTER_MS;
+  const isActiveUserVisibleSync =
+    !!input.isSyncing &&
+    input.syncMode !== "targeted_repair" &&
+    Number.isFinite(nowTime) &&
+    Number.isFinite(syncingStartedAt) &&
+    nowTime - syncingStartedAt <= syncingStaleAfterMs;
+
+  if (isActiveUserVisibleSync) {
     state = "syncing";
   } else if (lastSuccessfulSyncAt) {
     const lastSuccessTime = toTime(lastSuccessfulSyncAt);

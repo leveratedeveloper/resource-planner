@@ -17,7 +17,8 @@ describe("planner directory freshness", () => {
     expect(
       classifyPlannerDirectoryFreshness({
         isSyncing: true,
-        latestSyncAt: "2026-06-05T00:00:00.000Z",
+        syncMode: "incremental_refresh",
+        latestSyncAt: "2026-06-05T00:19:00.000Z",
         now: "2026-06-05T00:20:00.000Z",
       }).state
     ).toBe("syncing");
@@ -34,6 +35,33 @@ describe("planner directory freshness", () => {
       lastSuccessfulSyncAt: "2026-06-05T00:00:00.000Z",
       latestSyncAt: "2026-06-05T00:00:00.000Z",
       now: "2026-06-05T00:30:00.000Z",
+    });
+
+    expect(freshness.state).toBe("stale");
+    expect(freshness.stale).toBe(true);
+  });
+
+  it("does not show targeted repair as active directory syncing", () => {
+    const freshness = classifyPlannerDirectoryFreshness({
+      isSyncing: true,
+      syncMode: "targeted_repair",
+      latestSyncAt: "2026-06-05T00:15:00.000Z",
+      lastSuccessfulSyncAt: "2026-06-05T00:10:00.000Z",
+      now: "2026-06-05T00:20:00.000Z",
+    });
+
+    expect(freshness.state).toBe("healthy");
+    expect(freshness.stale).toBe(false);
+  });
+
+  it("does not keep stale in-flight sync rows in syncing state forever", () => {
+    const freshness = classifyPlannerDirectoryFreshness({
+      isSyncing: true,
+      syncMode: "full_backfill",
+      latestSyncAt: "2026-06-05T00:00:00.000Z",
+      lastSuccessfulSyncAt: "2026-06-05T00:10:00.000Z",
+      now: "2026-06-05T00:45:00.000Z",
+      syncingStaleAfterMs: 30 * 60 * 1000,
     });
 
     expect(freshness.state).toBe("stale");

@@ -1,13 +1,15 @@
 import type { SessionData } from "@/lib/auth/session";
-import { fetchOrderedEmployeeSlice } from "@/lib/employees/ordered-directory";
-import { fetchProjectSummaries } from "@/lib/projects/project-summary-fetcher";
 import { requestPlannerDirectoryRepair } from "@/lib/planner-directory/repair";
 import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import { classifyPlannerDirectoryFreshness } from "@/lib/planner-directory/freshness";
+import type {
+  PlannerDirectoryBrandRow,
+  PlannerDirectoryDepartmentRow,
+  PlannerDirectoryEmployeeRow,
+  PlannerDirectoryProjectRow,
+} from "@/lib/planner-directory/types";
 import { fetchPlannerTimeline } from "@/lib/query/server/planner-prefetch";
-import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
-import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type {
   PlannerTimelineRequest,
   PlannerTimelineResponse,
@@ -17,13 +19,6 @@ export type MinimalTimelineEmployee = Pick<
   Employee,
   "id" | "fullName" | "position" | "weeklyCapacity" | "department"
 >;
-
-export type MinimalTimelineProject = Pick<
-  ProjectOption,
-  "id" | "name" | "color" | "status" | "projectType" | "brandId"
->;
-
-export type MinimalTimelineBrand = Pick<Brand, "id" | "name" | "color" | "status">;
 
 export type PlannerHomeBootstrapRequest = PlannerTimelineRequest & {
   employeeLimit: number;
@@ -39,8 +34,9 @@ export type PlannerHomeBootstrapResponse = {
   employees: MinimalTimelineEmployee[];
   employeeTotal: number;
   employeeHasMore: boolean;
-  brandsById: Record<string, MinimalTimelineBrand>;
-  projectsById: Record<string, MinimalTimelineProject>;
+  departmentsById: Record<string, PlannerDirectoryDepartmentRow>;
+  brandsById: Record<string, PlannerDirectoryBrandRow>;
+  projectsById: Record<string, PlannerDirectoryProjectRow>;
   plannerTimeline: PlannerTimelineResponse;
   metadataPartial: boolean;
   metadataFreshness: {
@@ -51,44 +47,45 @@ export type PlannerHomeBootstrapResponse = {
     issueCount: number;
   };
   freshness: {
-    timeTrackFetchedAt: string;
+    directoryFetchedAt: string;
     plannerFetchedAt: string;
   };
 };
 
-function toMinimalEmployee(employee: Employee): MinimalTimelineEmployee {
+function randomColor(seed: string): string {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
+  }
+
+  return `#${hash.toString(16).padStart(6, "0")}`;
+}
+
+function toMinimalEmployee(
+  employee: PlannerDirectoryEmployeeRow,
+  departmentsById: Record<string, PlannerDirectoryDepartmentRow>
+): MinimalTimelineEmployee {
+  const department = employee.departmentId ? departmentsById[employee.departmentId] : undefined;
+
   return {
-    id: employee.id,
+    id: employee.employeeUuid,
     fullName: employee.fullName,
-    position: employee.position,
+    position: employee.position ?? "",
     weeklyCapacity: employee.weeklyCapacity,
-    department: employee.department,
+    department: department
+      ? {
+          id: department.departmentId,
+          name: department.name,
+          color: department.color ?? randomColor(department.departmentId),
+        }
+      : undefined,
   };
 }
 
-function toMinimalProject(project: ProjectOption): MinimalTimelineProject {
-  return {
-    id: project.id,
-    name: project.name,
-    color: project.color,
-    status: project.status,
-    projectType: project.projectType,
-    brandId: project.brandId,
-  };
-}
-
-function toPartialBrandFromProject(project: MinimalTimelineProject): MinimalTimelineBrand | null {
-  if (!project.brandId) return null;
-
-  return {
-    id: project.brandId,
-    name: `Brand ${project.brandId}`,
-    color: "#64748b",
-    status: "active",
-  };
-}
-
-function getReferencedProjectIds(plannerTimeline: PlannerTimelineResponse): Set<string> {
+function getReferencedProjectIds(
+  plannerTimeline: PlannerTimelineResponse,
+  request: PlannerHomeBootstrapRequest
+): Set<string> {
   const projectIds = new Set<string>();
 
   for (const assignment of plannerTimeline.assignments) {
@@ -99,66 +96,94 @@ function getReferencedProjectIds(plannerTimeline: PlannerTimelineResponse): Set<
     if (actual.projectUuid) projectIds.add(actual.projectUuid);
   }
 
+  if (request.projectId) {
+    projectIds.add(request.projectId);
+  }
+
   return projectIds;
+}
+
+function indexById<T extends { [key: string]: unknown }>(
+  rows: T[],
+  getId: (row: T) => string
+): Record<string, T> {
+  return rows.reduce<Record<string, T>>((acc, row) => {
+    acc[getId(row)] = row;
+    return acc;
+  }, {});
+}
+
+function getDepartmentIdsFromEmployees(employees: PlannerDirectoryEmployeeRow[]): string[] {
+  return Array.from(
+    new Set(
+      employees
+        .map((employee) => employee.departmentId)
+        .filter((departmentId): departmentId is string => !!departmentId)
+    )
+  );
+}
+
+function getBrandIdsFromProjects(projects: PlannerDirectoryProjectRow[]): string[] {
+  return Array.from(
+    new Set(projects.map((project) => project.brandId).filter((brandId): brandId is string => !!brandId))
+  );
+}
+
+function getMissingIds<T extends { [key: string]: unknown }>(
+  referencedIds: Set<string>,
+  rowsById: Record<string, T>
+): string[] {
+  return Array.from(referencedIds).filter((id) => !rowsById[id]);
 }
 
 export async function fetchPlannerHomeBootstrap(
   session: SessionData,
   request: PlannerHomeBootstrapRequest
 ): Promise<PlannerHomeBootstrapResponse> {
-  const fetchedAt = new Date().toISOString();
-  const [latestSuccessfulSync, latestInFlightSync] = await Promise.all([
+  const directoryFetchedAt = new Date().toISOString();
+
+  const [latestSuccessfulSync, latestInFlightSync, employeeSliceResult, departments, plannerTimeline] = await Promise.all([
     plannerDirectoryRepository.getLatestSuccessfulSync(),
     plannerDirectoryRepository.getLatestInFlightSync(),
+    plannerDirectoryRepository.listEmployeesForBootstrap({
+      offset: session.access.can_view_all ? request.employeeOffset : 0,
+      limit: session.access.can_view_all ? request.employeeLimit : 1,
+      search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
+      employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
+    }),
+    plannerDirectoryRepository.listDepartments(),
+    fetchPlannerTimeline(session, request),
   ]);
+
   const metadataFreshness = classifyPlannerDirectoryFreshness({
     lastSuccessfulSyncAt: latestSuccessfulSync?.finishedAt ?? latestSuccessfulSync?.startedAt ?? null,
     latestSyncAt: latestInFlightSync?.startedAt ?? latestSuccessfulSync?.startedAt ?? null,
     isSyncing: !!latestInFlightSync,
+    syncMode: latestInFlightSync?.syncMode ?? null,
     issueCount: latestSuccessfulSync?.issueCount ?? 0,
-    now: fetchedAt,
+    now: directoryFetchedAt,
   });
 
-  const [employeeSlice, plannerTimeline, projectSummaryResult] = await Promise.all([
-    fetchOrderedEmployeeSlice(session, {
-      offset: request.employeeOffset,
-      limit: request.employeeLimit,
-      search: request.search?.trim() || undefined,
-    }),
-    fetchPlannerTimeline(session, request),
-    fetchProjectSummaries({
-      brandId: request.brandId || undefined,
-      search: undefined,
-      pageSize: 100,
-      maxPagesPerSource: 3,
-    }),
-  ]);
+  const departmentsById = indexById(departments, (department) => department.departmentId);
 
-  const referencedProjectIds = getReferencedProjectIds(plannerTimeline);
-  const projectsById: Record<string, MinimalTimelineProject> = {};
+  const referencedProjectIds = getReferencedProjectIds(plannerTimeline, request);
+  const projects = await plannerDirectoryRepository.listProjectsForBootstrap({
+    brandId: request.brandId || undefined,
+    search: request.search?.trim() || undefined,
+    referencedProjectIds: Array.from(referencedProjectIds),
+  });
+  const projectsById = indexById(projects, (project) => project.sourceProjectId);
+  const missingReferencedProjectIds = getMissingIds(referencedProjectIds, projectsById);
 
-  for (const project of projectSummaryResult.data) {
-    if (
-      referencedProjectIds.size === 0 ||
-      referencedProjectIds.has(project.id) ||
-      project.id === request.projectId
-    ) {
-      projectsById[project.id] = toMinimalProject(project);
-    }
-  }
+  const brandIds = getBrandIdsFromProjects(projects);
+  const brands = await plannerDirectoryRepository.listBrandsByIds(brandIds);
+  const brandsById = indexById(brands, (brand) => brand.brandId);
+  const missingReferencedBrandIds = getMissingIds(new Set(brandIds), brandsById);
 
-  const missingReferencedProjectCount = Array.from(referencedProjectIds).filter(
-    (projectId) => !projectsById[projectId]
-  ).length;
-  const missingReferencedProjectIds = Array.from(referencedProjectIds).filter(
-    (projectId) => !projectsById[projectId]
+  const missingDepartmentIds = getMissingIds(
+    new Set(getDepartmentIdsFromEmployees(employeeSliceResult.data)),
+    departmentsById
   );
-  const brandsById: Record<string, MinimalTimelineBrand> = {};
-
-  for (const project of Object.values(projectsById)) {
-    const brand = toPartialBrandFromProject(project);
-    if (brand) brandsById[brand.id] = brand;
-  }
 
   if (missingReferencedProjectIds.length > 0) {
     void Promise.all(
@@ -176,19 +201,57 @@ export async function fetchPlannerHomeBootstrap(
     );
   }
 
+  if (missingReferencedBrandIds.length > 0) {
+    void Promise.all(
+      missingReferencedBrandIds.slice(0, 3).map((brandId) =>
+        requestPlannerDirectoryRepair({
+          session,
+          entityType: "brand",
+          sourceId: brandId,
+          triggerSource: "bootstrap",
+          triggeredBy: session.employee.uuid,
+        }).catch((error) => {
+          console.error("[Planner bootstrap] Failed to request brand repair:", error);
+        })
+      )
+    );
+  }
+
+  if (missingDepartmentIds.length > 0) {
+    void Promise.all(
+      missingDepartmentIds.slice(0, 3).map((departmentId) =>
+        requestPlannerDirectoryRepair({
+          session,
+          entityType: "department",
+          sourceId: departmentId,
+          triggerSource: "bootstrap",
+          triggeredBy: session.employee.uuid,
+        }).catch((error) => {
+          console.error("[Planner bootstrap] Failed to request department repair:", error);
+        })
+      )
+    );
+  }
+
+  const metadataPartial =
+    missingReferencedProjectIds.length > 0 ||
+    missingReferencedBrandIds.length > 0 ||
+    missingDepartmentIds.length > 0;
+
   return {
     request,
-    employees: employeeSlice.data.map(toMinimalEmployee),
-    employeeTotal: employeeSlice.total,
-    employeeHasMore: employeeSlice.hasMore,
+    employees: employeeSliceResult.data.map((employee) => toMinimalEmployee(employee, departmentsById)),
+    employeeTotal: employeeSliceResult.total,
+    employeeHasMore: employeeSliceResult.hasMore,
+    departmentsById,
     brandsById,
     projectsById,
     plannerTimeline,
-    metadataPartial: projectSummaryResult.truncated || missingReferencedProjectCount > 0,
+    metadataPartial,
     metadataFreshness,
     freshness: {
-      timeTrackFetchedAt: fetchedAt,
-      plannerFetchedAt: fetchedAt,
+      directoryFetchedAt,
+      plannerFetchedAt: directoryFetchedAt,
     },
   };
 }

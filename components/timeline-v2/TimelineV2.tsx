@@ -429,7 +429,7 @@ export function TimelineV2({
     if (plannerHomeBootstrap?.metadataFreshness) {
       const freshness = plannerHomeBootstrap.metadataFreshness;
       if (freshness.state === "syncing") {
-        return { tone: "syncing" as const, message: "Updating planner directory..." };
+        return { tone: "syncing" as const, message: "Refreshing planner directory..." };
       }
       if (freshness.state === "stale") {
         return { tone: "warning" as const, message: "Showing saved planner data. Directory sync is stale." };

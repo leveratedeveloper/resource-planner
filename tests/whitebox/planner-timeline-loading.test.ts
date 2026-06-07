@@ -284,6 +284,8 @@ describe("planner timeline loading contract", () => {
     expect(loadingStateSource).toContain("showInitialSkeleton");
     expect(loadingStateSource).toContain("showTimelineLoading: isRefreshInProgress");
     expect(timelineSource).toContain("<TimelineDataStatusV2");
+    expect(timelineSource).toContain("Refreshing planner directory...");
+    expect(timelineSource).not.toContain("Updating planner directory...");
   });
 
   it("does not render row-level project selector UI in resource rows", () => {
