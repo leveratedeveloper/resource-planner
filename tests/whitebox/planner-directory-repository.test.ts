@@ -184,6 +184,7 @@ describe("planner directory repository", () => {
       status: "active",
       startDate: null,
       endDate: null,
+      submitDate: null,
       sourceUpdatedAt: "2026-06-05T00:00:00Z",
       sourceHash: `hash-${index + 1}`,
       syncedAt: "2026-06-05T00:00:00Z",
@@ -200,6 +201,68 @@ describe("planner directory repository", () => {
     expect(insertCalls.length).toBeGreaterThan(1);
     expect(insertCalls[0]?.[1]).toBeInstanceOf(Array);
     expect((insertCalls[0]?.[1] as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("writes and reads planner project submit dates", async () => {
+    const db = createMockDb();
+    db.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT * FROM planner_projects")) {
+        return [
+          [
+            {
+              project_key: "pitch:pitch-1",
+              source_project_id: "pitch-1",
+              source_type: "pitch",
+              name: "Pitch Work",
+              brand_id: "9",
+              color: null,
+              status: "planning",
+              start_date: null,
+              end_date: null,
+              submit_date: "2026-06-12",
+              source_updated_at: "2026-06-05T00:00:00Z",
+              source_hash: "hash-1",
+              synced_at: "2026-06-05T00:00:00Z",
+              last_seen_at: "2026-06-05T00:00:00Z",
+              archived_at: null,
+            },
+          ],
+        ];
+      }
+
+      return [[]];
+    });
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.upsertProjects([
+      {
+        projectKey: "pitch:pitch-1",
+        sourceProjectId: "pitch-1",
+        sourceType: "pitch",
+        name: "Pitch Work",
+        brandId: "9",
+        color: null,
+        status: "planning",
+        startDate: null,
+        endDate: null,
+        submitDate: "2026-06-12",
+        sourceUpdatedAt: "2026-06-05T00:00:00Z",
+        sourceHash: "hash-1",
+        syncedAt: "2026-06-05T00:00:00Z",
+        lastSeenAt: "2026-06-05T00:00:00Z",
+        archivedAt: null,
+      },
+    ]);
+    const projects = await repository.listProjects();
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO planner_projects"),
+      expect.arrayContaining(["2026-06-12"])
+    );
+    expect(projects[0]).toMatchObject({
+      projectKey: "pitch:pitch-1",
+      submitDate: "2026-06-12",
+    });
   });
 
   it("queries a paginated employee bootstrap slice from the local directory", async () => {

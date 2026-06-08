@@ -45,6 +45,7 @@ function createRepository() {
         status: "active",
         startDate: "2026-01-01",
         endDate: "2026-01-31",
+        submitDate: null,
         sourceUpdatedAt: "2026-01-01T00:00:00Z",
         sourceHash: "project-old",
         syncedAt: "2026-01-01T00:00:00Z",
