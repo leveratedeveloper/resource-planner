@@ -1,28 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPendingAssignmentPayloads,
+  calculateDerivedHoursPerDay,
   formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
   getProjectAssignmentDateRange,
+  parseManHoursInput,
 } from "@/lib/setup/project-assignment-save";
 
 describe("project setup assignment save helpers", () => {
-  it("uses the selected date range for newly created pending assignments", () => {
+  it("uses manager-entered total hours and derived hours per day for newly created pending assignments", () => {
     const payloads = buildPendingAssignmentPayloads({
       projectId: "project-1",
       pendingAssignments: [{ employeeId: "employee-1" }],
-      selectedDeliverablesByEmployee: { "employee-1": ["deliverable-1"] },
-      allDeliverables: [
-        {
-          id: "deliverable-1",
-          deliverableName: "Landing Page",
-          deliverableNameNew: "Landing Page v2",
-        },
-      ],
+      manHoursByEmployee: { "employee-1": "10" },
       assignmentDates: {
         startDate: "2026-01-05",
-        endDate: "2026-01-30",
+        endDate: "2026-01-16",
       },
     });
 
@@ -32,26 +27,26 @@ describe("project setup assignment save helpers", () => {
         projectId: "project-1",
         taskId: null,
         startDate: "2026-01-05",
-        endDate: "2026-01-30",
-        hoursPerDay: "0",
+        endDate: "2026-01-16",
+        hoursPerDay: "1",
+        totalHours: 10,
         allocationPercentage: null,
         isTimeOff: false,
         timeOffTypeId: null,
         category: null,
         isBillable: true,
         status: "draft",
-        note: "Assigned to project - Deliverables: Landing Page v2. Set dates and hours as needed.",
+        note: "Assigned to project - set dates and hours as needed.",
         createdById: null,
       },
     ]);
   });
 
-  it("does not produce update payloads for existing assignment dates", () => {
+  it("does not produce payloads when there are no pending assignments", () => {
     const payloads = buildPendingAssignmentPayloads({
       projectId: "project-1",
       pendingAssignments: [],
-      selectedDeliverablesByEmployee: {},
-      allDeliverables: [],
+      manHoursByEmployee: {},
       assignmentDates: {
         startDate: "2026-01-05",
         endDate: "2026-01-30",
@@ -59,6 +54,21 @@ describe("project setup assignment save helpers", () => {
     });
 
     expect(payloads).toEqual([]);
+  });
+
+  it("rejects decimal and non-numeric man hours", () => {
+    expect(parseManHoursInput("12")).toBe(12);
+    expect(parseManHoursInput("0")).toBe(0);
+    expect(parseManHoursInput("12.5")).toBeNull();
+    expect(parseManHoursInput("abc")).toBeNull();
+    expect(parseManHoursInput("")).toBeNull();
+  });
+
+  it("uses a single day divisor for pitch-style one-day assignment ranges", () => {
+    expect(calculateDerivedHoursPerDay(30, {
+      startDate: "2026-06-12",
+      endDate: "2026-06-12",
+    })).toBe("30");
   });
 
   it("formats selected range dates for assignment creation", () => {
