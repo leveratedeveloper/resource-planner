@@ -5,6 +5,7 @@ import {
   formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
+  getMissingAssignmentPlanningDateReason,
   getProjectAssignmentDateRange,
   parseManHoursInput,
 } from "@/lib/setup/project-assignment-save";
@@ -119,6 +120,25 @@ describe("project setup assignment save helpers", () => {
       from: new Date(2026, 5, 12),
       to: new Date(2026, 5, 12),
     });
+  });
+
+  it("requires campaign start and end dates for assignment planning", () => {
+    expect(getMissingAssignmentPlanningDateReason("campaign", undefined)).toBe("campaign_date_range");
+    expect(getMissingAssignmentPlanningDateReason("campaign", {
+      from: new Date(2026, 0, 1),
+    })).toBe("campaign_date_range");
+    expect(getMissingAssignmentPlanningDateReason("campaign", {
+      from: new Date(2026, 0, 1),
+      to: new Date(2026, 0, 31),
+    })).toBeNull();
+  });
+
+  it("requires pitch submit date as a one-day assignment planning date", () => {
+    expect(getMissingAssignmentPlanningDateReason("pitch", undefined)).toBe("pitch_submit_date");
+    expect(getMissingAssignmentPlanningDateReason("pitch", {
+      from: new Date(2026, 5, 12),
+      to: new Date(2026, 5, 12),
+    })).toBeNull();
   });
 
   describe("formatProjectDateForDisplay", () => {

@@ -28,6 +28,9 @@ export interface ProjectAssignmentPayload {
   createdById: null;
 }
 
+export type ProjectAssignmentProjectType = "pitch" | "campaign";
+export type MissingAssignmentPlanningDateReason = "campaign_date_range" | "pitch_submit_date";
+
 export function getAssignmentDateStrings(dateRange: DateRange | undefined, fallbackDate = new Date()): ProjectAssignmentDates {
   const start = dateRange?.from ?? fallbackDate;
   const end = dateRange?.to ?? start;
@@ -77,6 +80,17 @@ export function getProjectAssignmentDateRange(project: {
   }
 
   return undefined;
+}
+
+export function getMissingAssignmentPlanningDateReason(
+  projectType: ProjectAssignmentProjectType,
+  dateRange: DateRange | undefined
+): MissingAssignmentPlanningDateReason | null {
+  if (projectType === "pitch") {
+    return dateRange?.from && dateRange?.to ? null : "pitch_submit_date";
+  }
+
+  return dateRange?.from && dateRange?.to ? null : "campaign_date_range";
 }
 
 export function formatProjectDateForDisplay(value: string | Date | null | undefined) {

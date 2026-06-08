@@ -46,6 +46,7 @@ import {
   formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
+  getMissingAssignmentPlanningDateReason,
   getProjectAssignmentDateRange,
   parseManHoursInput,
 } from "@/lib/setup/project-assignment-save";
@@ -250,7 +251,8 @@ export const ProjectSetup = () => {
     return hasAssignmentChanges || hasManHoursChanges;
   }, [hasAssignmentChanges, hasManHoursChanges]);
 
-  const hasCompleteAssignmentDateRange = !!dateRange?.from && !!dateRange?.to;
+  const missingAssignmentPlanningDateReason = getMissingAssignmentPlanningDateReason(projectType, dateRange);
+  const hasCompleteAssignmentDateRange = missingAssignmentPlanningDateReason === null;
 
   const allManHoursAreValid = useMemo(() => {
     const employeeIdsToValidate = new Set<string>();
@@ -406,8 +408,12 @@ export const ProjectSetup = () => {
   const handleSaveTeamAssignments = async (closeAfterSave = false) => {
     setIsSaving(true);
     try {
-      if (hasAssignmentChanges && !hasCompleteAssignmentDateRange) {
-        throw new Error("Assignment planning requires a complete date range.");
+      if (hasAssignmentChanges && missingAssignmentPlanningDateReason) {
+        throw new Error(
+          missingAssignmentPlanningDateReason === "pitch_submit_date"
+            ? "Pitch assignment planning requires a submission date."
+            : "Campaign assignment planning requires a complete date range."
+        );
       }
 
       const assignmentDates = getAssignmentDateStrings(dateRange);
@@ -1165,9 +1171,11 @@ export const ProjectSetup = () => {
                           Please enter whole-number man hours for all pending or changed employees
                         </p>
                       )}
-                      {!hasCompleteAssignmentDateRange && (
+                      {hasAssignmentChanges && missingAssignmentPlanningDateReason && (
                         <p className="text-xs text-amber-600">
-                          This project has no assignment date range. Set the campaign dates or pitch submission date before assigning a team.
+                          {missingAssignmentPlanningDateReason === "pitch_submit_date"
+                            ? "This pitch has no submission date. Set the pitch submission date before assigning a team."
+                            : "This campaign has no assignment date range. Set the campaign dates before assigning a team."}
                         </p>
                       )}
                     </div>
