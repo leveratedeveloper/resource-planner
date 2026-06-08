@@ -25,14 +25,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ExportButton } from "@/components/export";
-import { TimelineScopeSelect } from "@/components/filters/TimelineScopeSelect";
+import { BrandFilterCombobox } from "@/components/filters/BrandFilterCombobox";
+import { ProjectFilterCombobox } from "@/components/filters/ProjectFilterCombobox";
 
 interface FilterBarProps {
   brands: Brand[];
+  selectedBrand: Brand | null;
   departments: Department[];
   projects: ProjectOption[];
   selectedBrandId: string | null;
   onBrandChange: (brandId: string | null) => void;
+  brandSearch: string;
+  brandTotal: number;
+  brandHasMore: boolean;
+  isLoadingBrands: boolean;
+  onBrandSearchChange: (search: string) => void;
+  onLoadMoreBrands: () => void;
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
   searchQuery: string;
@@ -40,14 +48,33 @@ interface FilterBarProps {
   onOpenSetup: () => void;
   projectId: string | null;
   onProjectChange: (projectId: string | null) => void;
+  selectedProject: ProjectOption | null;
+  projectSearch: string;
+  projectTotal: number;
+  projectHasMore: boolean;
+  isLoadingProjects: boolean;
+  projectScopeBrandName: string | null;
+  selectedProjectStatus: ProjectOption["status"] | null;
+  selectedProjectSourceType: ProjectOption["projectType"] | null;
+  onProjectStatusChange: (status: ProjectOption["status"] | null) => void;
+  onProjectSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
+  onProjectSearchChange: (search: string) => void;
+  onLoadMoreProjects: () => void;
 }
 
 const FilterBarComponent = ({
   brands,
+  selectedBrand,
   departments,
   projects,
   selectedBrandId,
   onBrandChange,
+  brandSearch,
+  brandTotal,
+  brandHasMore,
+  isLoadingBrands,
+  onBrandSearchChange,
+  onLoadMoreBrands,
   selectedDepartment,
   onDepartmentChange,
   searchQuery,
@@ -55,6 +82,18 @@ const FilterBarComponent = ({
   onOpenSetup,
   projectId,
   onProjectChange,
+  selectedProject,
+  projectSearch,
+  projectTotal,
+  projectHasMore,
+  isLoadingProjects,
+  projectScopeBrandName,
+  selectedProjectStatus,
+  selectedProjectSourceType,
+  onProjectStatusChange,
+  onProjectSourceTypeChange,
+  onProjectSearchChange,
+  onLoadMoreProjects,
 }: FilterBarProps) => {
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
@@ -80,14 +119,35 @@ const FilterBarComponent = ({
           />
         </div>
 
-        <TimelineScopeSelect
+        <BrandFilterCombobox
           value={selectedBrandId}
-          allLabel="All Brands"
-          placeholder="All Brands"
-          ariaLabel="Filter by brand"
-          testId="filter-brand-trigger"
-          options={brands}
+          brands={brands}
+          selectedBrand={selectedBrand}
+          brandSearch={brandSearch}
+          brandTotal={brandTotal}
+          brandHasMore={brandHasMore}
+          isLoading={isLoadingBrands}
           onChange={onBrandChange}
+          onBrandSearchChange={onBrandSearchChange}
+          onLoadMoreBrands={onLoadMoreBrands}
+        />
+
+        <ProjectFilterCombobox
+          value={projectId}
+          projects={projects}
+          selectedProject={selectedProject}
+          projectSearch={projectSearch}
+          projectTotal={projectTotal}
+          projectHasMore={projectHasMore}
+          isLoading={isLoadingProjects}
+          scopeBrandName={projectScopeBrandName}
+          selectedStatus={selectedProjectStatus}
+          selectedSourceType={selectedProjectSourceType}
+          onStatusChange={onProjectStatusChange}
+          onSourceTypeChange={onProjectSourceTypeChange}
+          onChange={onProjectChange}
+          onProjectSearchChange={onProjectSearchChange}
+          onLoadMoreProjects={onLoadMoreProjects}
         />
 
         <Select
@@ -113,16 +173,6 @@ const FilterBarComponent = ({
             ))}
           </SelectContent>
         </Select>
-
-        <TimelineScopeSelect
-          value={projectId}
-          allLabel="All Projects"
-          placeholder="All Projects"
-          ariaLabel="Filter by project"
-          testId="filter-project-trigger"
-          options={projects}
-          onChange={onProjectChange}
-        />
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">

@@ -1,0 +1,24 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+describe("home filter options source", () => {
+  it("uses dedicated brand and project catalog hooks instead of bootstrap metadata for filter catalogs", () => {
+    const source = readFileSync("app/HomeClient.tsx", "utf8");
+
+    expect(source).toContain("useInfinitePlannerFilterBrands");
+    expect(source).toContain("useInfinitePlannerFilterProjects");
+    expect(source).toContain("selectedBrand");
+    expect(source).toContain("selectedProject");
+    expect(source).toContain("brandSearch");
+    expect(source).toContain("projectSearch");
+    expect(source).toContain("flatMap((page) => page.brands)");
+    expect(source).toContain("flatMap((page) => page.projects)");
+    expect(source).toContain("brandTotal");
+    expect(source).toContain("projectTotal");
+    expect(source).toContain("onLoadMoreProjects");
+    expect(source).toContain("onLoadMoreBrands");
+    expect(source).toContain("useDepartments");
+    expect(source).not.toContain("Object.values(bootstrapData?.brandsById ?? {}).map(toBrandOption)");
+    expect(source).not.toContain("Object.values(bootstrapData?.projectsById ?? {}).map(toProjectOption)");
+  });
+});

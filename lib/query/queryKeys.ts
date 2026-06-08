@@ -47,4 +47,6 @@ export const queryKeys = {
 
   // Planner timeline
   plannerTimeline: ["planner-timeline"] as const,
+  plannerFilterBrands: (params: unknown) => ["planner-filter-brands", params] as const,
+  plannerFilterProjects: (params: unknown) => ["planner-filter-projects", params] as const,
 } as const;

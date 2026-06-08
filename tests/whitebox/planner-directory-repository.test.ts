@@ -244,4 +244,98 @@ describe("planner directory repository", () => {
       expect.arrayContaining(["brand-9", "brand-10"])
     );
   });
+
+  it("queries all non-archived brands for filter options", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listBrandsForFilterOptions({
+      offset: 0,
+      limit: 100,
+    });
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("FROM planner_brands"),
+      expect.arrayContaining([100, 0])
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("archived_at IS NULL"),
+      expect.any(Array)
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("ORDER BY name ASC"),
+      expect.any(Array)
+    );
+  });
+
+  it("queries all non-archived departments for filter options", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listDepartmentsForFilterOptions();
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("FROM planner_departments"),
+      []
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("archived_at IS NULL"),
+      []
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("ORDER BY name ASC"),
+      []
+    );
+  });
+
+  it("queries paginated projects for filter options with brand and search support", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listProjectsForFilterOptions({
+      offset: 25,
+      limit: 50,
+      brandId: "brand-1",
+      status: "active",
+      sourceType: "campaign",
+      search: "launch",
+    });
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("FROM planner_projects"),
+      expect.arrayContaining(["brand-1", "active", "campaign", "%launch%", "%launch%", "%launch%", 50, 25])
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("LEFT JOIN planner_brands"),
+      expect.any(Array)
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("p.status ="),
+      expect.any(Array)
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("p.source_type ="),
+      expect.any(Array)
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("COUNT(*) OVER() AS total_count"),
+      expect.any(Array)
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("p.archived_at IS NULL"),
+      expect.any(Array)
+    );
+  });
+
+  it("queries a selected project for filter option preservation", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.getProjectForFilterOption("campaign-123");
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("p.source_project_id"),
+      expect.arrayContaining(["campaign-123"])
+    );
+  });
 });

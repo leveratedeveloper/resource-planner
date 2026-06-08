@@ -149,6 +149,58 @@ function mapEmployeeRow(row: PlannerDirectoryEmployeeRow): DbRow {
   };
 }
 
+function mapDepartmentReadRow(row: DbRow): PlannerDirectoryDepartmentRow {
+  return {
+    departmentId: String(row.department_id),
+    sourceDepartmentId: row.source_department_id ? String(row.source_department_id) : null,
+    name: String(row.name ?? ""),
+    code: row.code ? String(row.code) : null,
+    color: row.color ? String(row.color) : null,
+    isActive: Boolean(row.is_active),
+    sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+    sourceHash: String(row.source_hash ?? ""),
+    syncedAt: String(row.synced_at ?? ""),
+    lastSeenAt: String(row.last_seen_at ?? ""),
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
+  };
+}
+
+function mapBrandReadRow(row: DbRow): PlannerDirectoryBrandRow {
+  return {
+    brandId: String(row.brand_id),
+    sourceBrandId: row.source_brand_id ? String(row.source_brand_id) : null,
+    sourceUuid: row.source_uuid ? String(row.source_uuid) : null,
+    name: String(row.name ?? ""),
+    companyName: row.company_name ? String(row.company_name) : null,
+    color: row.color ? String(row.color) : null,
+    status: String(row.status ?? "active"),
+    sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+    sourceHash: String(row.source_hash ?? ""),
+    syncedAt: String(row.synced_at ?? ""),
+    lastSeenAt: String(row.last_seen_at ?? ""),
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
+  };
+}
+
+function mapProjectReadRow(row: DbRow): PlannerDirectoryProjectRow {
+  return {
+    projectKey: String(row.project_key),
+    sourceProjectId: String(row.source_project_id ?? ""),
+    sourceType: String(row.source_type ?? "campaign") as PlannerDirectoryProjectRow["sourceType"],
+    name: String(row.name ?? ""),
+    brandId: row.brand_id ? String(row.brand_id) : null,
+    color: row.color ? String(row.color) : null,
+    status: String(row.status ?? "active"),
+    startDate: row.start_date ? String(row.start_date) : null,
+    endDate: row.end_date ? String(row.end_date) : null,
+    sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+    sourceHash: String(row.source_hash ?? ""),
+    syncedAt: String(row.synced_at ?? ""),
+    lastSeenAt: String(row.last_seen_at ?? ""),
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
+  };
+}
+
 function buildUpsertStatement(
   table: string,
   rows: DbRow[],
@@ -192,24 +244,6 @@ function buildUpsertStatement(
     sql: `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${valueGroups.join(", ")} ON DUPLICATE KEY UPDATE ${updates}`,
     params,
   };
-}
-
-function buildReadWhereClause(
-  filters: Record<string, string | null | undefined>,
-  dialect: SqlDialect,
-  params: unknown[]
-): string {
-  const clauses: string[] = [];
-
-  Object.entries(filters).forEach(([column, value]) => {
-    if (value == null || value === "") {
-      return;
-    }
-    params.push(value);
-    clauses.push(`${column} = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
-  });
-
-  return clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 }
 
 function escapeLikePattern(value: string): string {
@@ -645,57 +679,69 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     const result = await db.query(
       `SELECT * FROM planner_departments ORDER BY name ASC`
     );
-    return readRows<DbRow>(result).map((row) => ({
-      departmentId: String(row.department_id),
-      sourceDepartmentId: row.source_department_id ? String(row.source_department_id) : null,
-      name: String(row.name ?? ""),
-      code: row.code ? String(row.code) : null,
-      color: row.color ? String(row.color) : null,
-      isActive: Boolean(row.is_active),
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-    }));
+    return readRows<DbRow>(result).map(mapDepartmentReadRow);
+  }
+
+  async function listDepartmentsForFilterOptions(): Promise<PlannerDirectoryDepartmentRow[]> {
+    const result = await db.query(
+      `SELECT * FROM planner_departments WHERE archived_at IS NULL ORDER BY name ASC`,
+      []
+    );
+    return readRows<DbRow>(result).map(mapDepartmentReadRow);
   }
 
   async function listBrands(): Promise<PlannerDirectoryBrandRow[]> {
     const result = await db.query(`SELECT * FROM planner_brands ORDER BY name ASC`);
-    return readRows<DbRow>(result).map((row) => ({
-      brandId: String(row.brand_id),
-      sourceBrandId: row.source_brand_id ? String(row.source_brand_id) : null,
-      sourceUuid: row.source_uuid ? String(row.source_uuid) : null,
-      name: String(row.name ?? ""),
-      companyName: row.company_name ? String(row.company_name) : null,
-      color: row.color ? String(row.color) : null,
-      status: String(row.status ?? "active"),
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-    }));
+    return readRows<DbRow>(result).map(mapBrandReadRow);
+  }
+
+  async function listBrandsForFilterOptions(args: {
+    offset: number;
+    limit: number;
+    search?: string | null;
+  }): Promise<{
+    data: PlannerDirectoryBrandRow[];
+    total: number;
+    hasMore: boolean;
+  }> {
+    const params: unknown[] = [];
+    const whereClauses = ["archived_at IS NULL"];
+
+    const searchClause = buildLikeSearchClause(["name", "company_name"], args.search, dialect, params);
+    if (searchClause) {
+      whereClauses.push(searchClause);
+    }
+
+    params.push(args.limit);
+    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    params.push(args.offset);
+    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+
+    const result = await db.query(
+      `
+        SELECT *, COUNT(*) OVER() AS total_count
+        FROM planner_brands
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY name ASC
+        LIMIT ${limitPlaceholder}
+        OFFSET ${offsetPlaceholder}
+      `,
+      params
+    );
+
+    const rows = readRows<DbRow>(result);
+    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
+
+    return {
+      data: rows.map(mapBrandReadRow),
+      total,
+      hasMore: total > args.offset + rows.length,
+    };
   }
 
   async function listProjects(): Promise<PlannerDirectoryProjectRow[]> {
     const result = await db.query(`SELECT * FROM planner_projects ORDER BY name ASC`);
-    return readRows<DbRow>(result).map((row) => ({
-      projectKey: String(row.project_key),
-      sourceProjectId: String(row.source_project_id ?? ""),
-      sourceType: String(row.source_type ?? "campaign") as PlannerDirectoryProjectRow["sourceType"],
-      name: String(row.name ?? ""),
-      brandId: row.brand_id ? String(row.brand_id) : null,
-      color: row.color ? String(row.color) : null,
-      status: String(row.status ?? "active"),
-      startDate: row.start_date ? String(row.start_date) : null,
-      endDate: row.end_date ? String(row.end_date) : null,
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-    }));
+    return readRows<DbRow>(result).map(mapProjectReadRow);
   }
 
   async function listEmployees(): Promise<PlannerDirectoryEmployeeRow[]> {
@@ -836,22 +882,87 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
       params
     );
 
-    return readRows<DbRow>(result).map((row) => ({
-      projectKey: String(row.project_key),
-      sourceProjectId: String(row.source_project_id ?? ""),
-      sourceType: String(row.source_type ?? "campaign") as PlannerDirectoryProjectRow["sourceType"],
-      name: String(row.name ?? ""),
-      brandId: row.brand_id ? String(row.brand_id) : null,
-      color: row.color ? String(row.color) : null,
-      status: String(row.status ?? "active"),
-      startDate: row.start_date ? String(row.start_date) : null,
-      endDate: row.end_date ? String(row.end_date) : null,
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-    }));
+    return readRows<DbRow>(result).map(mapProjectReadRow);
+  }
+
+  async function getProjectForFilterOption(sourceProjectId: string): Promise<PlannerDirectoryProjectRow | null> {
+    const params: unknown[] = [sourceProjectId];
+    const placeholder = dialect === "postgresql" ? "$1" : "?";
+    const result = await db.query(
+      `
+        SELECT p.*
+        FROM planner_projects p
+        WHERE p.archived_at IS NULL AND p.source_project_id = ${placeholder}
+        LIMIT 1
+      `,
+      params
+    );
+
+    const row = readFirstRow<DbRow>(result);
+    return row ? mapProjectReadRow(row) : null;
+  }
+
+  async function listProjectsForFilterOptions(args: {
+    offset: number;
+    limit: number;
+    brandId?: string | null;
+    status?: string | null;
+    sourceType?: string | null;
+    search?: string | null;
+  }): Promise<{
+    data: PlannerDirectoryProjectRow[];
+    total: number;
+    hasMore: boolean;
+  }> {
+    const params: unknown[] = [];
+    const whereClauses = ["p.archived_at IS NULL"];
+
+    if (args.brandId) {
+      params.push(args.brandId);
+      whereClauses.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    if (args.status) {
+      params.push(args.status);
+      whereClauses.push(`p.status = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    if (args.sourceType) {
+      params.push(args.sourceType);
+      whereClauses.push(`p.source_type = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    const searchClause = buildLikeSearchClause(["p.name", "b.name", "b.company_name"], args.search, dialect, params);
+    if (searchClause) {
+      whereClauses.push(searchClause);
+    }
+
+    params.push(args.limit);
+    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    params.push(args.offset);
+    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+
+    const result = await db.query(
+      `
+        SELECT p.*, COUNT(*) OVER() AS total_count
+        FROM planner_projects p
+        LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY p.name ASC
+        LIMIT ${limitPlaceholder}
+        OFFSET ${offsetPlaceholder}
+      `,
+      params
+    );
+
+    const rows = readRows<DbRow>(result);
+    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
+
+    return {
+      data: rows.map(mapProjectReadRow),
+      total,
+      hasMore: total > args.offset + rows.length,
+    };
   }
 
   async function listBrandsByIds(brandIds: string[]): Promise<PlannerDirectoryBrandRow[]> {
@@ -866,20 +977,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
       params
     );
 
-    return readRows<DbRow>(result).map((row) => ({
-      brandId: String(row.brand_id),
-      sourceBrandId: row.source_brand_id ? String(row.source_brand_id) : null,
-      sourceUuid: row.source_uuid ? String(row.source_uuid) : null,
-      name: String(row.name ?? ""),
-      companyName: row.company_name ? String(row.company_name) : null,
-      color: row.color ? String(row.color) : null,
-      status: String(row.status ?? "active"),
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-    }));
+    return readRows<DbRow>(result).map(mapBrandReadRow);
   }
 
   return {
@@ -895,11 +993,15 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     getLatestSuccessfulSync,
     getLatestInFlightSync,
     listDepartments,
+    listDepartmentsForFilterOptions,
     listBrands,
+    listBrandsForFilterOptions,
     listProjects,
     listEmployees,
     listEmployeesForBootstrap,
     listProjectsForBootstrap,
+    getProjectForFilterOption,
+    listProjectsForFilterOptions,
     listBrandsByIds,
   };
 }
