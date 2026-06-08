@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       createdById: null,
       notes: null,
       region: null,
-      submitDate: null,
+      submitDate: project.sourceType === "pitch" ? project.submitDate : null,
       pitchStatus: null,
       valueTotalEstimate: null,
       hsDealId: null,
