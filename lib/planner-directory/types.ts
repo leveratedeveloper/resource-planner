@@ -44,6 +44,7 @@ export type PlannerDirectoryProjectRow = {
   status: string;
   startDate: string | null;
   endDate: string | null;
+  submitDate: string | null;
   sourceUpdatedAt: string | null;
   sourceHash: string;
   syncedAt: string;
