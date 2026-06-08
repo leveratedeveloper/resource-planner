@@ -9,6 +9,7 @@ import { AllocationCellV2 } from "@/components/timeline-v2/AllocationCellV2";
 import { ResourceIdentityCellV2 } from "@/components/timeline-v2/ResourceIdentityCellV2";
 import { TimelineExpandedSkeletonV2, TimelineRowLoadingCellsV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 import { DraggableTimelineCell } from "@/components/timeline/DraggableTimelineCell";
+import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline/assignment-display-hours";
 import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
 const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
@@ -50,26 +51,11 @@ function isWeekView(viewMode: TimelineV2ViewMode) {
   return viewMode === "week";
 }
 
-function countWeekdays(start: Date, end: Date) {
-  let count = 0;
-  const current = new Date(start);
-  while (current <= end) {
-    const day = current.getDay();
-    if (day !== 0 && day !== 6) count += 1;
-    current.setDate(current.getDate() + 1);
-  }
-  return Math.max(1, count);
-}
-
 function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"], monthStart: Date, monthEnd: Date) {
   return assignments.reduce((sum, assignment) => {
     if (assignment.isTimeOff) return sum;
-    const assignStart = new Date(assignment.startDate);
-    const assignEnd = new Date(assignment.endDate);
-    const overlapStart = assignStart > monthStart ? assignStart : monthStart;
-    const overlapEnd = assignEnd < monthEnd ? assignEnd : monthEnd;
-    if (overlapStart > overlapEnd) return sum;
-    return sum + Number.parseFloat(assignment.hoursPerDay || "0") * countWeekdays(overlapStart, overlapEnd);
+    const range = { startDate: monthStart, endDate: monthEnd };
+    return sum + calculateAssignmentDisplayTotalHours(assignment, range);
   }, 0);
 }
 

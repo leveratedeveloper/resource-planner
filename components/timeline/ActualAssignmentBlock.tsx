@@ -19,6 +19,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { EditActualAssignmentDialog } from "./EditActualAssignmentDialog";
 import { getAssignmentBlockPosition, getAssignmentVisibleIndex } from "@/lib/timeline/assignment-positioning";
+import {
+  calculateAssignmentDisplayTotalHours,
+  formatAssignmentDisplayHours,
+} from "@/lib/timeline/assignment-display-hours";
 
 interface ActualAssignmentBlockProps {
   assignment: ActualAssignment;
@@ -177,16 +181,10 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
   const bgColor = isTimeOff ? "#6b7280" : "#16a34a";
   const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown Project");
 
-  let workingDays = 0;
-  let currentDate = new Date(startDate);
-  while (currentDate <= endDate) {
-    const day = currentDate.getDay();
-    if (day !== 0 && day !== 6) workingDays++;
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-
   const hoursPerDay = assignment.hoursPerDay;
-  const totalHours = workingDays * hoursPerDay;
+  const displayRange = { startDate: days[0] ?? startDate, endDate: days[days.length - 1] ?? endDate };
+  const displayTotalHours = calculateAssignmentDisplayTotalHours(assignment, displayRange);
+  const displayTotalHoursLabel = formatAssignmentDisplayHours(displayTotalHours);
   const formattedStartDate = format(startDate, "dd MMM");
   const formattedEndDate = format(endDate, "dd MMM");
 
@@ -563,7 +561,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
                 <div className="font-bold truncate">
                   {isDeleting ? "Deleting..." : displayName}
                 </div>
-                <div className="truncate opacity-90">{hoursPerDay}h/day</div>
+                <div className="truncate opacity-90">{displayTotalHoursLabel}</div>
               </div>
 
               {/* Right resize handle - hide when disabled */}
@@ -590,7 +588,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
                   Dates: <span className="font-normal text-slate-300">{formattedStartDate} - {formattedEndDate} ({durationDays} days)</span>
                 </div>
                 <div className="font-semibold mb-1 text-sm">
-                  Total Effort: <span className="font-normal text-slate-300">{totalHours}h @ {hoursPerDay}h/day</span>
+                  Total Effort: <span className="font-normal text-slate-300">{displayTotalHoursLabel} total @ {hoursPerDay}h/day</span>
                 </div>
                 {assignment.category && (
                   <div className="font-semibold text-sm">
