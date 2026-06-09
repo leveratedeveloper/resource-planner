@@ -2,7 +2,7 @@
 
 import React, { useMemo } from "react";
 import { Icon } from "@iconify/react";
-import { endOfMonth, startOfMonth } from "date-fns";
+import { endOfMonth, format, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBlockV2 } from "@/components/timeline-v2/AssignmentBlockV2";
 import { AllocationCellV2 } from "@/components/timeline-v2/AllocationCellV2";
@@ -51,6 +51,17 @@ function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"]
   }, 0);
 }
 
+function fallbackAllocationCell(row: TimelineV2ResourceRow, column: TimelineV2Column) {
+  const date = format(column.date, "yyyy-MM-dd");
+
+  return {
+    id: `${row.resource.id}-${date}`,
+    employeeId: row.resource.id,
+    date,
+    model: { kind: "empty" as const },
+  };
+}
+
 export const ResourceRowV2 = React.memo(function ResourceRowV2({
   row,
   columns,
@@ -90,7 +101,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
             {columns.map((column, index) => (
               <AllocationCellV2
                 key={column.id}
-                allocationCell={row.allocationCells[index]}
+                allocationCell={row.allocationCells[index] ?? fallbackAllocationCell(row, column)}
                 cellWidth={cellWidth}
                 height={RESOURCE_SUMMARY_ROW_HEIGHT}
               />

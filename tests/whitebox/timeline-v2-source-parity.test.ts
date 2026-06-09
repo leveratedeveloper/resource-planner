@@ -90,7 +90,14 @@ describe("timeline-v2 source parity", () => {
     expect(allocationCellSource).not.toContain("assignments: Assignment[]");
     expect(allocationCellSource).not.toContain("actualAssignments: ActualAssignment[]");
     expect(allocationCellSource).toContain("allocationCell: TimelineV2AllocationCell");
-    expect(resourceRowSource).toContain("allocationCell={row.allocationCells[index]}");
+    expect(resourceRowSource).toContain("row.allocationCells[index]");
+  });
+
+  it("handles missing prepared allocation cells explicitly", () => {
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+
+    expect(resourceRowSource).toContain("fallbackAllocationCell");
+    expect(resourceRowSource).toContain('kind: "empty"');
   });
 
   it("keeps v2 assignment blocks non-resizable and click-isolated", () => {
