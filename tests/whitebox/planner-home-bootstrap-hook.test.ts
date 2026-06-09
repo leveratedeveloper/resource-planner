@@ -8,6 +8,7 @@ describe("planner home bootstrap hook", () => {
 
     expect(hookSource).toContain("/api/planner/home-bootstrap");
     expect(hookSource).toContain("usePlannerHomeBootstrap");
+    expect(hookSource).toContain("queryKeys.plannerHomeBootstrap");
     expect(hookSource).toContain("keepPreviousData");
     expect(hookSource).toContain("initialData");
     expect(hookSource).toContain("initialDataUpdatedAt");

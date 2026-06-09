@@ -55,6 +55,35 @@ describe("planner directory normalizers", () => {
     ).toBe("pitch:42");
   });
 
+  it("preserves pitch date_submit as submitDate without treating it as a campaign range", () => {
+    const project = normalizeProjectSource(
+      {
+        uuid: "pitch-1",
+        pitch_number: "P-1",
+        pitch_name: "Pitch Work",
+        brand_id: 9,
+        region: null,
+        date_submit: "2026-06-12",
+        status: "on_going",
+        budget: 100,
+        value_total: 100,
+        currency: "IDR",
+        notes: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      },
+      "pitch"
+    );
+
+    expect(project).toMatchObject({
+      projectKey: "pitch:pitch-1",
+      sourceType: "pitch",
+      startDate: null,
+      endDate: null,
+      submitDate: "2026-06-12",
+    });
+  });
+
   it("normalizes departments, brands, and employees", () => {
     expect(
       normalizeDepartmentSource({

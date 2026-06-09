@@ -3,9 +3,10 @@ import type {
   PlannerHomeBootstrapRequest,
   PlannerHomeBootstrapResponse,
 } from "@/lib/query/server/planner-home-bootstrap";
+import { queryKeys } from "@/lib/query/queryKeys";
 
 function getPlannerHomeBootstrapQueryKey(request: PlannerHomeBootstrapRequest) {
-  return ["planner-home-bootstrap", request] as const;
+  return [...queryKeys.plannerHomeBootstrap, request] as const;
 }
 
 async function fetchPlannerHomeBootstrap(
@@ -45,7 +46,7 @@ export function usePlannerHomeBootstrap(
   } = {}
 ) {
   return useQuery({
-    queryKey: request ? getPlannerHomeBootstrapQueryKey(request) : ["planner-home-bootstrap", "disabled"],
+    queryKey: request ? getPlannerHomeBootstrapQueryKey(request) : [...queryKeys.plannerHomeBootstrap, "disabled"],
     queryFn: () => fetchPlannerHomeBootstrap(request!),
     enabled: !!request && (options.enabled ?? true),
     placeholderData: keepPreviousData,

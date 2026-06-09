@@ -1,9 +1,8 @@
 "use client";
 
 import { Icon } from "@iconify/react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverClose,
@@ -16,7 +15,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { CriticalMonthlyAllocation } from "@/lib/utils/critical-allocation";
-import type { Deliverable } from "@/lib/query/hooks/useDeliverables";
 
 interface ProjectTeamMember {
   id: string;
@@ -29,15 +27,13 @@ interface ProjectTeamMember {
 interface ProjectTeamAssignmentsTableProps {
   teamMembers: ProjectTeamMember[];
   pendingEmployeeIds: Set<string>;
-  changedDeliverableEmployeeIds: Set<string>;
-  selectedDeliverablesByEmployee: Record<string, string[]>;
-  projectDeliverables: Deliverable[];
-  allDeliverables: Deliverable[];
+  changedManHoursEmployeeIds: Set<string>;
+  manHoursByEmployee: Record<string, string>;
   canAssignTeam: boolean;
   isDeletePending: boolean;
   onAssignTeam: () => void;
-  onUndoDeliverableChange: (employeeId: string) => void;
-  onToggleDeliverable: (employeeId: string, deliverableId: string) => void;
+  onUndoManHoursChange: (employeeId: string) => void;
+  onChangeManHours: (employeeId: string, value: string) => void;
   onRemovePending: (employeeId: string) => void;
   onDeleteSavedAssignment: (employeeId: string) => void;
 }
@@ -45,15 +41,13 @@ interface ProjectTeamAssignmentsTableProps {
 export function ProjectTeamAssignmentsTable({
   teamMembers,
   pendingEmployeeIds,
-  changedDeliverableEmployeeIds,
-  selectedDeliverablesByEmployee,
-  projectDeliverables,
-  allDeliverables,
+  changedManHoursEmployeeIds,
+  manHoursByEmployee,
   canAssignTeam,
   isDeletePending,
   onAssignTeam,
-  onUndoDeliverableChange,
-  onToggleDeliverable,
+  onUndoManHoursChange,
+  onChangeManHours,
   onRemovePending,
   onDeleteSavedAssignment,
 }: ProjectTeamAssignmentsTableProps) {
@@ -62,16 +56,16 @@ export function ProjectTeamAssignmentsTable({
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/50">
-            <th className="text-left text-sm font-medium p-3 w-[30%]">Name</th>
-            <th className="text-left text-sm font-medium p-3 w-[35%]">Deliverables</th>
-            <th className="text-left text-sm font-medium p-3 w-[25%]">Critical Allocation</th>
-            <th className="text-left text-sm font-medium p-3 w-[10%]">Actions</th>
+            <th className="text-left text-sm font-medium p-3 w-[35%]">Name</th>
+            <th className="text-left text-sm font-medium p-3 w-[20%]">Man Hours</th>
+            <th className="text-left text-sm font-medium p-3 w-[30%]">Critical Allocation</th>
+            <th className="text-left text-sm font-medium p-3 w-[15%]">Actions</th>
           </tr>
         </thead>
         <tbody>
           {teamMembers.map((member) => {
             const isPending = pendingEmployeeIds.has(member.id);
-            const hasChangedDeliverable = changedDeliverableEmployeeIds.has(member.id);
+            const hasChangedManHours = changedManHoursEmployeeIds.has(member.id);
 
             return (
               <tr key={member.id} className="border-b last:border-b-0">
@@ -85,13 +79,13 @@ export function ProjectTeamAssignmentsTable({
                         {member.position}{member.department ? ` • ${member.department.name}` : ""}
                       </div>
                     </div>
-                    {hasChangedDeliverable && !isPending && (
+                    {hasChangedManHours && !isPending && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="shrink-0 h-6 w-6 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                        onClick={() => onUndoDeliverableChange(member.id)}
-                        title="Undo deliverable change"
+                        onClick={() => onUndoManHoursChange(member.id)}
+                        title="Undo man hours change"
                       >
                         <Icon icon="lucide:undo" className="h-3 w-3" />
                       </Button>
@@ -99,60 +93,17 @@ export function ProjectTeamAssignmentsTable({
                   </div>
                 </td>
                 <td className="p-3">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-left font-normal min-h-[32px] h-auto py-1"
-                      >
-                        {selectedDeliverablesByEmployee[member.id]?.length > 0 ? (
-                          <div className="flex flex-col gap-1 w-full">
-                            {selectedDeliverablesByEmployee[member.id].map(id => {
-                              const deliverable = allDeliverables.find(d => String(d.id) === String(id));
-                              return (
-                                <Badge key={id} variant="secondary" className="text-sm font-normal px-2 py-0.5 w-fit">
-                                  {deliverable?.deliverableNameNew || deliverable?.deliverableName || "Unknown"}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Select deliverables</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
-                      <div className="space-y-1 max-h-[300px] overflow-y-auto">
-                        {projectDeliverables.length > 0 ? (
-                          projectDeliverables.map((deliverable) => {
-                            const deliverableId = String(deliverable.id);
-                            const isSelected = selectedDeliverablesByEmployee[member.id]?.includes(deliverableId) ?? false;
-                            return (
-                              <div
-                                key={deliverable.id}
-                                className="flex items-center space-x-2 p-1.5 hover:bg-accent rounded-md cursor-pointer transition-colors"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  onToggleDeliverable(member.id, deliverableId);
-                                }}
-                              >
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => {}}
-                                />
-                                <span className="text-sm select-none">{deliverable.deliverableNameNew || deliverable.deliverableName}</span>
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <div className="p-2 text-sm text-muted-foreground text-center">
-                            No deliverables available
-                          </div>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  <Input
+                    value={manHoursByEmployee[member.id] ?? ""}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="0"
+                    className="h-8 w-24"
+                    onChange={(event) => {
+                      const nextValue = event.target.value.replace(/\D/g, "");
+                      onChangeManHours(member.id, nextValue);
+                    }}
+                  />
                 </td>
                 <td className="p-3 text-sm">
                   {member.criticalAllocations.length > 0 ? (
@@ -185,7 +136,7 @@ export function ProjectTeamAssignmentsTable({
                         <p>Remove pending assignment</p>
                       </TooltipContent>
                     </Tooltip>
-                  ) : !hasChangedDeliverable && (
+                  ) : !hasChangedManHours && (
                     <Popover>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -243,9 +194,7 @@ export function ProjectTeamAssignmentsTable({
               </Button>
             </td>
             <td className="p-3">
-              <Button variant="outline" size="sm" className="w-full justify-start text-muted-foreground font-normal" disabled>
-                Select deliverable
-              </Button>
+              <Input className="h-8 w-24" placeholder="0" disabled />
             </td>
             <td className="p-3 text-sm text-muted-foreground">-</td>
             <td className="p-3"></td>

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
-import { queryKeys } from "@/lib/query/queryKeys";
+import { invalidatePlannerData } from "@/lib/query/invalidatePlannerData";
 
 // Types - Struktur sama dengan Assignment
 export interface ActualAssignment {
@@ -215,7 +215,7 @@ export function useCreateActualAssignment() {
     // Invalidate queries to ensure fresh data
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["actual"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+      invalidatePlannerData(queryClient);
     },
   });
 }
@@ -293,7 +293,7 @@ export function useUpdateActualAssignment() {
     // Invalidate queries to ensure fresh data
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["actual"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+      invalidatePlannerData(queryClient);
     },
   });
 }
@@ -346,7 +346,7 @@ export function useDeleteActualAssignment() {
     // Invalidate related queries
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["actual"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+      invalidatePlannerData(queryClient);
     },
   });
 }

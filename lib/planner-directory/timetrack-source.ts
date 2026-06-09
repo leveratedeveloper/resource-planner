@@ -329,6 +329,9 @@ export function normalizeProjectSource(
   const endDate = sourceType === "campaign"
     ? nullableString((record as MySqlCampaign).end_date)
     : null;
+  const submitDate = sourceType === "pitch"
+    ? nullableString((record as MySqlPitch).date_submit)
+    : null;
   const status = sourceType === "campaign"
     ? normalizeCampaignProjectStatus((record as MySqlCampaign).flag ?? (record as MySqlCampaign).state)
     : normalizePitchProjectStatus((record as MySqlPitch).status);
@@ -344,6 +347,7 @@ export function normalizeProjectSource(
     status,
     startDate,
     endDate,
+    submitDate,
     sourceUpdatedAt,
     sourceHash: hashRecord({
       sourceType,
@@ -352,6 +356,7 @@ export function normalizeProjectSource(
       brand_id: record.brand_id ?? null,
       start_date: startDate,
       end_date: endDate,
+      submit_date: submitDate,
       status,
       updated_at: sourceUpdatedAt,
     }),
