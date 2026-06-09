@@ -97,6 +97,8 @@ function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][s
         : "planning",
     projectType: project.sourceType,
     brandId: project.brandId,
+    startDate: project.startDate,
+    endDate: project.endDate,
   };
 }
 
@@ -122,6 +124,7 @@ export function TimelineV2({
   const scrollSyncSourceRef = useRef<"header" | "body" | null>(null);
   const todayScrollTargetRef = useRef<Date | null>(null);
   const todayScrollRafRef = useRef<number | null>(null);
+  const hasLoggedTimelineFirstVisibleRef = useRef(false);
 
   useEffect(() => {
     const savedShowWeekends = localStorage.getItem("showWeekends");
@@ -168,8 +171,6 @@ export function TimelineV2({
     return getTimelineV2CellWidth(containerWidth, columns.columns.length);
   }, [columns.columns.length, containerWidth]);
   const isLayoutReady = hasLoadedWeekendPreference && containerWidth !== null;
-  const shouldUseHomeBootstrap =
-    process.env.NEXT_PUBLIC_PLANNER_HOME_BOOTSTRAP === "true" || !!initialBootstrap;
   const assignmentDateRange = useMemo<TimelineAssignmentDateRange | undefined>(() => {
     if (!columns.startDate || !columns.endDate) return undefined;
     return {
@@ -214,7 +215,7 @@ export function TimelineV2({
     isFetching: isFetchingPlannerHomeBootstrap,
     isRefetchError: isPlannerHomeBootstrapRefetchError,
   } = usePlannerHomeBootstrap(bootstrapRequest, {
-    enabled: shouldUseHomeBootstrap && !!bootstrapRequest,
+    enabled: !!bootstrapRequest,
     initialData: initialBootstrap ?? undefined,
     initialDataUpdatedAt: initialBootstrap
       ? Date.parse(initialBootstrap.freshness.directoryFetchedAt)
@@ -436,6 +437,20 @@ export function TimelineV2({
     !isLayoutReady ||
     isLoadingPlannerHomeBootstrap ||
     (!plannerHomeBootstrap && (isLoadingEmployees || rowLoadingState.showInitialSkeleton));
+
+  useEffect(() => {
+    if (isInitialTimelineLoading || hasLoggedTimelineFirstVisibleRef.current) return;
+
+    hasLoggedTimelineFirstVisibleRef.current = true;
+    console.info("[Timing]", {
+      flow: "planner_startup",
+      phase: "timeline_first_visible",
+      durationMs: Math.round(performance.now()),
+      rowCount: rows.length,
+      columnCount: columns.columns.length,
+    });
+  }, [columns.columns.length, isInitialTimelineLoading, rows.length]);
+
   const plannerFreshnessState = useMemo(() => {
     if (plannerHomeBootstrap?.metadataFreshness) {
       const freshness = plannerHomeBootstrap.metadataFreshness;

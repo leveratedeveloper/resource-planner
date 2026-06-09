@@ -16,11 +16,14 @@ describe("planner startup", () => {
     });
   });
 
-  it("renders the home planner timeline without blocking on server prefetch", () => {
+  it("renders the home shell without awaiting planner bootstrap on the server", () => {
     const pageSource = readFileSync("app/page.tsx", "utf8");
 
     expect(pageSource.match(/<HomeClient/g)).toHaveLength(1);
     expect(pageSource).toContain("<HomePlannerTimeline");
+    expect(pageSource).not.toContain("fetchPlannerHomeBootstrap");
+    expect(pageSource).not.toContain("await fetchPlannerHomeBootstrap");
+    expect(pageSource).not.toContain("initialBootstrap={initialBootstrap");
     expect(pageSource).not.toContain("prefetchCriticalPlannerStartup");
     expect(pageSource).not.toContain("<Suspense");
   });
@@ -34,5 +37,13 @@ describe("planner startup", () => {
     });
     expect(JSON.stringify(request)).not.toContain("projectId");
     expect(JSON.stringify(request)).not.toContain("brandId");
+  });
+
+  it("logs timeline first visible after the initial loading state clears", () => {
+    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+
+    expect(timelineSource).toContain('phase: "timeline_first_visible"');
+    expect(timelineSource).toContain("hasLoggedTimelineFirstVisibleRef");
+    expect(timelineSource).toContain("if (isInitialTimelineLoading || hasLoggedTimelineFirstVisibleRef.current) return;");
   });
 });

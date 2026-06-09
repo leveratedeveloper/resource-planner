@@ -89,7 +89,7 @@ export interface Project {
 
 export type ProjectOption = Pick<
   Project,
-  "id" | "name" | "color" | "status" | "projectType"
+  "id" | "name" | "color" | "status" | "projectType" | "startDate" | "endDate"
 > & {
   brandId: string | null;
 };

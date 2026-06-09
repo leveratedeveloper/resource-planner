@@ -68,10 +68,12 @@ describe("timeline-v2 source parity", () => {
     expect(source).not.toContain('<div data-testid="timeline-v2-expanded-loading" />');
   });
 
-  it("uses the correct week-mode check in ResourceRowV2", () => {
+  it("uses daily positioning for V2 week and month plan blocks", () => {
     const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
 
-    expect(source).toContain('isWeekView={viewMode === "week"}');
+    expect(source).toContain('isWeekView={false}');
+    expect(source).toContain('const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";');
+    expect(source).not.toContain('isWeekView={viewMode === "week"}');
   });
 
   it("memoizes the hot row renderers", () => {

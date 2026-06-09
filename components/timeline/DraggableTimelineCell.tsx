@@ -249,7 +249,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
       data-project-id={projectId}
       data-cell-state="weekday"
     >
-      {/* Add button - shown on hover */}
+      {/* Add button - shown on hover
       {isHovered && !isDragging && !disabled && (
         <div
           className="absolute inset-0 flex items-center justify-center"
@@ -271,7 +271,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
             <Icon icon="lucide:plus" className="h-3 w-3" />
           </div>
         </div>
-      )}
+      )} */}
 
     </div>
   );

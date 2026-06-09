@@ -9,6 +9,7 @@ import {
   sortResourceProjects,
 } from "@/lib/timeline/resource-project-model";
 import { getTimelineV2AllocationModel } from "@/lib/timeline-v2/allocation-model";
+import { buildTimelineV2PlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
 import type {
   TimelineV2AllocationCell,
   TimelineV2CampaignGroup,
@@ -154,26 +155,39 @@ export function buildTimelineV2Rows({
       selectedProjectId: filters.projectId,
     };
 
-    const campaignGroups: TimelineV2CampaignGroup[] = sortedProjects.map((project) => {
+    const campaignGroups: TimelineV2CampaignGroup[] = sortedProjects.flatMap((project) => {
       const brand = project.brandId ? brandById.get(project.brandId) : undefined;
       const planAssignments = resourceAssignments.filter(
         (assignment) => assignment.projectId === project.id && !assignment.isTimeOff
       );
+      const planDisplaySegments = buildTimelineV2PlanDisplaySegments({
+        assignments: planAssignments,
+        visibleDates: days,
+        resolution: isTimelineV2MonthRangeView(viewMode) ? "month" : "day",
+        projectStartDate: project.startDate,
+        projectEndDate: project.endDate,
+      });
+
+      if (planDisplaySegments.length === 0) return [];
+
       const isHighlighted = isProjectHighlighted(project, highlightFilters);
 
-      return {
-        id: project.id,
-        name: project.name,
-        brandName: brand?.name,
-        isHighlighted,
-        row: {
+      return [
+        {
           id: project.id,
-          project,
-          brand,
-          planAssignments,
+          name: project.name,
+          brandName: brand?.name,
           isHighlighted,
+          row: {
+            id: project.id,
+            project,
+            brand,
+            planAssignments,
+            planDisplaySegments,
+            isHighlighted,
+          },
         },
-      };
+      ];
     });
 
     return {

@@ -4,6 +4,7 @@ import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { TimelineV2AllocationModel } from "@/lib/timeline-v2/allocation-model";
+import type { TimelineV2PlanDisplaySegment } from "@/lib/timeline-v2/plan-display-segments";
 import type { Resource } from "@/types";
 
 export type TimelineV2ViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
@@ -52,6 +53,7 @@ export type TimelineV2CampaignRow = {
   project: ProjectOption;
   brand?: Brand;
   planAssignments: Assignment[];
+  planDisplaySegments: TimelineV2PlanDisplaySegment[];
   isHighlighted: boolean;
 };
 

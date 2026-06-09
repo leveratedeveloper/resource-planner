@@ -16,6 +16,16 @@ const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
 const TIME_OFF_ROW_HEIGHT = 32;
 const CAMPAIGN_ROW_HEIGHT = 34;
 
+function buildSegmentAssignment(
+  segment: TimelineV2ResourceRow["campaignGroups"][number]["row"]["planDisplaySegments"][number]
+) {
+  return {
+    ...segment.sourceAssignment,
+    startDate: segment.startDate,
+    endDate: segment.endDate,
+  };
+}
+
 type ResourceRowV2Props = {
   row: TimelineV2ResourceRow;
   columns: TimelineV2Column[];
@@ -159,7 +169,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                     days={columns.map((item) => item.date)}
                     resourceRowHeight={TIME_OFF_ROW_HEIGHT}
                     cellWidth={cellWidth}
-                    isWeekView={viewMode === "week"}
+                    isWeekView={false}
                     isMonthRangeView={monthRangeView}
                     onUpdate={onUpdatePlanned}
                     onDelete={onDeletePlanned}
@@ -270,16 +280,16 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         rowType="plan"
                       />
                     )) : null}
-                    {group.row.planAssignments.map((assignment) => (
+                    {group.row.planDisplaySegments.map((segment) => (
                       <AssignmentBlockV2
-                        key={assignment.id}
+                        key={segment.id}
                         kind="plan"
-                        assignment={assignment}
+                        assignment={buildSegmentAssignment(segment)}
                         project={campaign}
                         days={projectDays}
                         resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
                         cellWidth={cellWidth}
-                        isWeekView={viewMode === "week"}
+                        isWeekView={false}
                         isMonthRangeView={monthRangeView}
                         onUpdate={onUpdatePlanned}
                         onDelete={onDeletePlanned}

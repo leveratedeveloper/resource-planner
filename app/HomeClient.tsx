@@ -19,11 +19,9 @@ import {
   useInfinitePlannerFilterProjects,
 } from "@/lib/query/hooks";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
 interface HomeClientProps {
   initialTimelineAnchor: string;
-  initialBootstrap?: PlannerHomeBootstrapResponse | null;
   children?: ReactNode;
 }
 
@@ -47,17 +45,15 @@ function useHomePlannerFilters() {
 
 export function HomePlannerTimeline({
   initialTimelineAnchor,
-  initialBootstrap,
 }: {
   initialTimelineAnchor: string;
-  initialBootstrap?: PlannerHomeBootstrapResponse | null;
 }) {
   const filters = useHomePlannerFilters();
 
   useEffect(() => {
     console.info("[Timing]", {
       flow: "planner_startup",
-      phase: "critical_ready",
+      phase: "timeline_shell_mount",
       durationMs: Math.round(performance.now()),
     });
   }, []);
@@ -65,7 +61,6 @@ export function HomePlannerTimeline({
   return (
     <TimelineV2
       initialTimelineAnchor={initialTimelineAnchor}
-      initialBootstrap={initialBootstrap ?? undefined}
       brandId={filters.brandId}
       department={filters.department}
       searchQuery={filters.searchQuery}
@@ -76,7 +71,6 @@ export function HomePlannerTimeline({
 
 export function HomeClient({
   initialTimelineAnchor,
-  initialBootstrap,
   children,
 }: HomeClientProps) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -220,10 +214,7 @@ export function HomeClient({
 
         <main className="flex-1 overflow-hidden">
           {children ?? (
-            <HomePlannerTimeline
-              initialTimelineAnchor={initialTimelineAnchor}
-              initialBootstrap={initialBootstrap ?? undefined}
-            />
+            <HomePlannerTimeline initialTimelineAnchor={initialTimelineAnchor} />
           )}
         </main>
 

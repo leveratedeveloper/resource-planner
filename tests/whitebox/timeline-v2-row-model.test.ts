@@ -78,7 +78,19 @@ const project = (id: string): ProjectOption => ({
   status: "active",
   projectType: "campaign",
   brandId: "brand-1",
+  startDate: null,
+  endDate: null,
 });
+
+function dateRange(startDay: number, endDay: number) {
+  const dates: Date[] = [];
+
+  for (let day = startDay; day <= endDay; day += 1) {
+    dates.push(new Date(`2026-06-${String(day).padStart(2, "0")}T00:00:00`));
+  }
+
+  return dates;
+}
 
 describe("timeline-v2 row model", () => {
   it("groups assignments by employee", () => {
@@ -104,7 +116,7 @@ describe("timeline-v2 row model", () => {
       brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
       expandedEmployeeIds: new Set(["employee-1"]),
       filters: { brandId: "brand-1", department: null, projectId: null, searchQuery: "" },
-      days: [new Date("2026-06-01T00:00:00")],
+      days: dateRange(1, 18),
       viewMode: "month",
     });
 
@@ -136,7 +148,7 @@ describe("timeline-v2 row model", () => {
       brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
       expandedEmployeeIds: new Set(["employee-1"]),
       filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
-      days: [new Date("2026-06-01T00:00:00")],
+      days: dateRange(1, 18),
       viewMode: "month",
     });
 
@@ -144,6 +156,128 @@ describe("timeline-v2 row model", () => {
     expect(rows[0].campaignGroups.map((group) => group.name)).toEqual(["Project project-plan"]);
     expect(rows[0].campaignGroups[0].row.planAssignments).toEqual([plan]);
     expect(rows[0].actualAssignments).toEqual([actual]);
+  });
+
+  it("exposes raw campaign assignments and merged display segments", () => {
+    const first = assignment({
+      id: "plan-1",
+      employeeId: "employee-1",
+      projectId: "project-1",
+      startDate: "2026-06-01",
+      endDate: "2026-06-10",
+    });
+    const second = assignment({
+      id: "plan-2",
+      employeeId: "employee-1",
+      projectId: "project-1",
+      startDate: "2026-06-11",
+      endDate: "2026-06-18",
+    });
+
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [first, second],
+      actualAssignments: [],
+      projects: [project("project-1")],
+      brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
+      expandedEmployeeIds: new Set(["employee-1"]),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: dateRange(1, 18),
+      viewMode: "month",
+    });
+
+    const campaignRow = rows[0].campaignGroups[0].row;
+
+    expect(campaignRow.planAssignments).toEqual([first, second]);
+    expect(campaignRow.planDisplaySegments).toHaveLength(1);
+    expect(campaignRow.planDisplaySegments[0]).toMatchObject({
+      startDate: "2026-06-01",
+      endDate: "2026-06-18",
+      sourceAssignment: first,
+      assignments: [first, second],
+    });
+  });
+
+  it("uses visible assignment coverage instead of raw campaign dates for display segment boundaries", () => {
+    const campaign = {
+      ...project("project-1"),
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+    };
+
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [
+        assignment({
+          id: "week-1",
+          employeeId: "employee-1",
+          projectId: "project-1",
+          startDate: "2026-06-01",
+          endDate: "2026-06-05",
+        }),
+        assignment({
+          id: "week-2",
+          employeeId: "employee-1",
+          projectId: "project-1",
+          startDate: "2026-06-08",
+          endDate: "2026-06-12",
+        }),
+      ],
+      actualAssignments: [],
+      projects: [campaign],
+      brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
+      expandedEmployeeIds: new Set(["employee-1"]),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: [
+        new Date("2026-06-01T00:00:00"),
+        new Date("2026-06-02T00:00:00"),
+        new Date("2026-06-03T00:00:00"),
+        new Date("2026-06-04T00:00:00"),
+        new Date("2026-06-05T00:00:00"),
+        new Date("2026-06-08T00:00:00"),
+        new Date("2026-06-09T00:00:00"),
+        new Date("2026-06-10T00:00:00"),
+        new Date("2026-06-11T00:00:00"),
+        new Date("2026-06-12T00:00:00"),
+      ],
+      viewMode: "month",
+    });
+
+    expect(rows[0].campaignGroups[0].row.planDisplaySegments).toEqual([
+      expect.objectContaining({
+        startDate: "2026-06-01",
+        endDate: "2026-06-12",
+        assignments: [
+          expect.objectContaining({ id: "week-1" }),
+          expect.objectContaining({ id: "week-2" }),
+        ],
+      }),
+    ]);
+  });
+
+  it("omits expanded campaign rows when they have no visible display segment", () => {
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [
+        assignment({
+          id: "out-of-range",
+          employeeId: "employee-1",
+          projectId: "project-1",
+          startDate: "2026-07-01",
+          endDate: "2026-07-31",
+        }),
+      ],
+      actualAssignments: [],
+      projects: [project("project-1")],
+      brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
+      expandedEmployeeIds: new Set(["employee-1"]),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: dateRange(1, 30),
+      viewMode: "month",
+    });
+
+    expect(rows[0].assignments.map((item) => item.id)).toEqual(["out-of-range"]);
+    expect(rows[0].campaignGroups).toEqual([]);
   });
 
   it("keeps the employees it receives without re-filtering them away", () => {
