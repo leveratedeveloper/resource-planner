@@ -85,6 +85,8 @@ const makeProject = (overrides: Partial<ProjectOption>): ProjectOption => ({
   status: "active",
   projectType: "campaign",
   brandId: "brand-1",
+  startDate: null,
+  endDate: null,
   ...overrides,
 });
 

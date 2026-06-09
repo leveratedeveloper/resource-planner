@@ -3,6 +3,8 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import type { TimelineV2AllocationModel } from "@/lib/timeline-v2/allocation-model";
+import type { TimelineV2PlanDisplaySegment } from "@/lib/timeline-v2/plan-display-segments";
 import type { Resource } from "@/types";
 
 export type TimelineV2ViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
@@ -39,11 +41,19 @@ export type TimelineV2Resource = Resource & {
   employee: Employee;
 };
 
+export type TimelineV2AllocationCell = {
+  id: string;
+  employeeId: string;
+  date: string;
+  model: TimelineV2AllocationModel;
+};
+
 export type TimelineV2CampaignRow = {
   id: string;
   project: ProjectOption;
   brand?: Brand;
   planAssignments: Assignment[];
+  planDisplaySegments: TimelineV2PlanDisplaySegment[];
   isHighlighted: boolean;
 };
 
@@ -61,6 +71,7 @@ export type TimelineV2ResourceRow = {
   assignments: Assignment[];
   actualAssignments: ActualAssignment[];
   timeOffAssignments: Assignment[];
+  allocationCells: TimelineV2AllocationCell[];
   campaignGroups: TimelineV2CampaignGroup[];
   isExpanded: boolean;
 };

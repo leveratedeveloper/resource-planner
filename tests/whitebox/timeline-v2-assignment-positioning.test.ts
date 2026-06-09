@@ -33,6 +33,23 @@ describe("timeline-v2 assignment positioning", () => {
     expect(position).toEqual({ startIndex: 1, endIndex: 3, leftPct: 20, widthPct: 60 });
   });
 
+  it("positions V2 week-view columns at daily resolution", () => {
+    const position = getTimelineV2AssignmentPosition({
+      startDate: "2026-06-03",
+      endDate: "2026-06-04",
+      columns: [
+        column("2026-06-01"),
+        column("2026-06-02"),
+        column("2026-06-03"),
+        column("2026-06-04"),
+        column("2026-06-05"),
+      ],
+      resolution: "day",
+    });
+
+    expect(position).toEqual({ startIndex: 2, endIndex: 3, leftPct: 40, widthPct: 40 });
+  });
+
   it("returns null when the assignment is outside the visible range", () => {
     expect(
       getTimelineV2AssignmentPosition({

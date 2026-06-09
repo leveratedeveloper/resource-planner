@@ -218,6 +218,8 @@ export function mapCampaignToProjectSummary(campaign: CampaignApiRecord): Projec
     color: projectColor(campaign.uuid ?? campaign.io_number ?? campaign.campaign_name),
     status: campaignStatus(campaign.flag),
     projectType: "campaign",
+    startDate: nullableText(campaign.start_date),
+    endDate: nullableText(campaign.end_date),
   };
 }
 
@@ -229,5 +231,7 @@ export function mapPitchToProjectSummary(pitch: PitchApiRecord): ProjectOption {
     color: projectColor(pitch.uuid ?? pitch.pitch_number ?? pitch.pitch_name),
     status: pitchProjectStatus(pitch.status),
     projectType: "pitch",
+    startDate: null,
+    endDate: null,
   };
 }

@@ -2,7 +2,7 @@
 
 import React, { useMemo } from "react";
 import { Icon } from "@iconify/react";
-import { endOfMonth, startOfMonth } from "date-fns";
+import { endOfMonth, format, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBlockV2 } from "@/components/timeline-v2/AssignmentBlockV2";
 import { AllocationCellV2 } from "@/components/timeline-v2/AllocationCellV2";
@@ -15,6 +15,16 @@ import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from
 const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
 const TIME_OFF_ROW_HEIGHT = 32;
 const CAMPAIGN_ROW_HEIGHT = 34;
+
+function buildSegmentAssignment(
+  segment: TimelineV2ResourceRow["campaignGroups"][number]["row"]["planDisplaySegments"][number]
+) {
+  return {
+    ...segment.sourceAssignment,
+    startDate: segment.startDate,
+    endDate: segment.endDate,
+  };
+}
 
 type ResourceRowV2Props = {
   row: TimelineV2ResourceRow;
@@ -43,20 +53,23 @@ type ResourceRowV2Props = {
   }) => void;
 };
 
-function isMonthRangeView(viewMode: TimelineV2ViewMode) {
-  return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
-}
-
-function isWeekView(viewMode: TimelineV2ViewMode) {
-  return viewMode === "week";
-}
-
 function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"], monthStart: Date, monthEnd: Date) {
   return assignments.reduce((sum, assignment) => {
     if (assignment.isTimeOff) return sum;
     const range = { startDate: monthStart, endDate: monthEnd };
     return sum + calculateAssignmentDisplayTotalHours(assignment, range);
   }, 0);
+}
+
+function fallbackAllocationCell(row: TimelineV2ResourceRow, column: TimelineV2Column) {
+  const date = format(column.date, "yyyy-MM-dd");
+
+  return {
+    id: `${row.resource.id}-${date}`,
+    employeeId: row.resource.id,
+    date,
+    model: { kind: "empty" as const },
+  };
 }
 
 export const ResourceRowV2 = React.memo(function ResourceRowV2({
@@ -76,8 +89,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
   onOpenMonthlyAllocation,
 }: ResourceRowV2Props) {
   const isExpanded = row.isExpanded;
-  const weekView = isWeekView(viewMode);
-  const monthRangeView = isMonthRangeView(viewMode);
+  const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
   const projectDays = useMemo(() => columns.map((item) => item.date), [columns]);
 
   return (
@@ -96,17 +108,12 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
           <TimelineRowLoadingCellsV2 width={columns.length * cellWidth} height={RESOURCE_SUMMARY_ROW_HEIGHT} dayCount={columns.length} />
         ) : (
           <div className="flex relative" style={{ width: `${columns.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
-            {columns.map((column) => (
+            {columns.map((column, index) => (
               <AllocationCellV2
                 key={column.id}
-                day={column.date}
-                resource={row.resource}
-                assignments={row.assignments}
-                actualAssignments={row.actualAssignments}
+                allocationCell={row.allocationCells[index] ?? fallbackAllocationCell(row, column)}
                 cellWidth={cellWidth}
                 height={RESOURCE_SUMMARY_ROW_HEIGHT}
-                isWeekView={weekView}
-                isMonthRangeView={monthRangeView}
               />
             ))}
           </div>
@@ -162,7 +169,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                     days={columns.map((item) => item.date)}
                     resourceRowHeight={TIME_OFF_ROW_HEIGHT}
                     cellWidth={cellWidth}
-                    isWeekView={weekView}
+                    isWeekView={false}
                     isMonthRangeView={monthRangeView}
                     onUpdate={onUpdatePlanned}
                     onDelete={onDeletePlanned}
@@ -273,16 +280,16 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         rowType="plan"
                       />
                     )) : null}
-                    {group.row.planAssignments.map((assignment) => (
+                    {group.row.planDisplaySegments.map((segment) => (
                       <AssignmentBlockV2
-                        key={assignment.id}
+                        key={segment.id}
                         kind="plan"
-                        assignment={assignment}
+                        assignment={buildSegmentAssignment(segment)}
                         project={campaign}
                         days={projectDays}
                         resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
                         cellWidth={cellWidth}
-                        isWeekView={weekView}
+                        isWeekView={false}
                         isMonthRangeView={monthRangeView}
                         onUpdate={onUpdatePlanned}
                         onDelete={onDeletePlanned}

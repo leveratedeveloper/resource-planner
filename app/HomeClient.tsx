@@ -19,11 +19,9 @@ import {
   usePlannerFilterProjects,
 } from "@/lib/query/hooks";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
 interface HomeClientProps {
   initialTimelineAnchor: string;
-  initialBootstrap?: PlannerHomeBootstrapResponse | null;
   children?: ReactNode;
 }
 
@@ -47,17 +45,15 @@ function useHomePlannerFilters() {
 
 export function HomePlannerTimeline({
   initialTimelineAnchor,
-  initialBootstrap,
 }: {
   initialTimelineAnchor: string;
-  initialBootstrap?: PlannerHomeBootstrapResponse | null;
 }) {
   const filters = useHomePlannerFilters();
 
   useEffect(() => {
     console.info("[Timing]", {
       flow: "planner_startup",
-      phase: "critical_ready",
+      phase: "timeline_shell_mount",
       durationMs: Math.round(performance.now()),
     });
   }, []);
@@ -65,7 +61,6 @@ export function HomePlannerTimeline({
   return (
     <TimelineV2
       initialTimelineAnchor={initialTimelineAnchor}
-      initialBootstrap={initialBootstrap ?? undefined}
       brandId={filters.brandId}
       department={filters.department}
       searchQuery={filters.searchQuery}
@@ -75,6 +70,7 @@ export function HomePlannerTimeline({
 }
 
 export function HomeClient({
+  initialTimelineAnchor,
   children,
 }: HomeClientProps) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -183,7 +179,11 @@ export function HomeClient({
           onProjectSearchChange={setProjectSearch}
         />
 
-        <main className="flex-1 overflow-hidden">{children}</main>
+        <main className="flex-1 overflow-hidden">
+          {children ?? (
+            <HomePlannerTimeline initialTimelineAnchor={initialTimelineAnchor} />
+          )}
+        </main>
 
         <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
           <DialogContent className="w-full h-[90vh] overflow-y-auto">

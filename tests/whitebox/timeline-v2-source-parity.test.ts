@@ -68,11 +68,12 @@ describe("timeline-v2 source parity", () => {
     expect(source).not.toContain('<div data-testid="timeline-v2-expanded-loading" />');
   });
 
-  it("uses the correct week-mode helper in ResourceRowV2", () => {
+  it("uses daily positioning for V2 week and month plan blocks", () => {
     const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
 
-    expect(source).toContain("function isWeekView(viewMode: TimelineV2ViewMode) {");
-    expect(source).toContain('return viewMode === "week";');
+    expect(source).toContain('isWeekView={false}');
+    expect(source).toContain('const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";');
+    expect(source).not.toContain('isWeekView={viewMode === "week"}');
   });
 
   it("memoizes the hot row renderers", () => {
@@ -81,6 +82,24 @@ describe("timeline-v2 source parity", () => {
 
     expect(resourceRowSource).toContain("React.memo");
     expect(allocationCellSource).toContain("React.memo");
+  });
+
+  it("keeps allocation cell rendering display-only", () => {
+    const allocationCellSource = readFileSync("components/timeline-v2/AllocationCellV2.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+
+    expect(allocationCellSource).not.toContain("getTimelineV2AllocationModel");
+    expect(allocationCellSource).not.toContain("assignments: Assignment[]");
+    expect(allocationCellSource).not.toContain("actualAssignments: ActualAssignment[]");
+    expect(allocationCellSource).toContain("allocationCell: TimelineV2AllocationCell");
+    expect(resourceRowSource).toContain("row.allocationCells[index]");
+  });
+
+  it("handles missing prepared allocation cells explicitly", () => {
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+
+    expect(resourceRowSource).toContain("fallbackAllocationCell");
+    expect(resourceRowSource).toContain('kind: "empty"');
   });
 
   it("keeps v2 assignment blocks non-resizable and click-isolated", () => {

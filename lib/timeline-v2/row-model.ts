@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Brand } from "@/lib/query/hooks/useBrands";
@@ -7,10 +8,15 @@ import {
   isProjectHighlighted,
   sortResourceProjects,
 } from "@/lib/timeline/resource-project-model";
+import { getTimelineV2AllocationModel } from "@/lib/timeline-v2/allocation-model";
+import { buildTimelineV2PlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
 import type {
+  TimelineV2AllocationCell,
   TimelineV2CampaignGroup,
   TimelineV2Filters,
+  TimelineV2Resource,
   TimelineV2ResourceRow,
+  TimelineV2ViewMode,
 } from "@/lib/timeline-v2/types";
 
 export function groupTimelineV2AssignmentsByEmployee(assignments: Assignment[]) {
@@ -57,6 +63,49 @@ function getPlanCampaignProjects(
   return campaignProjects;
 }
 
+function isTimelineV2MonthRangeView(viewMode: TimelineV2ViewMode) {
+  return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+}
+
+function isTimelineV2WeekView(viewMode: TimelineV2ViewMode) {
+  return viewMode === "week";
+}
+
+export function buildTimelineV2AllocationCells({
+  resource,
+  assignments,
+  actualAssignments,
+  days,
+  viewMode,
+}: {
+  resource: TimelineV2Resource;
+  assignments: Assignment[];
+  actualAssignments: ActualAssignment[];
+  days: Date[];
+  viewMode: TimelineV2ViewMode;
+}): TimelineV2AllocationCell[] {
+  const isWeekView = isTimelineV2WeekView(viewMode);
+  const isMonthRangeView = isTimelineV2MonthRangeView(viewMode);
+
+  return days.map((day) => {
+    const date = format(day, "yyyy-MM-dd");
+
+    return {
+      id: `${resource.id}-${date}`,
+      employeeId: resource.id,
+      date,
+      model: getTimelineV2AllocationModel({
+        day,
+        resource,
+        assignments,
+        actualAssignments,
+        isWeekView,
+        isMonthRangeView,
+      }),
+    };
+  });
+}
+
 export function buildTimelineV2Rows({
   employees,
   assignments,
@@ -66,6 +115,7 @@ export function buildTimelineV2Rows({
   expandedEmployeeIds,
   filters,
   days,
+  viewMode,
 }: {
   employees: Employee[];
   assignments: Assignment[];
@@ -75,6 +125,7 @@ export function buildTimelineV2Rows({
   expandedEmployeeIds: Set<string>;
   filters: TimelineV2Filters;
   days: Date[];
+  viewMode: TimelineV2ViewMode;
 }): TimelineV2ResourceRow[] {
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const assignmentsByEmployee = groupTimelineV2AssignmentsByEmployee(assignments);
@@ -84,6 +135,14 @@ export function buildTimelineV2Rows({
     const resourceAssignments = assignmentsByEmployee.get(employee.id) ?? [];
     const employeeActuals = actualsByEmployee.get(employee.id) ?? [];
     const resourceProjects = getPlanCampaignProjects(resourceAssignments, projectById);
+    const resource: TimelineV2Resource = {
+      id: employee.id,
+      name: employee.fullName,
+      role: employee.position,
+      department: employee.department?.name || "",
+      capacity: employee.weeklyCapacity,
+      employee,
+    };
     const sortedProjects = sortResourceProjects({
       projects: resourceProjects,
       resourceAssignments,
@@ -96,41 +155,54 @@ export function buildTimelineV2Rows({
       selectedProjectId: filters.projectId,
     };
 
-    const campaignGroups: TimelineV2CampaignGroup[] = sortedProjects.map((project) => {
+    const campaignGroups: TimelineV2CampaignGroup[] = sortedProjects.flatMap((project) => {
       const brand = project.brandId ? brandById.get(project.brandId) : undefined;
       const planAssignments = resourceAssignments.filter(
         (assignment) => assignment.projectId === project.id && !assignment.isTimeOff
       );
+      const planDisplaySegments = buildTimelineV2PlanDisplaySegments({
+        assignments: planAssignments,
+        visibleDates: days,
+        resolution: isTimelineV2MonthRangeView(viewMode) ? "month" : "day",
+        projectStartDate: project.startDate,
+        projectEndDate: project.endDate,
+      });
+
+      if (planDisplaySegments.length === 0) return [];
+
       const isHighlighted = isProjectHighlighted(project, highlightFilters);
 
-      return {
-        id: project.id,
-        name: project.name,
-        brandName: brand?.name,
-        isHighlighted,
-        row: {
+      return [
+        {
           id: project.id,
-          project,
-          brand,
-          planAssignments,
+          name: project.name,
+          brandName: brand?.name,
           isHighlighted,
+          row: {
+            id: project.id,
+            project,
+            brand,
+            planAssignments,
+            planDisplaySegments,
+            isHighlighted,
+          },
         },
-      };
+      ];
     });
 
     return {
       id: employee.id,
-      resource: {
-        id: employee.id,
-        name: employee.fullName,
-        role: employee.position,
-        department: employee.department?.name || "",
-        capacity: employee.weeklyCapacity,
-        employee,
-      },
+      resource,
       assignments: resourceAssignments,
       actualAssignments: employeeActuals,
       timeOffAssignments: resourceAssignments.filter((assignment) => assignment.isTimeOff),
+      allocationCells: buildTimelineV2AllocationCells({
+        resource,
+        assignments: resourceAssignments,
+        actualAssignments: employeeActuals,
+        days,
+        viewMode,
+      }),
       campaignGroups,
       isExpanded: expandedEmployeeIds.has(employee.id),
     };

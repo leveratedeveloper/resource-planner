@@ -1,21 +1,13 @@
 "use client";
 
 import React from "react";
-import type { Resource } from "@/types";
-import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import { cn } from "@/lib/utils";
-import { getTimelineV2AllocationModel } from "@/lib/timeline-v2/allocation-model";
+import type { TimelineV2AllocationCell } from "@/lib/timeline-v2/types";
 
 type AllocationCellV2Props = {
-  day: Date;
-  resource: Resource;
-  assignments: Assignment[];
-  actualAssignments: ActualAssignment[];
+  allocationCell: TimelineV2AllocationCell;
   cellWidth: number;
   height?: number;
-  isWeekView?: boolean;
-  isMonthRangeView?: boolean;
 };
 
 function getAllocationStyle(
@@ -41,23 +33,11 @@ function getAllocationStyle(
 }
 
 export const AllocationCellV2 = React.memo(function AllocationCellV2({
-  day,
-  resource,
-  assignments,
-  actualAssignments,
+  allocationCell,
   cellWidth,
   height = 48,
-  isWeekView = false,
-  isMonthRangeView = false,
 }: AllocationCellV2Props) {
-  const model = getTimelineV2AllocationModel({
-    day,
-    resource,
-    assignments,
-    actualAssignments,
-    isWeekView,
-    isMonthRangeView,
-  });
+  const model = allocationCell.model;
 
   if (model.kind === "time-off") {
     return (
