@@ -68,11 +68,10 @@ describe("timeline-v2 source parity", () => {
     expect(source).not.toContain('<div data-testid="timeline-v2-expanded-loading" />');
   });
 
-  it("uses the correct week-mode helper in ResourceRowV2", () => {
+  it("uses the correct week-mode check in ResourceRowV2", () => {
     const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
 
-    expect(source).toContain("function isWeekView(viewMode: TimelineV2ViewMode) {");
-    expect(source).toContain('return viewMode === "week";');
+    expect(source).toContain('isWeekView={viewMode === "week"}');
   });
 
   it("memoizes the hot row renderers", () => {
@@ -81,6 +80,17 @@ describe("timeline-v2 source parity", () => {
 
     expect(resourceRowSource).toContain("React.memo");
     expect(allocationCellSource).toContain("React.memo");
+  });
+
+  it("keeps allocation cell rendering display-only", () => {
+    const allocationCellSource = readFileSync("components/timeline-v2/AllocationCellV2.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+
+    expect(allocationCellSource).not.toContain("getTimelineV2AllocationModel");
+    expect(allocationCellSource).not.toContain("assignments: Assignment[]");
+    expect(allocationCellSource).not.toContain("actualAssignments: ActualAssignment[]");
+    expect(allocationCellSource).toContain("allocationCell: TimelineV2AllocationCell");
+    expect(resourceRowSource).toContain("allocationCell={row.allocationCells[index]}");
   });
 
   it("keeps v2 assignment blocks non-resizable and click-isolated", () => {

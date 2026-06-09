@@ -43,14 +43,6 @@ type ResourceRowV2Props = {
   }) => void;
 };
 
-function isMonthRangeView(viewMode: TimelineV2ViewMode) {
-  return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
-}
-
-function isWeekView(viewMode: TimelineV2ViewMode) {
-  return viewMode === "week";
-}
-
 function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"], monthStart: Date, monthEnd: Date) {
   return assignments.reduce((sum, assignment) => {
     if (assignment.isTimeOff) return sum;
@@ -76,8 +68,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
   onOpenMonthlyAllocation,
 }: ResourceRowV2Props) {
   const isExpanded = row.isExpanded;
-  const weekView = isWeekView(viewMode);
-  const monthRangeView = isMonthRangeView(viewMode);
+  const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
   const projectDays = useMemo(() => columns.map((item) => item.date), [columns]);
 
   return (
@@ -96,17 +87,12 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
           <TimelineRowLoadingCellsV2 width={columns.length * cellWidth} height={RESOURCE_SUMMARY_ROW_HEIGHT} dayCount={columns.length} />
         ) : (
           <div className="flex relative" style={{ width: `${columns.length * cellWidth}px`, height: RESOURCE_SUMMARY_ROW_HEIGHT }}>
-            {columns.map((column) => (
+            {columns.map((column, index) => (
               <AllocationCellV2
                 key={column.id}
-                day={column.date}
-                resource={row.resource}
-                assignments={row.assignments}
-                actualAssignments={row.actualAssignments}
+                allocationCell={row.allocationCells[index]}
                 cellWidth={cellWidth}
                 height={RESOURCE_SUMMARY_ROW_HEIGHT}
-                isWeekView={weekView}
-                isMonthRangeView={monthRangeView}
               />
             ))}
           </div>
@@ -162,7 +148,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                     days={columns.map((item) => item.date)}
                     resourceRowHeight={TIME_OFF_ROW_HEIGHT}
                     cellWidth={cellWidth}
-                    isWeekView={weekView}
+                    isWeekView={viewMode === "week"}
                     isMonthRangeView={monthRangeView}
                     onUpdate={onUpdatePlanned}
                     onDelete={onDeletePlanned}
@@ -282,7 +268,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         days={projectDays}
                         resourceRowHeight={CAMPAIGN_ROW_HEIGHT}
                         cellWidth={cellWidth}
-                        isWeekView={weekView}
+                        isWeekView={viewMode === "week"}
                         isMonthRangeView={monthRangeView}
                         onUpdate={onUpdatePlanned}
                         onDelete={onDeletePlanned}
