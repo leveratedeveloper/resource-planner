@@ -49,7 +49,6 @@ interface FilterBarProps {
   selectedProject: ProjectOption | null;
   projectSearch: string;
   projectTotal: number;
-  projectHasMore: boolean;
   isLoadingProjects: boolean;
   projectScopeBrandName: string | null;
   selectedProjectStatus: ProjectOption["status"] | null;
@@ -57,7 +56,6 @@ interface FilterBarProps {
   onProjectStatusChange: (status: ProjectOption["status"] | null) => void;
   onProjectSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
   onProjectSearchChange: (search: string) => void;
-  onLoadMoreProjects: () => void;
 }
 
 const FilterBarComponent = ({
@@ -81,7 +79,6 @@ const FilterBarComponent = ({
   selectedProject,
   projectSearch,
   projectTotal,
-  projectHasMore,
   isLoadingProjects,
   projectScopeBrandName,
   selectedProjectStatus,
@@ -89,7 +86,6 @@ const FilterBarComponent = ({
   onProjectStatusChange,
   onProjectSourceTypeChange,
   onProjectSearchChange,
-  onLoadMoreProjects,
 }: FilterBarProps) => {
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
@@ -132,7 +128,6 @@ const FilterBarComponent = ({
           selectedProject={selectedProject}
           projectSearch={projectSearch}
           projectTotal={projectTotal}
-          projectHasMore={projectHasMore}
           isLoading={isLoadingProjects}
           scopeBrandName={projectScopeBrandName}
           selectedStatus={selectedProjectStatus}
@@ -141,7 +136,6 @@ const FilterBarComponent = ({
           onSourceTypeChange={onProjectSourceTypeChange}
           onChange={onProjectChange}
           onProjectSearchChange={onProjectSearchChange}
-          onLoadMoreProjects={onLoadMoreProjects}
         />
 
         <Select

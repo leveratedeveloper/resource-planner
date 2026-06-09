@@ -10,13 +10,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { cn } from "@/lib/utils";
 
+function formatFilterLabel(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 type ProjectFilterComboboxProps = {
   value: string | null;
   projects: ProjectOption[];
   selectedProject: ProjectOption | null;
   projectSearch: string;
   projectTotal: number;
-  projectHasMore: boolean;
   isLoading: boolean;
   scopeBrandName: string | null;
   selectedStatus: ProjectOption["status"] | null;
@@ -25,7 +30,6 @@ type ProjectFilterComboboxProps = {
   onSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
   onChange: (projectId: string | null) => void;
   onProjectSearchChange: (search: string) => void;
-  onLoadMoreProjects: () => void;
 };
 
 export function ProjectFilterCombobox({
@@ -34,7 +38,6 @@ export function ProjectFilterCombobox({
   selectedProject,
   projectSearch,
   projectTotal,
-  projectHasMore,
   isLoading,
   scopeBrandName,
   selectedStatus,
@@ -43,7 +46,6 @@ export function ProjectFilterCombobox({
   onSourceTypeChange,
   onChange,
   onProjectSearchChange,
-  onLoadMoreProjects,
 }: ProjectFilterComboboxProps) {
   const [open, setOpen] = useState(false);
   const selectedProjectOption = useMemo(
@@ -63,6 +65,19 @@ export function ProjectFilterCombobox({
     }
     return Array.from(byId.values());
   }, [projects, selectedProjectOption]);
+
+  const filteredProjects = useMemo(() => {
+    const normalizedSearch = projectSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return renderedProjects;
+    }
+
+    return renderedProjects.filter((project) =>
+      [project.name, project.brandName, project.brandCompanyName]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(normalizedSearch))
+    );
+  }, [projectSearch, renderedProjects]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -109,34 +124,46 @@ export function ProjectFilterCombobox({
             />
           </div>
 
-          <div className="flex flex-wrap gap-1">
-            {(["planning", "active", "on_hold", "completed", "cancelled"] as const).map((status) => (
-              <Button
-                key={status}
-                type="button"
-                variant={selectedStatus === status ? "default" : "outline"}
-                size="sm"
-                className="h-7 rounded-sm px-2 text-xs"
-                onClick={() => onStatusChange(selectedStatus === status ? null : status)}
-              >
-                {status.replace("_", " ")}
-              </Button>
-            ))}
+          <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <Icon icon="lucide:activity" className="h-3.5 w-3.5" />
+              Status
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              {(["planning", "active", "on_hold", "completed", "cancelled"] as const).map((status) => (
+                <Button
+                  key={status}
+                  type="button"
+                  variant={selectedStatus === status ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 w-full rounded-sm px-2 text-xs"
+                  onClick={() => onStatusChange(selectedStatus === status ? null : status)}
+                >
+                  {formatFilterLabel(status)}
+                </Button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-1">
-            {(["campaign", "pitch"] as const).map((sourceType) => (
-              <Button
-                key={sourceType}
-                type="button"
-                variant={selectedSourceType === sourceType ? "default" : "outline"}
-                size="sm"
-                className="h-7 rounded-sm px-2 text-xs"
-                onClick={() => onSourceTypeChange(selectedSourceType === sourceType ? null : sourceType)}
-              >
-                {sourceType}
-              </Button>
-            ))}
+          <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <Icon icon="lucide:layers" className="h-3.5 w-3.5" />
+              Project Type
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {(["campaign", "pitch"] as const).map((sourceType) => (
+                <Button
+                  key={sourceType}
+                  type="button"
+                  variant={selectedSourceType === sourceType ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 rounded-sm px-2 text-xs"
+                  onClick={() => onSourceTypeChange(selectedSourceType === sourceType ? null : sourceType)}
+                >
+                  {formatFilterLabel(sourceType)}
+                </Button>
+              ))}
+            </div>
           </div>
 
           <ScrollArea className="h-[260px] rounded-md border">
@@ -155,7 +182,7 @@ export function ProjectFilterCombobox({
                 All Projects
               </button>
 
-              {renderedProjects.map((project) => (
+              {filteredProjects.map((project) => (
                 <button
                   key={project.id}
                   type="button"
@@ -177,7 +204,7 @@ export function ProjectFilterCombobox({
                 </button>
               ))}
 
-              {renderedProjects.length === 0 && !isLoading ? (
+              {filteredProjects.length === 0 && !isLoading ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   No projects found
                 </div>
@@ -187,21 +214,8 @@ export function ProjectFilterCombobox({
 
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              {isLoading ? "Loading..." : `${renderedProjects.length} of ${projectTotal} projects`}
+              {isLoading ? "Loading..." : `${filteredProjects.length} of ${projectTotal} projects`}
             </span>
-            {projectHasMore ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={onLoadMoreProjects}
-                disabled={isLoading}
-                data-testid="filter-project-load-more"
-              >
-                Load more
-              </Button>
-            ) : null}
           </div>
         </div>
       </PopoverContent>

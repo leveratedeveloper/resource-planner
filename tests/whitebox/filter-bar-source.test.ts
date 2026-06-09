@@ -25,9 +25,16 @@ describe("filter bar source", () => {
     expect(brandSelectSource).not.toContain("filter-brand-load-more");
     expect(projectSelectSource).toContain("projectSearch");
     expect(projectSelectSource).toContain("onProjectSearchChange");
-    expect(projectSelectSource).toContain("projectHasMore");
-    expect(projectSelectSource).toContain("onLoadMoreProjects");
+    expect(projectSelectSource).toContain("filteredProjects");
+    expect(projectSelectSource).toContain("project.brandCompanyName");
+    expect(projectSelectSource).not.toContain("projectHasMore");
+    expect(projectSelectSource).not.toContain("onLoadMoreProjects");
+    expect(projectSelectSource).not.toContain("filter-project-load-more");
     expect(projectSelectSource).toContain("selectedStatus");
     expect(projectSelectSource).toContain("selectedSourceType");
+    expect(projectSelectSource).toContain("Status");
+    expect(projectSelectSource).toContain("Project Type");
+    expect(projectSelectSource).toContain("formatFilterLabel");
+    expect(projectSelectSource).toContain("grid grid-cols-3 gap-1");
   });
 });

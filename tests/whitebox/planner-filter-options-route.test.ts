@@ -14,11 +14,11 @@ describe("planner filter options route", () => {
     expect(brandRouteSource).not.toContain("limit");
 
     expect(projectRouteSource).toContain("fetchPlannerFilterProjects");
-    expect(projectRouteSource).toContain("selectedProjectId");
-    expect(projectRouteSource).toContain("status");
-    expect(projectRouteSource).toContain("sourceType");
-    expect(projectRouteSource).toContain("offset");
-    expect(projectRouteSource).toContain("limit");
+    expect(projectRouteSource).not.toContain("selectedProjectId");
+    expect(projectRouteSource).not.toContain('searchParams.get("status")');
+    expect(projectRouteSource).not.toContain('searchParams.get("sourceType")');
+    expect(projectRouteSource).not.toContain('searchParams.get("offset")');
+    expect(projectRouteSource).not.toContain('searchParams.get("limit")');
 
     expect(brandServerSource).toContain("plannerDirectoryRepository.listBrandsForFilterOptions");
     expect(brandServerSource).not.toContain("plannerDirectoryRepository.listBrandsByIds");
@@ -26,7 +26,7 @@ describe("planner filter options route", () => {
     expect(brandServerSource).toContain("export type PlannerFilterBrandsResponse");
 
     expect(projectServerSource).toContain("plannerDirectoryRepository.listProjectsForFilterOptions");
-    expect(projectServerSource).toContain("plannerDirectoryRepository.getProjectForFilterOption");
+    expect(projectServerSource).not.toContain("plannerDirectoryRepository.getProjectForFilterOption");
     expect(projectServerSource).toContain("export type PlannerFilterProjectsRequest");
     expect(projectServerSource).toContain("export type PlannerFilterProjectsResponse");
     expect(projectServerSource).toContain("availableStatuses");

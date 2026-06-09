@@ -17,11 +17,12 @@ describe("planner filter options hook", () => {
     expect(brandHookSource).not.toContain("placeholderData: keepPreviousData");
 
     expect(projectHookSource).toContain("/api/planner/filter-options/projects");
-    expect(projectHookSource).toContain("useInfinitePlannerFilterProjects");
-    expect(projectHookSource).toContain("useInfiniteQuery");
-    expect(projectHookSource).toContain("getNextPageParam");
+    expect(projectHookSource).toContain("usePlannerFilterProjects");
+    expect(projectHookSource).toContain("useQuery");
+    expect(projectHookSource).not.toContain("useInfiniteQuery");
+    expect(projectHookSource).not.toContain("getNextPageParam");
     expect(projectHookSource).toContain("staleTime: 5 * 60 * 1000");
-    expect(projectHookSource).toContain("placeholderData: keepPreviousData");
+    expect(projectHookSource).not.toContain("placeholderData: keepPreviousData");
 
     expect(indexSource).toContain('export * from "./usePlannerFilterBrands"');
     expect(indexSource).toContain('export * from "./usePlannerFilterProjects"');

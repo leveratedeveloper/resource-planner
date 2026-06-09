@@ -92,6 +92,8 @@ export type ProjectOption = Pick<
   "id" | "name" | "color" | "status" | "projectType"
 > & {
   brandId: string | null;
+  brandName?: string | null;
+  brandCompanyName?: string | null;
 };
 
 export type NewProject = {

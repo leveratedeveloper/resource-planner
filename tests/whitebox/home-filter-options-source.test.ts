@@ -7,17 +7,19 @@ describe("home filter options source", () => {
 
     expect(source).toContain("usePlannerFilterBrands");
     expect(source).not.toContain("useInfinitePlannerFilterBrands");
-    expect(source).toContain("useInfinitePlannerFilterProjects");
+    expect(source).toContain("usePlannerFilterProjects");
+    expect(source).not.toContain("useInfinitePlannerFilterProjects");
     expect(source).toContain("selectedBrand");
     expect(source).toContain("brands.find((brand) => brand.id === selectedBrandId) ?? null");
     expect(source).toContain("selectedProject");
+    expect(source).toContain("allProjects.find((project) => project.id === filterProjectId) ?? null");
     expect(source).toContain("brandSearch");
     expect(source).toContain("projectSearch");
     expect(source).toContain("brandOptions?.brands.map");
-    expect(source).toContain("flatMap((page) => page.projects)");
+    expect(source).toContain("projectOptions?.projects.map");
     expect(source).toContain("brandTotal");
     expect(source).toContain("projectTotal");
-    expect(source).toContain("onLoadMoreProjects");
+    expect(source).not.toContain("onLoadMoreProjects");
     expect(source).not.toContain("onLoadMoreBrands");
     expect(source).toContain("useDepartments");
     expect(source).not.toContain("Object.values(bootstrapData?.brandsById ?? {}).map(toBrandOption)");
