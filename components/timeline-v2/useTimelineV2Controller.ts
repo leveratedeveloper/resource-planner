@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { invalidatePlannerData } from "@/lib/query/invalidatePlannerData";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { useCreateAssignment, useDeleteAssignment, useUpdateAssignment } from "@/lib/query/hooks/useAssignments";
 import { shouldLoadPlannerAssignmentDetail } from "@/lib/timeline/planner-loading";
@@ -354,7 +355,7 @@ export function useTimelineV2Controller({
 
     queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
     queryClient.invalidateQueries({ queryKey: queryKeys.employees });
-    queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+    invalidatePlannerData(queryClient);
 
     setPendingMonthlyAllocationSave(null);
     setMonthlyAllocationModal(null);
@@ -375,7 +376,7 @@ export function useTimelineV2Controller({
 
     await deleteTimelineV2AssignmentsById(assignmentsInMonth.map((assignment) => assignment.id));
     queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
-    queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+    invalidatePlannerData(queryClient);
     setMonthlyAllocationModal(null);
   }, [monthlyAllocationModal, queryClient]);
 
