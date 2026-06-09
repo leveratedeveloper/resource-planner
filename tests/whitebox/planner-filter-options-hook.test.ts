@@ -9,11 +9,12 @@ describe("planner filter options hook", () => {
     const queryKeysSource = readFileSync("lib/query/queryKeys.ts", "utf8");
 
     expect(brandHookSource).toContain("/api/planner/filter-options/brands");
-    expect(brandHookSource).toContain("useInfinitePlannerFilterBrands");
-    expect(brandHookSource).toContain("useInfiniteQuery");
-    expect(brandHookSource).toContain("getNextPageParam");
+    expect(brandHookSource).toContain("usePlannerFilterBrands");
+    expect(brandHookSource).toContain("useQuery");
+    expect(brandHookSource).not.toContain("useInfiniteQuery");
+    expect(brandHookSource).not.toContain("getNextPageParam");
     expect(brandHookSource).toContain("staleTime: 5 * 60 * 1000");
-    expect(brandHookSource).toContain("placeholderData: keepPreviousData");
+    expect(brandHookSource).not.toContain("placeholderData: keepPreviousData");
 
     expect(projectHookSource).toContain("/api/planner/filter-options/projects");
     expect(projectHookSource).toContain("useInfinitePlannerFilterProjects");

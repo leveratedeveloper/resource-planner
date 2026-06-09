@@ -37,10 +37,8 @@ interface FilterBarProps {
   onBrandChange: (brandId: string | null) => void;
   brandSearch: string;
   brandTotal: number;
-  brandHasMore: boolean;
   isLoadingBrands: boolean;
   onBrandSearchChange: (search: string) => void;
-  onLoadMoreBrands: () => void;
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
   searchQuery: string;
@@ -71,10 +69,8 @@ const FilterBarComponent = ({
   onBrandChange,
   brandSearch,
   brandTotal,
-  brandHasMore,
   isLoadingBrands,
   onBrandSearchChange,
-  onLoadMoreBrands,
   selectedDepartment,
   onDepartmentChange,
   searchQuery,
@@ -125,11 +121,9 @@ const FilterBarComponent = ({
           selectedBrand={selectedBrand}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          brandHasMore={brandHasMore}
           isLoading={isLoadingBrands}
           onChange={onBrandChange}
           onBrandSearchChange={onBrandSearchChange}
-          onLoadMoreBrands={onLoadMoreBrands}
         />
 
         <ProjectFilterCombobox

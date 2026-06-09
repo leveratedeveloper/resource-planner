@@ -249,14 +249,11 @@ describe("planner directory repository", () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });
 
-    await repository.listBrandsForFilterOptions({
-      offset: 0,
-      limit: 100,
-    });
+    await repository.listBrandsForFilterOptions();
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("FROM planner_brands"),
-      expect.arrayContaining([100, 0])
+      []
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("archived_at IS NULL"),

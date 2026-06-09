@@ -15,8 +15,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   useDepartments,
-  useInfinitePlannerFilterBrands,
   useInfinitePlannerFilterProjects,
+  usePlannerFilterBrands,
 } from "@/lib/query/hooks";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
@@ -75,13 +75,10 @@ export function HomePlannerTimeline({
 }
 
 export function HomeClient({
-  initialTimelineAnchor,
-  initialBootstrap,
   children,
 }: HomeClientProps) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [brandSearch, setBrandSearch] = useState("");
-  const debouncedBrandSearch = useDebounce(brandSearch, 250);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -93,18 +90,12 @@ export function HomeClient({
   const [projectSearch, setProjectSearch] = useState("");
   const debouncedProjectSearch = useDebounce(projectSearch, 250);
   const { data: departments = [] } = useDepartments();
-  const brandLimit = 50;
   const projectLimit = 100;
 
   const {
-    data: brandOptionsPages,
-    fetchNextPage: fetchNextBrandPage,
-    hasNextPage: hasNextBrandPage,
+    data: brandOptions,
     isFetching: isFetchingBrandOptions,
-    isFetchingNextPage: isFetchingNextBrandPage,
-  } = useInfinitePlannerFilterBrands({
-    limit: brandLimit,
-    search: debouncedBrandSearch.trim() || null,
+  } = usePlannerFilterBrands({
     selectedBrandId,
   });
 
@@ -143,16 +134,14 @@ export function HomeClient({
 
   const brands = useMemo(() => {
     const byId = new Map(
-      brandOptionsPages?.pages
-        .flatMap((page) => page.brands)
-        .map((brand) => [brand.id, brand])
+      brandOptions?.brands.map((brand) => [brand.id, brand])
     );
 
     return Array.from(byId.values());
-  }, [brandOptionsPages?.pages]);
-  const selectedBrand = brandOptionsPages?.pages[0]?.selectedBrand ?? null;
+  }, [brandOptions?.brands]);
+  const selectedBrand = brandOptions?.selectedBrand ?? null;
   const brandTotal = Math.max(
-    brandOptionsPages?.pages.at(-1)?.total ?? 0,
+    brandOptions?.total ?? 0,
     brands.length + (selectedBrand && !brands.some((brand) => brand.id === selectedBrand.id) ? 1 : 0)
   );
   const projects = useMemo(() => {
@@ -171,11 +160,6 @@ export function HomeClient({
     projects.length + (selectedProject && !projects.some((project) => project.id === selectedProject.id) ? 1 : 0)
   );
 
-  const handleLoadMoreBrands = () => {
-    if (!hasNextBrandPage || isFetchingNextBrandPage) return;
-    fetchNextBrandPage();
-  };
-
   const handleLoadMoreProjects = () => {
     if (!hasNextProjectPage || isFetchingNextProjectPage) return;
     fetchNextProjectPage();
@@ -193,10 +177,8 @@ export function HomeClient({
           onBrandChange={setSelectedBrandId}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          brandHasMore={hasNextBrandPage ?? false}
           isLoadingBrands={isFetchingBrandOptions}
           onBrandSearchChange={setBrandSearch}
-          onLoadMoreBrands={handleLoadMoreBrands}
           selectedDepartment={selectedDepartment}
           onDepartmentChange={setSelectedDepartment}
           searchQuery={searchQuery}
@@ -218,14 +200,7 @@ export function HomeClient({
           onLoadMoreProjects={handleLoadMoreProjects}
         />
 
-        <main className="flex-1 overflow-hidden">
-          {children ?? (
-            <HomePlannerTimeline
-              initialTimelineAnchor={initialTimelineAnchor}
-              initialBootstrap={initialBootstrap ?? undefined}
-            />
-          )}
-        </main>
+        <main className="flex-1 overflow-hidden">{children}</main>
 
         <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
           <DialogContent className="w-full h-[90vh] overflow-y-auto">

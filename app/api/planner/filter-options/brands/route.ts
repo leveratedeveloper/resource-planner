@@ -10,15 +10,9 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
-    const limit = Number.parseInt(searchParams.get("limit") || "50", 10);
-    const search = searchParams.get("search");
     const selectedBrandId = searchParams.get("selectedBrandId");
 
     const result = await fetchPlannerFilterBrands({
-      offset,
-      limit,
-      search,
       selectedBrandId,
     });
 

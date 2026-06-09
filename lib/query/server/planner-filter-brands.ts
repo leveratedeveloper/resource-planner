@@ -3,9 +3,6 @@ import type { PlannerDirectoryBrandRow } from "@/lib/planner-directory/types";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 
 export type PlannerFilterBrandsRequest = {
-  offset: number;
-  limit: number;
-  search?: string | null;
   selectedBrandId?: string | null;
 };
 
@@ -62,20 +59,16 @@ export async function fetchPlannerFilterBrands(
   request: PlannerFilterBrandsRequest
 ): Promise<PlannerFilterBrandsResponse> {
   const fetchedAt = new Date().toISOString();
-  const brandPage = await plannerDirectoryRepository.listBrandsForFilterOptions({
-    offset: request.offset,
-    limit: request.limit,
-    search: request.search?.trim() || undefined,
-  });
+  const brands = await plannerDirectoryRepository.listBrandsForFilterOptions();
 
   const selectedBrand = request.selectedBrandId
     ? (await plannerDirectoryRepository.listBrandsByIds([request.selectedBrandId]))[0] ?? null
     : null;
 
   return {
-    brands: brandPage.data.map(toBrandOption),
-    total: brandPage.total,
-    hasMore: brandPage.hasMore,
+    brands: brands.map(toBrandOption),
+    total: brands.length,
+    hasMore: false,
     selectedBrand: selectedBrand ? toBrandOption(selectedBrand) : null,
     freshness: {
       fetchedAt,

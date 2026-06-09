@@ -10,8 +10,8 @@ describe("planner filter options route", () => {
 
     expect(brandRouteSource).toContain("fetchPlannerFilterBrands");
     expect(brandRouteSource).toContain("selectedBrandId");
-    expect(brandRouteSource).toContain("offset");
-    expect(brandRouteSource).toContain("limit");
+    expect(brandRouteSource).not.toContain("offset");
+    expect(brandRouteSource).not.toContain("limit");
 
     expect(projectRouteSource).toContain("fetchPlannerFilterProjects");
     expect(projectRouteSource).toContain("selectedProjectId");

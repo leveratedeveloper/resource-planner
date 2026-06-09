@@ -18,8 +18,11 @@ describe("filter bar source", () => {
     expect(source).not.toContain("useProjectOptions()");
     expect(brandSelectSource).toContain("brandSearch");
     expect(brandSelectSource).toContain("onBrandSearchChange");
-    expect(brandSelectSource).toContain("brandHasMore");
-    expect(brandSelectSource).toContain("onLoadMoreBrands");
+    expect(brandSelectSource).toContain("filteredBrands");
+    expect(brandSelectSource).toContain("brand.companyName");
+    expect(brandSelectSource).not.toContain("brandHasMore");
+    expect(brandSelectSource).not.toContain("onLoadMoreBrands");
+    expect(brandSelectSource).not.toContain("filter-brand-load-more");
     expect(projectSelectSource).toContain("projectSearch");
     expect(projectSelectSource).toContain("onProjectSearchChange");
     expect(projectSelectSource).toContain("projectHasMore");
