@@ -15,8 +15,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   useDepartments,
-  useInfinitePlannerFilterBrands,
-  useInfinitePlannerFilterProjects,
+  usePlannerFilterBrands,
+  usePlannerFilterProjects,
 } from "@/lib/query/hooks";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
@@ -75,7 +75,6 @@ export function HomeClient({
 }: HomeClientProps) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [brandSearch, setBrandSearch] = useState("");
-  const debouncedBrandSearch = useDebounce(brandSearch, 250);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -85,37 +84,17 @@ export function HomeClient({
   const [selectedProjectStatus, setSelectedProjectStatus] = useState<ProjectOption["status"] | null>(null);
   const [selectedProjectSourceType, setSelectedProjectSourceType] = useState<ProjectOption["projectType"] | null>(null);
   const [projectSearch, setProjectSearch] = useState("");
-  const debouncedProjectSearch = useDebounce(projectSearch, 250);
   const { data: departments = [] } = useDepartments();
-  const brandLimit = 50;
-  const projectLimit = 100;
 
   const {
-    data: brandOptionsPages,
-    fetchNextPage: fetchNextBrandPage,
-    hasNextPage: hasNextBrandPage,
+    data: brandOptions,
     isFetching: isFetchingBrandOptions,
-    isFetchingNextPage: isFetchingNextBrandPage,
-  } = useInfinitePlannerFilterBrands({
-    limit: brandLimit,
-    search: debouncedBrandSearch.trim() || null,
-    selectedBrandId,
-  });
+  } = usePlannerFilterBrands();
 
   const {
-    data: projectOptionsPages,
-    fetchNextPage: fetchNextProjectPage,
-    hasNextPage: hasNextProjectPage,
+    data: projectOptions,
     isFetching: isFetchingFilterOptions,
-    isFetchingNextPage: isFetchingNextProjectPage,
-  } = useInfinitePlannerFilterProjects({
-    limit: projectLimit,
-    brandId: selectedBrandId,
-    status: selectedProjectStatus,
-    sourceType: selectedProjectSourceType,
-    search: debouncedProjectSearch.trim() || null,
-    selectedProjectId: filterProjectId,
-  });
+  } = usePlannerFilterProjects();
 
   useEffect(() => {
     console.info("[Timing]", {
@@ -137,43 +116,35 @@ export function HomeClient({
 
   const brands = useMemo(() => {
     const byId = new Map(
-      brandOptionsPages?.pages
-        .flatMap((page) => page.brands)
-        .map((brand) => [brand.id, brand])
+      brandOptions?.brands.map((brand) => [brand.id, brand])
     );
 
     return Array.from(byId.values());
-  }, [brandOptionsPages?.pages]);
-  const selectedBrand = brandOptionsPages?.pages[0]?.selectedBrand ?? null;
+  }, [brandOptions?.brands]);
+  const selectedBrand = brands.find((brand) => brand.id === selectedBrandId) ?? null;
   const brandTotal = Math.max(
-    brandOptionsPages?.pages.at(-1)?.total ?? 0,
+    brandOptions?.total ?? 0,
     brands.length + (selectedBrand && !brands.some((brand) => brand.id === selectedBrand.id) ? 1 : 0)
   );
-  const projects = useMemo(() => {
+  const allProjects = useMemo(() => {
     const projectsById = new Map(
-      projectOptionsPages?.pages
-        .flatMap((page) => page.projects)
-        .map((project) => [project.id, project])
+      projectOptions?.projects.map((project) => [project.id, project])
     );
 
     return Array.from(projectsById.values());
-  }, [projectOptionsPages?.pages]);
-  const selectedProject = projectOptionsPages?.pages[0]?.selectedProject ?? null;
-  const projectScope = projectOptionsPages?.pages[0]?.scope ?? null;
-  const projectTotal = Math.max(
-    projectOptionsPages?.pages.at(-1)?.total ?? 0,
-    projects.length + (selectedProject && !projects.some((project) => project.id === selectedProject.id) ? 1 : 0)
+  }, [projectOptions?.projects]);
+  const projects = useMemo(
+    () =>
+      allProjects.filter(
+        (project) =>
+          (!selectedBrandId || project.brandId === selectedBrandId) &&
+          (!selectedProjectStatus || project.status === selectedProjectStatus) &&
+          (!selectedProjectSourceType || project.projectType === selectedProjectSourceType)
+      ),
+    [allProjects, selectedBrandId, selectedProjectSourceType, selectedProjectStatus]
   );
-
-  const handleLoadMoreBrands = () => {
-    if (!hasNextBrandPage || isFetchingNextBrandPage) return;
-    fetchNextBrandPage();
-  };
-
-  const handleLoadMoreProjects = () => {
-    if (!hasNextProjectPage || isFetchingNextProjectPage) return;
-    fetchNextProjectPage();
-  };
+  const selectedProject = allProjects.find((project) => project.id === filterProjectId) ?? null;
+  const projectTotal = projects.length;
 
   return (
     <HomePlannerContext.Provider value={plannerFilters}>
@@ -187,10 +158,8 @@ export function HomeClient({
           onBrandChange={setSelectedBrandId}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          brandHasMore={hasNextBrandPage ?? false}
           isLoadingBrands={isFetchingBrandOptions}
           onBrandSearchChange={setBrandSearch}
-          onLoadMoreBrands={handleLoadMoreBrands}
           selectedDepartment={selectedDepartment}
           onDepartmentChange={setSelectedDepartment}
           searchQuery={searchQuery}
@@ -201,15 +170,13 @@ export function HomeClient({
           selectedProject={selectedProject}
           projectSearch={projectSearch}
           projectTotal={projectTotal}
-          projectHasMore={hasNextProjectPage ?? false}
           isLoadingProjects={isFetchingFilterOptions}
-          projectScopeBrandName={projectScope?.brandName ?? selectedBrand?.name ?? null}
+          projectScopeBrandName={selectedBrand?.name ?? null}
           selectedProjectStatus={selectedProjectStatus}
           selectedProjectSourceType={selectedProjectSourceType}
           onProjectStatusChange={setSelectedProjectStatus}
           onProjectSourceTypeChange={setSelectedProjectSourceType}
           onProjectSearchChange={setProjectSearch}
-          onLoadMoreProjects={handleLoadMoreProjects}
         />
 
         <main className="flex-1 overflow-hidden">

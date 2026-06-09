@@ -40,6 +40,8 @@ export type PlannerDirectoryProjectRow = {
   sourceType: PlannerDirectorySourceType;
   name: string;
   brandId: string | null;
+  brandName?: string | null;
+  brandCompanyName?: string | null;
   color: string | null;
   status: string;
   startDate: string | null;

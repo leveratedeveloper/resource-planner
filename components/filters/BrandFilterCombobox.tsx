@@ -15,11 +15,9 @@ type BrandFilterComboboxProps = {
   selectedBrand: Brand | null;
   brandSearch: string;
   brandTotal: number;
-  brandHasMore: boolean;
   isLoading: boolean;
   onChange: (brandId: string | null) => void;
   onBrandSearchChange: (search: string) => void;
-  onLoadMoreBrands: () => void;
 };
 
 export function BrandFilterCombobox({
@@ -28,11 +26,9 @@ export function BrandFilterCombobox({
   selectedBrand,
   brandSearch,
   brandTotal,
-  brandHasMore,
   isLoading,
   onChange,
   onBrandSearchChange,
-  onLoadMoreBrands,
 }: BrandFilterComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(
@@ -52,6 +48,19 @@ export function BrandFilterCombobox({
     }
     return Array.from(byId.values());
   }, [brands, selected]);
+
+  const filteredBrands = useMemo(() => {
+    const normalizedSearch = brandSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return renderedBrands;
+    }
+
+    return renderedBrands.filter((brand) =>
+      [brand.name, brand.companyName]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(normalizedSearch))
+    );
+  }, [brandSearch, renderedBrands]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -96,7 +105,7 @@ export function BrandFilterCombobox({
                 <span>All Brands</span>
               </button>
 
-              {renderedBrands.map((brand) => (
+              {filteredBrands.map((brand) => (
                 <button
                   key={brand.id}
                   type="button"
@@ -127,7 +136,7 @@ export function BrandFilterCombobox({
                 </button>
               ))}
 
-              {renderedBrands.length === 0 && !isLoading ? (
+              {filteredBrands.length === 0 && !isLoading ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   No brands found
                 </div>
@@ -136,20 +145,7 @@ export function BrandFilterCombobox({
           </ScrollArea>
 
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{isLoading ? "Loading..." : `${renderedBrands.length} of ${brandTotal} brands`}</span>
-            {brandHasMore ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={onLoadMoreBrands}
-                disabled={isLoading}
-                data-testid="filter-brand-load-more"
-              >
-                Load more
-              </Button>
-            ) : null}
+            <span>{isLoading ? "Loading..." : `${filteredBrands.length} of ${brandTotal} brands`}</span>
           </div>
         </div>
       </PopoverContent>

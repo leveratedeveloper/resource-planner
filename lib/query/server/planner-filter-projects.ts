@@ -2,28 +2,17 @@ import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import type { PlannerDirectoryProjectRow } from "@/lib/planner-directory/types";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
-export type PlannerFilterProjectsRequest = {
-  offset: number;
-  limit: number;
-  brandId?: string | null;
-  status?: string | null;
-  sourceType?: string | null;
-  search?: string | null;
-  selectedProjectId?: string | null;
-};
+export type PlannerFilterProjectsRequest = Record<string, never>;
 
 export type PlannerFilterProjectsResponse = {
   projects: ProjectOption[];
   total: number;
   hasMore: boolean;
-  selectedProject: ProjectOption | null;
   scope: {
-    brandId: string | null;
-    brandName: string | null;
-    status: string | null;
-    sourceType: string | null;
-    search: string | null;
-    selectedProjectId: string | null;
+    brandId: null;
+    brandName: null;
+    status: null;
+    sourceType: null;
   };
   availableStatuses: ProjectOption["status"][];
   availableTypes: ProjectOption["projectType"][];
@@ -56,45 +45,24 @@ function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
         : "planning",
     projectType: project.sourceType,
     brandId: project.brandId,
+    brandName: project.brandName ?? null,
+    brandCompanyName: project.brandCompanyName ?? null,
   };
 }
 
-function getBrandName(brandRow: { name: string } | null): string | null {
-  return brandRow ? brandRow.name : null;
-}
-
-export async function fetchPlannerFilterProjects(
-  request: PlannerFilterProjectsRequest
-): Promise<PlannerFilterProjectsResponse> {
+export async function fetchPlannerFilterProjects(): Promise<PlannerFilterProjectsResponse> {
   const fetchedAt = new Date().toISOString();
-  const projectPage = await plannerDirectoryRepository.listProjectsForFilterOptions({
-    offset: request.offset,
-    limit: request.limit,
-    brandId: request.brandId || undefined,
-    status: request.status || undefined,
-    sourceType: request.sourceType || undefined,
-    search: request.search?.trim() || undefined,
-  });
-
-  const [selectedProject, selectedBrandRows] = await Promise.all([
-    request.selectedProjectId
-      ? plannerDirectoryRepository.getProjectForFilterOption(request.selectedProjectId)
-      : Promise.resolve<PlannerDirectoryProjectRow | null>(null),
-    request.brandId ? plannerDirectoryRepository.listBrandsByIds([request.brandId]) : Promise.resolve([]),
-  ]);
+  const projects = await plannerDirectoryRepository.listProjectsForFilterOptions();
 
   return {
-    projects: projectPage.data.map(toProjectOption),
-    total: projectPage.total,
-    hasMore: projectPage.hasMore,
-    selectedProject: selectedProject ? toProjectOption(selectedProject) : null,
+    projects: projects.map(toProjectOption),
+    total: projects.length,
+    hasMore: false,
     scope: {
-      brandId: request.brandId ?? null,
-      brandName: getBrandName(selectedBrandRows[0] ?? null),
-      status: request.status ?? null,
-      sourceType: request.sourceType ?? null,
-      search: request.search?.trim() || null,
-      selectedProjectId: request.selectedProjectId ?? null,
+      brandId: null,
+      brandName: null,
+      status: null,
+      sourceType: null,
     },
     availableStatuses: ["planning", "active", "on_hold", "completed", "cancelled"],
     availableTypes: ["campaign", "pitch"],

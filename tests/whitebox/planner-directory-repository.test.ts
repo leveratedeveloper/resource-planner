@@ -312,14 +312,11 @@ describe("planner directory repository", () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });
 
-    await repository.listBrandsForFilterOptions({
-      offset: 0,
-      limit: 100,
-    });
+    await repository.listBrandsForFilterOptions();
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("FROM planner_brands"),
-      expect.arrayContaining([100, 0])
+      []
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("archived_at IS NULL"),
@@ -351,38 +348,31 @@ describe("planner directory repository", () => {
     );
   });
 
-  it("queries paginated projects for filter options with brand and search support", async () => {
+  it("queries all projects for filter options with brand metadata", async () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });
 
-    await repository.listProjectsForFilterOptions({
-      offset: 25,
-      limit: 50,
-      brandId: "brand-1",
-      status: "active",
-      sourceType: "campaign",
-      search: "launch",
-    });
+    await repository.listProjectsForFilterOptions();
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("FROM planner_projects"),
-      expect.arrayContaining(["brand-1", "active", "campaign", "%launch%", "%launch%", "%launch%", 50, 25])
+      []
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("LEFT JOIN planner_brands"),
       expect.any(Array)
     );
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("p.status ="),
+      expect.stringContaining("b.name AS brand_name"),
       expect.any(Array)
     );
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("p.source_type ="),
+      expect.stringContaining("b.company_name AS brand_company_name"),
       expect.any(Array)
     );
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("COUNT(*) OVER() AS total_count"),
-      expect.any(Array)
+      expect.not.stringContaining("COUNT(*) OVER() AS total_count"),
+      []
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("p.archived_at IS NULL"),

@@ -2,31 +2,14 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { fetchPlannerFilterProjects } from "@/lib/query/server/planner-filter-projects";
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
-    const limit = Number.parseInt(searchParams.get("limit") || "100", 10);
-    const brandId = searchParams.get("brandId");
-    const status = searchParams.get("status");
-    const sourceType = searchParams.get("sourceType");
-    const search = searchParams.get("search");
-    const selectedProjectId = searchParams.get("selectedProjectId");
-
-    const result = await fetchPlannerFilterProjects({
-      offset,
-      limit,
-      brandId,
-      status,
-      sourceType,
-      search,
-      selectedProjectId,
-    });
+    const result = await fetchPlannerFilterProjects();
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {

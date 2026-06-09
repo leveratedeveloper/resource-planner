@@ -190,6 +190,8 @@ function mapProjectReadRow(row: DbRow): PlannerDirectoryProjectRow {
     sourceType: String(row.source_type ?? "campaign") as PlannerDirectoryProjectRow["sourceType"],
     name: String(row.name ?? ""),
     brandId: row.brand_id ? String(row.brand_id) : null,
+    brandName: row.brand_name ? String(row.brand_name) : null,
+    brandCompanyName: row.brand_company_name ? String(row.brand_company_name) : null,
     color: row.color ? String(row.color) : null,
     status: String(row.status ?? "active"),
     startDate: row.start_date ? String(row.start_date) : null,
@@ -697,48 +699,18 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     return readRows<DbRow>(result).map(mapBrandReadRow);
   }
 
-  async function listBrandsForFilterOptions(args: {
-    offset: number;
-    limit: number;
-    search?: string | null;
-  }): Promise<{
-    data: PlannerDirectoryBrandRow[];
-    total: number;
-    hasMore: boolean;
-  }> {
-    const params: unknown[] = [];
-    const whereClauses = ["archived_at IS NULL"];
-
-    const searchClause = buildLikeSearchClause(["name", "company_name"], args.search, dialect, params);
-    if (searchClause) {
-      whereClauses.push(searchClause);
-    }
-
-    params.push(args.limit);
-    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
-    params.push(args.offset);
-    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
-
+  async function listBrandsForFilterOptions(): Promise<PlannerDirectoryBrandRow[]> {
     const result = await db.query(
       `
-        SELECT *, COUNT(*) OVER() AS total_count
+        SELECT *
         FROM planner_brands
-        WHERE ${whereClauses.join(" AND ")}
+        WHERE archived_at IS NULL
         ORDER BY name ASC
-        LIMIT ${limitPlaceholder}
-        OFFSET ${offsetPlaceholder}
       `,
-      params
+      []
     );
 
-    const rows = readRows<DbRow>(result);
-    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
-
-    return {
-      data: rows.map(mapBrandReadRow),
-      total,
-      hasMore: total > args.offset + rows.length,
-    };
+    return readRows<DbRow>(result).map(mapBrandReadRow);
   }
 
   async function listProjects(): Promise<PlannerDirectoryProjectRow[]> {
@@ -905,17 +877,10 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
   }
 
   async function listProjectsForFilterOptions(args: {
-    offset: number;
-    limit: number;
     brandId?: string | null;
     status?: string | null;
     sourceType?: string | null;
-    search?: string | null;
-  }): Promise<{
-    data: PlannerDirectoryProjectRow[];
-    total: number;
-    hasMore: boolean;
-  }> {
+  } = {}): Promise<PlannerDirectoryProjectRow[]> {
     const params: unknown[] = [];
     const whereClauses = ["p.archived_at IS NULL"];
 
@@ -934,37 +899,18 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
       whereClauses.push(`p.source_type = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
     }
 
-    const searchClause = buildLikeSearchClause(["p.name", "b.name", "b.company_name"], args.search, dialect, params);
-    if (searchClause) {
-      whereClauses.push(searchClause);
-    }
-
-    params.push(args.limit);
-    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
-    params.push(args.offset);
-    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
-
     const result = await db.query(
       `
-        SELECT p.*, COUNT(*) OVER() AS total_count
+        SELECT p.*, b.name AS brand_name, b.company_name AS brand_company_name
         FROM planner_projects p
         LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
         WHERE ${whereClauses.join(" AND ")}
         ORDER BY p.name ASC
-        LIMIT ${limitPlaceholder}
-        OFFSET ${offsetPlaceholder}
       `,
       params
     );
 
-    const rows = readRows<DbRow>(result);
-    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
-
-    return {
-      data: rows.map(mapProjectReadRow),
-      total,
-      hasMore: total > args.offset + rows.length,
-    };
+    return readRows<DbRow>(result).map(mapProjectReadRow);
   }
 
   async function listBrandsByIds(brandIds: string[]): Promise<PlannerDirectoryBrandRow[]> {

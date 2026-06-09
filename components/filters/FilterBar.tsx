@@ -37,10 +37,8 @@ interface FilterBarProps {
   onBrandChange: (brandId: string | null) => void;
   brandSearch: string;
   brandTotal: number;
-  brandHasMore: boolean;
   isLoadingBrands: boolean;
   onBrandSearchChange: (search: string) => void;
-  onLoadMoreBrands: () => void;
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
   searchQuery: string;
@@ -51,7 +49,6 @@ interface FilterBarProps {
   selectedProject: ProjectOption | null;
   projectSearch: string;
   projectTotal: number;
-  projectHasMore: boolean;
   isLoadingProjects: boolean;
   projectScopeBrandName: string | null;
   selectedProjectStatus: ProjectOption["status"] | null;
@@ -59,7 +56,6 @@ interface FilterBarProps {
   onProjectStatusChange: (status: ProjectOption["status"] | null) => void;
   onProjectSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
   onProjectSearchChange: (search: string) => void;
-  onLoadMoreProjects: () => void;
 }
 
 const FilterBarComponent = ({
@@ -71,10 +67,8 @@ const FilterBarComponent = ({
   onBrandChange,
   brandSearch,
   brandTotal,
-  brandHasMore,
   isLoadingBrands,
   onBrandSearchChange,
-  onLoadMoreBrands,
   selectedDepartment,
   onDepartmentChange,
   searchQuery,
@@ -85,7 +79,6 @@ const FilterBarComponent = ({
   selectedProject,
   projectSearch,
   projectTotal,
-  projectHasMore,
   isLoadingProjects,
   projectScopeBrandName,
   selectedProjectStatus,
@@ -93,7 +86,6 @@ const FilterBarComponent = ({
   onProjectStatusChange,
   onProjectSourceTypeChange,
   onProjectSearchChange,
-  onLoadMoreProjects,
 }: FilterBarProps) => {
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
@@ -125,11 +117,9 @@ const FilterBarComponent = ({
           selectedBrand={selectedBrand}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          brandHasMore={brandHasMore}
           isLoading={isLoadingBrands}
           onChange={onBrandChange}
           onBrandSearchChange={onBrandSearchChange}
-          onLoadMoreBrands={onLoadMoreBrands}
         />
 
         <ProjectFilterCombobox
@@ -138,7 +128,6 @@ const FilterBarComponent = ({
           selectedProject={selectedProject}
           projectSearch={projectSearch}
           projectTotal={projectTotal}
-          projectHasMore={projectHasMore}
           isLoading={isLoadingProjects}
           scopeBrandName={projectScopeBrandName}
           selectedStatus={selectedProjectStatus}
@@ -147,7 +136,6 @@ const FilterBarComponent = ({
           onSourceTypeChange={onProjectSourceTypeChange}
           onChange={onProjectChange}
           onProjectSearchChange={onProjectSearchChange}
-          onLoadMoreProjects={onLoadMoreProjects}
         />
 
         <Select
