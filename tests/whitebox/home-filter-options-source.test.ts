@@ -9,6 +9,7 @@ describe("home filter options source", () => {
     expect(source).not.toContain("useInfinitePlannerFilterBrands");
     expect(source).toContain("useInfinitePlannerFilterProjects");
     expect(source).toContain("selectedBrand");
+    expect(source).toContain("brands.find((brand) => brand.id === selectedBrandId) ?? null");
     expect(source).toContain("selectedProject");
     expect(source).toContain("brandSearch");
     expect(source).toContain("projectSearch");

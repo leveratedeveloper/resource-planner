@@ -95,9 +95,7 @@ export function HomeClient({
   const {
     data: brandOptions,
     isFetching: isFetchingBrandOptions,
-  } = usePlannerFilterBrands({
-    selectedBrandId,
-  });
+  } = usePlannerFilterBrands();
 
   const {
     data: projectOptionsPages,
@@ -139,7 +137,7 @@ export function HomeClient({
 
     return Array.from(byId.values());
   }, [brandOptions?.brands]);
-  const selectedBrand = brandOptions?.selectedBrand ?? null;
+  const selectedBrand = brands.find((brand) => brand.id === selectedBrandId) ?? null;
   const brandTotal = Math.max(
     brandOptions?.total ?? 0,
     brands.length + (selectedBrand && !brands.some((brand) => brand.id === selectedBrand.id) ? 1 : 0)

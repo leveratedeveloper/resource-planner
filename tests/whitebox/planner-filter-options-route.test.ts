@@ -9,7 +9,7 @@ describe("planner filter options route", () => {
     const projectServerSource = readFileSync("lib/query/server/planner-filter-projects.ts", "utf8");
 
     expect(brandRouteSource).toContain("fetchPlannerFilterBrands");
-    expect(brandRouteSource).toContain("selectedBrandId");
+    expect(brandRouteSource).not.toContain("selectedBrandId");
     expect(brandRouteSource).not.toContain("offset");
     expect(brandRouteSource).not.toContain("limit");
 
@@ -21,7 +21,7 @@ describe("planner filter options route", () => {
     expect(projectRouteSource).toContain("limit");
 
     expect(brandServerSource).toContain("plannerDirectoryRepository.listBrandsForFilterOptions");
-    expect(brandServerSource).toContain("plannerDirectoryRepository.listBrandsByIds");
+    expect(brandServerSource).not.toContain("plannerDirectoryRepository.listBrandsByIds");
     expect(brandServerSource).toContain("export type PlannerFilterBrandsRequest");
     expect(brandServerSource).toContain("export type PlannerFilterBrandsResponse");
 
