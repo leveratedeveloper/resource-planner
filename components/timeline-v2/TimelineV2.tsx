@@ -331,6 +331,7 @@ export function TimelineV2({
         expandedEmployeeIds,
         filters: { brandId, department, projectId, searchQuery },
         days: columns.columns.map((column) => column.date),
+        viewMode,
       }),
     [
       brandById,
@@ -344,6 +345,7 @@ export function TimelineV2({
       timelineProjects,
       visibleActualAssignments,
       visibleEmployees,
+      viewMode,
     ]
   );
 

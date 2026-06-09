@@ -105,6 +105,7 @@ describe("timeline-v2 row model", () => {
       expandedEmployeeIds: new Set(["employee-1"]),
       filters: { brandId: "brand-1", department: null, projectId: null, searchQuery: "" },
       days: [new Date("2026-06-01T00:00:00")],
+      viewMode: "month",
     });
 
     expect(rows).toHaveLength(1);
@@ -136,6 +137,7 @@ describe("timeline-v2 row model", () => {
       expandedEmployeeIds: new Set(["employee-1"]),
       filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
       days: [new Date("2026-06-01T00:00:00")],
+      viewMode: "month",
     });
 
     expect(rows).toHaveLength(1);
@@ -154,9 +156,135 @@ describe("timeline-v2 row model", () => {
       expandedEmployeeIds: new Set(),
       filters: { brandId: "brand-mismatch", department: null, projectId: null, searchQuery: "" },
       days: [new Date("2026-06-01T00:00:00")],
+      viewMode: "month",
     });
 
     expect(rows).toHaveLength(1);
     expect(rows[0].resource.name).toBe("Ada Lovelace");
+  });
+
+  it("prepares one allocation cell per visible day for each row", () => {
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [
+        assignment({
+          id: "plan-1",
+          employeeId: "employee-1",
+          projectId: "project-1",
+          startDate: "2026-06-01",
+          endDate: "2026-06-03",
+          hoursPerDay: "4",
+        }),
+      ],
+      actualAssignments: [
+        actualAssignment({
+          uuid: "actual-1",
+          employeeUuid: "employee-1",
+          startDate: "2026-06-02",
+          endDate: "2026-06-02",
+          hoursPerDay: 2,
+        }),
+      ],
+      projects: [project("project-1")],
+      brandById: new Map([["brand-1", { id: "brand-1", name: "Brand One", color: "#000000" }]]),
+      expandedEmployeeIds: new Set(),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: [
+        new Date("2026-06-01T00:00:00"),
+        new Date("2026-06-02T00:00:00"),
+        new Date("2026-06-03T00:00:00"),
+      ],
+      viewMode: "month",
+    });
+
+    expect(rows[0].allocationCells).toHaveLength(3);
+    expect(rows[0].allocationCells.map((cell) => cell.date)).toEqual([
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+    ]);
+    expect(rows[0].allocationCells.map((cell) => cell.model)).toEqual([
+      expect.objectContaining({ kind: "allocation", planPct: 0.5, actualPct: 0, planLabel: "50%" }),
+      expect.objectContaining({ kind: "allocation", planPct: 0.5, actualPct: 0.25, planLabel: "50%", actualLabel: "25%" }),
+      expect.objectContaining({ kind: "allocation", planPct: 0.5, actualPct: 0, planLabel: "50%" }),
+    ]);
+  });
+
+  it("prepares time-off allocation cells before rendering", () => {
+    const rows = buildTimelineV2Rows({
+      employees: [employee("employee-1", "Ada Lovelace")],
+      assignments: [
+        assignment({
+          id: "off-1",
+          employeeId: "employee-1",
+          projectId: null,
+          isTimeOff: true,
+          isBillable: false,
+          startDate: "2026-06-01",
+          endDate: "2026-06-01",
+        }),
+      ],
+      actualAssignments: [],
+      projects: [],
+      brandById: new Map(),
+      expandedEmployeeIds: new Set(),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: [new Date("2026-06-01T00:00:00")],
+      viewMode: "month",
+    });
+
+    expect(rows[0].allocationCells).toEqual([
+      {
+        id: "employee-1-2026-06-01",
+        employeeId: "employee-1",
+        date: "2026-06-01",
+        model: { kind: "time-off" },
+      },
+    ]);
+  });
+
+  it("prepares allocation cells from only the current employee row data", () => {
+    const rows = buildTimelineV2Rows({
+      employees: [
+        employee("employee-1", "Ada Lovelace"),
+        employee("employee-2", "Grace Hopper"),
+      ],
+      assignments: [
+        assignment({
+          id: "plan-1",
+          employeeId: "employee-1",
+          projectId: "project-1",
+          startDate: "2026-06-01",
+          endDate: "2026-06-01",
+          hoursPerDay: "8",
+        }),
+        assignment({
+          id: "plan-2",
+          employeeId: "employee-2",
+          projectId: "project-1",
+          startDate: "2026-06-01",
+          endDate: "2026-06-01",
+          hoursPerDay: "4",
+        }),
+      ],
+      actualAssignments: [],
+      projects: [project("project-1")],
+      brandById: new Map(),
+      expandedEmployeeIds: new Set(),
+      filters: { brandId: null, department: null, projectId: null, searchQuery: "" },
+      days: [new Date("2026-06-01T00:00:00")],
+      viewMode: "month",
+    });
+
+    expect(rows[0].allocationCells[0].model).toMatchObject({
+      kind: "allocation",
+      planPct: 1,
+      planLabel: "100%",
+    });
+    expect(rows[1].allocationCells[0].model).toMatchObject({
+      kind: "allocation",
+      planPct: 0.5,
+      planLabel: "50%",
+    });
   });
 });
