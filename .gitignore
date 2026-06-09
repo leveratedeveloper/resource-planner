@@ -58,6 +58,9 @@ db/
 # agent notes
 .agent/
 
+#vscode settings
+.vscode/
+
 # OpenNext
 .open-next
 
@@ -65,3 +68,5 @@ db/
 .wrangler
 .dev.vars*
 !.dev.vars.example
+
+AGENTS.md
