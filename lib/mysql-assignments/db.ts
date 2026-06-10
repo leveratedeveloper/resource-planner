@@ -8,12 +8,12 @@ import { Pool as PostgreSQLPool } from 'pg';
 import type { Pool as MySQLPool } from 'mysql2/promise';
 
 // Type for database connection
-export type DbClient = 'mysql' | 'postgresql';
+export type DbClient = 'postgresql';
 
 // Detect database type from environment
 export const getDbClient = (): DbClient => {
   // If DATABASE_URL is set, use PostgreSQL (production)
-  if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
+  if (process.env.DATABASE_URL) {
     return 'postgresql';
   }
   // Default to MySQL for local development
@@ -48,7 +48,7 @@ async function getPostgresPool(): Promise<PostgreSQLPool> {
   if (_postgresPool) return _postgresPool;
 
   _postgresPool = new PostgreSQLPool({
-    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+    connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     max: Number(process.env.POSTGRES_POOL_MAX || 5),
     idleTimeoutMillis: 30_000,
