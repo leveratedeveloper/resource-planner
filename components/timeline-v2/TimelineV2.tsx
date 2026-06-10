@@ -7,9 +7,11 @@ import {
   useEmployees,
   useInfiniteEmployees,
   usePlannerHomeBootstrap,
+  usePlannerTimeline,
 } from "@/lib/query/hooks";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import { mergePlannerTimelineResponses } from "@/lib/timeline/planner-loading";
 import { filterTimelineEmployees, getLoadedTimelineEmployees, shouldUseCompleteEmployeeList } from "@/lib/timeline/employees";
 import { getResourceRowLoadingState } from "@/lib/timeline/resource-row-loading";
 import { getTimelineRowStateResetKey, hasEmployeeFlag, setEmployeeFlag } from "@/lib/timeline/row-state";
@@ -286,7 +288,65 @@ export function TimelineV2({
   );
   const projectById = useMemo(() => new Map(timelineProjects.map((project) => [project.id, project])), [timelineProjects]);
   const brandById = useMemo(() => new Map(timelineBrands.map((brand) => [brand.id, brand])), [timelineBrands]);
-  const plannerTimeline = bootstrapPlannerTimeline;
+  const bootstrapLoadedEmployeeIds = useMemo(
+    () => new Set(bootstrapPlannerTimeline?.request.employeeUuids ?? []),
+    [bootstrapPlannerTimeline?.request.employeeUuids]
+  );
+  const lazyAssignmentEmployeeUuids = useMemo(() => {
+    if (
+      useCompleteEmployeeList ||
+      !bootstrapRequest ||
+      !bootstrapPlannerTimeline?.request.employeeUuids?.length
+    ) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        employees
+          .map((employee) => employee.id)
+          .filter((employeeId) => !bootstrapLoadedEmployeeIds.has(employeeId))
+      )
+    );
+  }, [
+    bootstrapLoadedEmployeeIds,
+    bootstrapPlannerTimeline?.request.employeeUuids,
+    bootstrapRequest,
+    employees,
+    useCompleteEmployeeList,
+  ]);
+  const lazyAssignmentRequest = useMemo(() => {
+    if (!bootstrapPlannerTimeline || !bootstrapRequest || lazyAssignmentEmployeeUuids.length === 0) {
+      return undefined;
+    }
+
+    return {
+      viewMode,
+      resolution: getTimelineV2Resolution(viewMode),
+      startDate: bootstrapPlannerTimeline.request.startDate,
+      endDate: bootstrapPlannerTimeline.request.endDate,
+      employeeUuids: lazyAssignmentEmployeeUuids,
+      filters: bootstrapPlannerTimeline.request.filters,
+    };
+  }, [
+    bootstrapPlannerTimeline,
+    bootstrapRequest,
+    lazyAssignmentEmployeeUuids,
+    viewMode,
+  ]);
+  const {
+    data: lazyPlannerTimeline,
+    previousData: previousLazyPlannerTimeline,
+  } = usePlannerTimeline(lazyAssignmentRequest, {
+    enabled: !!lazyAssignmentRequest,
+  });
+  const mergedPlannerTimeline = useMemo(
+    () => mergePlannerTimelineResponses(bootstrapPlannerTimeline, [
+      lazyPlannerTimeline ?? previousLazyPlannerTimeline,
+    ]),
+    [bootstrapPlannerTimeline, lazyPlannerTimeline, previousLazyPlannerTimeline]
+  );
+  const plannerTimeline = mergedPlannerTimeline;
   const dateFilteredAssignments = useMemo(() => plannerTimeline?.assignments ?? [], [plannerTimeline]);
   const visibleActualAssignments = useMemo(() => plannerTimeline?.actualAssignments ?? [], [plannerTimeline]);
 

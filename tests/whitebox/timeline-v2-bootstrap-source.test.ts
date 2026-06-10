@@ -6,9 +6,21 @@ describe("TimelineV2 bootstrap integration", () => {
     const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
     expect(source).toContain("usePlannerHomeBootstrap");
-    expect(source).toContain("const plannerTimeline = bootstrapPlannerTimeline");
+    expect(source).toContain("const plannerTimeline = mergedPlannerTimeline");
     expect(source).toContain("const bootstrapEmployeePage");
-    expect(source).not.toContain("usePlannerTimeline(");
+    expect(source).toContain("usePlannerTimeline(");
+  });
+
+  it("loads missing lazy-scroll employee assignment scopes and merges them with bootstrap data", () => {
+    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+
+    expect(source).toContain("bootstrapLoadedEmployeeIds");
+    expect(source).toContain("lazyAssignmentEmployeeUuids");
+    expect(source).toContain("bootstrapPlannerTimeline?.request.employeeUuids");
+    expect(source).toContain("employeeUuids: lazyAssignmentEmployeeUuids");
+    expect(source).toContain("mergePlannerTimelineResponses");
+    expect(source).toContain("mergedPlannerTimeline");
+    expect(source).toContain("enabled: !!lazyAssignmentRequest");
   });
 
   it("enables client bootstrap from a valid bootstrap request without requiring server initial data", () => {

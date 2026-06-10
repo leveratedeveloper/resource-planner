@@ -52,6 +52,10 @@ export type PlannerHomeBootstrapResponse = {
   };
 };
 
+type PlannerTiming = {
+  phase: (phase: string, context?: Record<string, unknown>) => void;
+};
+
 function randomColor(seed: string): string {
   let hash = 0;
   for (let index = 0; index < seed.length; index += 1) {
@@ -138,11 +142,12 @@ function getMissingIds<T extends { [key: string]: unknown }>(
 
 export async function fetchPlannerHomeBootstrap(
   session: SessionData,
-  request: PlannerHomeBootstrapRequest
+  request: PlannerHomeBootstrapRequest,
+  options: { timing?: PlannerTiming } = {}
 ): Promise<PlannerHomeBootstrapResponse> {
   const directoryFetchedAt = new Date().toISOString();
 
-  const [latestSuccessfulSync, latestInFlightSync, employeeSliceResult, departments, plannerTimeline] = await Promise.all([
+  const [latestSuccessfulSync, latestInFlightSync, employeeSliceResult, departments] = await Promise.all([
     plannerDirectoryRepository.getLatestSuccessfulSync(),
     plannerDirectoryRepository.getLatestInFlightSync(),
     plannerDirectoryRepository.listEmployeesForBootstrap({
@@ -152,8 +157,21 @@ export async function fetchPlannerHomeBootstrap(
       employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
     }),
     plannerDirectoryRepository.listDepartments(),
-    fetchPlannerTimeline(session, request),
   ]);
+  const employeeUuids = employeeSliceResult.data.map((employee) => employee.employeeUuid);
+  const shouldScopeTimelineToBootstrapEmployees =
+    session.access.can_view_all &&
+    !request.brandId &&
+    !request.department &&
+    !request.projectId &&
+    !request.search?.trim();
+  const timelineRequest: PlannerTimelineRequest = {
+    ...request,
+    employeeUuids: shouldScopeTimelineToBootstrapEmployees ? employeeUuids : undefined,
+  };
+  const plannerTimeline = await fetchPlannerTimeline(session, timelineRequest, {
+    timing: options.timing,
+  });
 
   const metadataFreshness = classifyPlannerDirectoryFreshness({
     lastSuccessfulSyncAt: latestSuccessfulSync?.finishedAt ?? latestSuccessfulSync?.startedAt ?? null,

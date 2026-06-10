@@ -7,7 +7,6 @@ import type { SessionData } from "@/lib/auth/session";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import {
-  summarizeMonthlyActualAssignments,
   summarizeMonthlyAssignments,
   type PlannerTimelineRequest,
   type PlannerTimelineResponse,
@@ -118,11 +117,13 @@ function transformActual(mysqlActual: ApiRecord): ActualAssignment {
 export async function fetchPlannerAssignments(
   session: SessionData,
   dateRange: { startDate: string; endDate: string },
-  filters: PlannerTimelineRequest["filters"] = {}
+  filters: PlannerTimelineRequest["filters"] = {},
+  employeeUuids?: string[]
 ): Promise<Assignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
   const assignments = (await getTimelineAssignments({
     employee_uuid: employeeUuid,
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
     status: filters?.status,
@@ -161,32 +162,27 @@ export async function fetchPlannerTimeline(
     startDate: request.startDate,
     endDate: request.endDate,
   };
-  const plannedPromise = fetchPlannerAssignments(session, dateRange, request.filters).then((assignments) => {
-    timing.phase("planned_assignments_query", { count: assignments.length });
-    return assignments;
-  });
-  const actualPromise = fetchPlannerActualAssignments(session, dateRange, request.filters).then((actualAssignments) => {
-    timing.phase("actual_assignments_query", { count: actualAssignments.length });
-    return actualAssignments;
-  });
+  const assignments = await fetchPlannerAssignments(
+    session,
+    dateRange,
+    request.filters,
+    request.employeeUuids
+  );
+  timing.phase("planned_assignments_query", { count: assignments.length });
 
-  const [assignments, actualAssignments] = await Promise.all([plannedPromise, actualPromise]);
+  const actualAssignments: ActualAssignment[] = [];
 
   if (request.resolution === "month") {
     const summarizedAssignments = summarizeMonthlyAssignments(assignments, dateRange);
-    const summarizedActualAssignments = summarizeMonthlyActualAssignments(
-      actualAssignments,
-      dateRange
-    );
     timing.phase("monthly_summary", {
       assignmentCount: summarizedAssignments.length,
-      actualAssignmentCount: summarizedActualAssignments.length,
+      actualAssignmentCount: actualAssignments.length,
     });
 
     return {
       request,
       assignments: summarizedAssignments,
-      actualAssignments: summarizedActualAssignments,
+      actualAssignments,
     };
   }
 

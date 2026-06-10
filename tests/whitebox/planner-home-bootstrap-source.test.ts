@@ -10,6 +10,9 @@ describe("planner home bootstrap server composer", () => {
     expect(source).toContain("MinimalTimelineEmployee");
     expect(source).toContain("fetchPlannerHomeBootstrap");
     expect(source).toContain("fetchPlannerTimeline");
+    expect(source).toContain("employeeSliceResult.data.map((employee) => employee.employeeUuid)");
+    expect(source).toContain("shouldScopeTimelineToBootstrapEmployees");
+    expect(source).toContain("employeeUuids");
     expect(source).toContain("plannerDirectoryRepository.listEmployeesForBootstrap");
     expect(source).toContain("plannerDirectoryRepository.listProjectsForBootstrap");
     expect(source).toContain("plannerDirectoryRepository.listBrandsByIds");

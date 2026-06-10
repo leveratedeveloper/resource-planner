@@ -69,6 +69,7 @@ const TIMELINE_ACTUAL_COLUMNS = [
 
 type TimelineAssignmentFilters = {
   employee_uuid?: string;
+  employee_uuids?: string[];
   project_uuid?: string;
   project_uuids?: string[];
   start_date: string;
@@ -128,7 +129,15 @@ export async function getTimelineAssignments(filters: TimelineAssignmentFilters)
   let query = `SELECT ${TIMELINE_ASSIGNMENT_COLUMNS} FROM assignments WHERE end_date >= ? AND start_date <= ?`;
   const params: any[] = [filters.start_date, filters.end_date];
 
-  if (filters.employee_uuid) {
+  if (filters.employee_uuids) {
+    if (filters.employee_uuids.length === 0) {
+      query += ' AND 1=0';
+    } else {
+      const placeholders = filters.employee_uuids.map(() => '?').join(',');
+      query += ` AND employee_uuid IN (${placeholders})`;
+      params.push(...filters.employee_uuids);
+    }
+  } else if (filters.employee_uuid) {
     query += ' AND employee_uuid = ?';
     params.push(filters.employee_uuid);
   }
@@ -413,7 +422,15 @@ export async function getTimelineActualAssignments(filters: TimelineAssignmentFi
   let query = `SELECT ${TIMELINE_ACTUAL_COLUMNS} FROM actual WHERE end_date >= ? AND start_date <= ?`;
   const params: any[] = [filters.start_date, filters.end_date];
 
-  if (filters.employee_uuid) {
+  if (filters.employee_uuids) {
+    if (filters.employee_uuids.length === 0) {
+      query += ' AND 1=0';
+    } else {
+      const placeholders = filters.employee_uuids.map(() => '?').join(',');
+      query += ` AND employee_uuid IN (${placeholders})`;
+      params.push(...filters.employee_uuids);
+    }
+  } else if (filters.employee_uuid) {
     query += ' AND employee_uuid = ?';
     params.push(filters.employee_uuid);
   }

@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import {
   arePlannerTimelineRequestsEqual,
   getCurrentPlannerTimelineData,
   getPlannerTimelineQueryKey,
   getTimelineResolution,
+  mergePlannerTimelineResponses,
   shouldLoadPlannerAssignmentDetail,
   summarizeMonthlyAssignments,
 } from "@/lib/timeline/planner-loading";
@@ -33,6 +35,27 @@ const makeAssignment = (overrides: Partial<Assignment>): Assignment => ({
   ...overrides,
 });
 
+const makeActualAssignment = (overrides: Partial<ActualAssignment>): ActualAssignment => ({
+  uuid: "actual-1",
+  employeeUuid: "employee-1",
+  projectUuid: "project-1",
+  taskUuid: null,
+  startDate: "2026-01-30",
+  endDate: "2026-02-02",
+  hoursPerDay: 8,
+  allocationPercentage: null,
+  isTimeOff: false,
+  timeOffTypeUuid: null,
+  category: "Development",
+  isBillable: true,
+  status: "confirmed",
+  note: "Homepage",
+  createdByUuid: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  ...overrides,
+});
+
 describe("planner timeline loading contract", () => {
   it("selects day detail for short views and month summaries for long views", () => {
     expect(getTimelineResolution("week")).toBe("day");
@@ -49,6 +72,7 @@ describe("planner timeline loading contract", () => {
         resolution: "month",
         startDate: "2026-01-01",
         endDate: "2026-12-31",
+        employeeUuids: ["employee-2", "employee-1"],
         filters: {
           category: "Development",
           status: "confirmed",
@@ -61,6 +85,7 @@ describe("planner timeline loading contract", () => {
         resolution: "month",
         startDate: "2026-01-01",
         endDate: "2026-12-31",
+        employeeUuids: ["employee-1", "employee-2"],
         filters: {
           category: "Development",
           status: "confirmed",
@@ -104,6 +129,110 @@ describe("planner timeline loading contract", () => {
     expect(plannerPrefetchSource).toContain("status: filters?.status");
     expect(plannerQueriesSource).toContain("AND category = ?");
     expect(plannerQueriesSource).toContain("AND status = ?");
+  });
+
+  it("supports scoping planner assignment reads to visible employee uuids", () => {
+    const plannerPrefetchSource = readFileSync("lib/query/server/planner-prefetch.ts", "utf8");
+    const plannerQueriesSource = readFileSync("lib/mysql-assignments/queries.ts", "utf8");
+
+    expect(plannerQueriesSource).toContain("employee_uuids?: string[]");
+    expect(plannerQueriesSource).toContain("employee_uuid IN");
+    expect(plannerQueriesSource).toContain("AND 1=0");
+    expect(plannerPrefetchSource).toContain("employeeUuids?: string[]");
+    expect(plannerPrefetchSource).toContain("session.access.can_view_all ? employeeUuids : undefined");
+  });
+
+  it("round-trips employee scopes through the standalone timeline request path", () => {
+    const hookSource = readFileSync("lib/query/hooks/usePlannerTimeline.ts", "utf8");
+    const routeSource = readFileSync("app/api/planner/timeline/route.ts", "utf8");
+
+    expect(hookSource).toContain('url.searchParams.set("employeeUuids", request.employeeUuids.join(","))');
+    expect(routeSource).toContain('request.nextUrl.searchParams.get("employeeUuids")');
+    expect(routeSource).toContain('employeeUuidsParam.split(",").filter(Boolean)');
+    expect(routeSource).toContain("employeeUuids,");
+  });
+
+  it("does not fetch actual assignments during default planner timeline loading", () => {
+    const plannerPrefetchSource = readFileSync("lib/query/server/planner-prefetch.ts", "utf8");
+
+    expect(plannerPrefetchSource).toContain("const actualAssignments: ActualAssignment[] = []");
+    expect(plannerPrefetchSource).not.toContain("actual_assignments_query");
+    expect(plannerPrefetchSource).not.toContain("const actualPromise = fetchPlannerActualAssignments");
+  });
+
+  it("merges bootstrap and lazy-loaded planner timeline assignments without duplicates", () => {
+    const baseRequest = {
+      viewMode: "quarter" as const,
+      resolution: "month" as const,
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+      employeeUuids: ["employee-1"],
+      filters: {
+        category: null,
+        status: null,
+      },
+    };
+    const base = {
+      request: baseRequest,
+      assignments: [
+        makeAssignment({ id: "assignment-1", employeeId: "employee-1" }),
+      ],
+      actualAssignments: [
+        makeActualAssignment({ uuid: "actual-1", employeeUuid: "employee-1" }),
+      ],
+    };
+    const addition = {
+      request: {
+        ...baseRequest,
+        employeeUuids: ["employee-2"],
+      },
+      assignments: [
+        makeAssignment({ id: "assignment-1", employeeId: "employee-1" }),
+        makeAssignment({ id: "assignment-2", employeeId: "employee-2" }),
+      ],
+      actualAssignments: [
+        makeActualAssignment({ uuid: "actual-1", employeeUuid: "employee-1" }),
+        makeActualAssignment({ uuid: "actual-2", employeeUuid: "employee-2" }),
+      ],
+    };
+
+    const merged = mergePlannerTimelineResponses(base, [addition]);
+
+    expect(merged.request).toBe(baseRequest);
+    expect(merged.assignments.map((assignment) => assignment.id)).toEqual([
+      "assignment-1",
+      "assignment-2",
+    ]);
+    expect(merged.actualAssignments.map((assignment) => assignment.uuid)).toEqual([
+      "actual-1",
+      "actual-2",
+    ]);
+  });
+
+  it("keeps bootstrap planner timeline data unchanged when lazy-loaded additions are empty", () => {
+    const base = {
+      request: {
+        viewMode: "quarter" as const,
+        resolution: "month" as const,
+        startDate: "2026-04-01",
+        endDate: "2026-06-30",
+        employeeUuids: ["employee-1"],
+        filters: {
+          category: null,
+          status: null,
+        },
+      },
+      assignments: [
+        makeAssignment({ id: "assignment-1", employeeId: "employee-1" }),
+      ],
+      actualAssignments: [],
+    };
+
+    const merged = mergePlannerTimelineResponses(base, [
+      { ...base, assignments: [], actualAssignments: [] },
+    ]);
+
+    expect(merged).toEqual(base);
   });
 
   it("keeps brand and project ids out of the planner request because they are resource filters", () => {
@@ -209,6 +338,7 @@ describe("planner timeline loading contract", () => {
       resolution: "month" as const,
       startDate: "2026-04-01",
       endDate: "2026-06-30",
+      employeeUuids: ["employee-1"],
       filters: {
         category: null,
         status: null,
@@ -230,6 +360,12 @@ describe("planner timeline loading contract", () => {
         ...request,
         startDate: "2026-07-01",
         endDate: "2026-09-30",
+      })
+    ).toBe(false);
+    expect(
+      arePlannerTimelineRequestsEqual(request, {
+        ...request,
+        employeeUuids: ["employee-2"],
       })
     ).toBe(false);
   });

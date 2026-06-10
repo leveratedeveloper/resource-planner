@@ -24,6 +24,7 @@ export type PlannerTimelineRequest = {
   resolution: PlannerTimelineResolution;
   startDate: string;
   endDate: string;
+  employeeUuids?: string[];
   filters?: PlannerTimelineFilters;
 };
 
@@ -54,12 +55,19 @@ function normalizePlannerFilters(filters?: PlannerTimelineFilters): Required<Pla
   };
 }
 
+function normalizeEmployeeUuids(employeeUuids?: string[]) {
+  return employeeUuids ? [...employeeUuids].sort() : undefined;
+}
+
 function getPlannerTimelineRequestIdentity(request: PlannerTimelineRequest) {
+  const employeeUuids = normalizeEmployeeUuids(request.employeeUuids);
+
   return {
     viewMode: request.viewMode,
     resolution: request.resolution,
     startDate: request.startDate,
     endDate: request.endDate,
+    ...(employeeUuids ? { employeeUuids } : {}),
     filters: normalizePlannerFilters(request.filters),
   };
 }
@@ -78,12 +86,15 @@ export function arePlannerTimelineRequestsEqual(
 
   const leftFilters = normalizePlannerFilters(left.filters);
   const rightFilters = normalizePlannerFilters(right.filters);
+  const leftEmployeeUuids = normalizeEmployeeUuids(left.employeeUuids);
+  const rightEmployeeUuids = normalizeEmployeeUuids(right.employeeUuids);
 
   return (
     left.viewMode === right.viewMode &&
     left.resolution === right.resolution &&
     left.startDate === right.startDate &&
     left.endDate === right.endDate &&
+    JSON.stringify(leftEmployeeUuids) === JSON.stringify(rightEmployeeUuids) &&
     leftFilters.category === rightFilters.category &&
     leftFilters.status === rightFilters.status
   );
@@ -100,6 +111,42 @@ export function getCurrentPlannerTimelineData(
   return arePlannerTimelineRequestsEqual(response.request, activeRequest)
     ? response
     : undefined;
+}
+
+export function mergePlannerTimelineResponses(
+  base: PlannerTimelineResponse | undefined,
+  additions: Array<PlannerTimelineResponse | undefined>
+): PlannerTimelineResponse | undefined {
+  if (!base) {
+    return undefined;
+  }
+
+  const assignmentsById = new Map(base.assignments.map((assignment) => [assignment.id, assignment]));
+  const actualAssignmentsByUuid = new Map(
+    base.actualAssignments.map((assignment) => [assignment.uuid, assignment])
+  );
+
+  for (const addition of additions) {
+    if (!addition) continue;
+
+    for (const assignment of addition.assignments) {
+      if (!assignmentsById.has(assignment.id)) {
+        assignmentsById.set(assignment.id, assignment);
+      }
+    }
+
+    for (const assignment of addition.actualAssignments) {
+      if (!actualAssignmentsByUuid.has(assignment.uuid)) {
+        actualAssignmentsByUuid.set(assignment.uuid, assignment);
+      }
+    }
+  }
+
+  return {
+    request: base.request,
+    assignments: Array.from(assignmentsById.values()),
+    actualAssignments: Array.from(actualAssignmentsByUuid.values()),
+  };
 }
 
 function countWeekdays(startDate: Date, endDate: Date): number {

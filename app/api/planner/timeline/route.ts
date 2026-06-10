@@ -43,11 +43,16 @@ export async function GET(request: NextRequest) {
       category: request.nextUrl.searchParams.get("category"),
       status: request.nextUrl.searchParams.get("status"),
     };
+    const employeeUuidsParam = request.nextUrl.searchParams.get("employeeUuids");
+    const employeeUuids = employeeUuidsParam
+      ? employeeUuidsParam.split(",").filter(Boolean)
+      : undefined;
     const data = await fetchPlannerTimeline(session, {
       viewMode,
       resolution: getTimelineResolution(viewMode),
       startDate,
       endDate,
+      employeeUuids,
       filters,
     }, { timing });
 

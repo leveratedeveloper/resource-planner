@@ -11,6 +11,9 @@ async function fetchPlannerTimeline(request: PlannerTimelineRequest): Promise<Pl
   url.searchParams.set("viewMode", request.viewMode);
   url.searchParams.set("startDate", request.startDate);
   url.searchParams.set("endDate", request.endDate);
+  if (request.employeeUuids?.length) {
+    url.searchParams.set("employeeUuids", request.employeeUuids.join(","));
+  }
 
   for (const [key, value] of Object.entries(request.filters ?? {})) {
     if (value) {

@@ -272,17 +272,20 @@ describe("planner directory repository", () => {
     await repository.listEmployeesForBootstrap({
       offset: 0,
       limit: 24,
-      search: "ada",
+      search: "ada_%!",
     });
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("FROM planner_employees"),
-      expect.arrayContaining(["%ada%", 24, 0])
+      expect.arrayContaining(["%ada!_!%!!%", 24, 0])
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("LEFT JOIN planner_departments"),
       expect.any(Array)
     );
+    const employeeSearchSql = db.query.mock.calls.find(([sql]) => sql.includes("FROM planner_employees"))?.[0] ?? "";
+    expect(employeeSearchSql).toContain("ESCAPE '!'");
+    expect(employeeSearchSql).not.toContain("ESCAPE '\\\\'");
   });
 
   it("queries local projects and brands for bootstrap without touching Timetrack", async () => {
@@ -299,6 +302,9 @@ describe("planner directory repository", () => {
       expect.stringContaining("FROM planner_projects"),
       expect.arrayContaining(["brand-9", "%launch%", "campaign-1", "pitch-2"])
     );
+    const projectSearchSql = db.query.mock.calls.find(([sql]) => sql.includes("FROM planner_projects"))?.[0] ?? "";
+    expect(projectSearchSql).toContain("ESCAPE '!'");
+    expect(projectSearchSql).not.toContain("ESCAPE '\\\\'");
 
     await repository.listBrandsByIds(["brand-9", "brand-10"]);
 
