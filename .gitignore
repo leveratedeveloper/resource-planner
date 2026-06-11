@@ -70,3 +70,4 @@ db/
 !.dev.vars.example
 
 AGENTS.md
+.gstack/
