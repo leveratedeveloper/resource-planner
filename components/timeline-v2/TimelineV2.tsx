@@ -147,6 +147,26 @@ export function TimelineV2({
     setHasLoadedWeekendPreference(true);
   }, []);
 
+  // Preload the lazy editor chunks once the browser is idle. Keeps them out of
+  // the initial bundle but ensures the first click opens its dialog instantly —
+  // without this, clicks during the chunk-load gap fall through to the lane
+  // underneath and stack a second modal.
+  useEffect(() => {
+    const preloadEditors = () => {
+      void import("@/components/timeline/AssignmentPopover");
+      void import("@/components/timeline/MonthlyAllocationModal");
+      void import("@/components/timeline/MonthlyAllocationConfirmation");
+      void import("@/components/timeline/EditAssignmentDialog");
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(preloadEditors);
+      return () => window.cancelIdleCallback(idleId);
+    }
+
+    preloadEditors();
+  }, []);
+
   useEffect(() => {
     const rootContainer = timelineRootRef.current;
     if (!rootContainer) return;
