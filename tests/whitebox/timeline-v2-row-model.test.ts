@@ -104,7 +104,7 @@ describe("timeline-v2 row model", () => {
     expect(grouped.get("employee-2")?.map((item) => item.id)).toEqual(["b"]);
   });
 
-  it("builds expanded row groups with campaigns and time off split out", () => {
+  it("builds expanded row groups while ignoring legacy time-off assignments", () => {
     const rows = buildTimelineV2Rows({
       employees: [employee("employee-1", "Ada Lovelace")],
       assignments: [
@@ -122,7 +122,7 @@ describe("timeline-v2 row model", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0].resource.name).toBe("Ada Lovelace");
-    expect(rows[0].timeOffAssignments.map((item) => item.id)).toEqual(["off-1"]);
+    expect(rows[0].assignments.map((item) => item.id)).toEqual(["plan-1"]);
     expect(rows[0].campaignGroups[0].name).toBe("Project project-1");
     expect(rows[0].campaignGroups[0].row.project.id).toBe("project-1");
     expect(rows[0].campaignGroups[0].row.planAssignments.map((item) => item.id)).toEqual(["plan-1"]);
@@ -344,12 +344,12 @@ describe("timeline-v2 row model", () => {
     ]);
   });
 
-  it("prepares time-off allocation cells before rendering", () => {
+  it("ignores legacy time-off records when preparing allocation cells", () => {
     const rows = buildTimelineV2Rows({
       employees: [employee("employee-1", "Ada Lovelace")],
       assignments: [
         assignment({
-          id: "off-1",
+          id: "legacy-time-off",
           employeeId: "employee-1",
           projectId: null,
           isTimeOff: true,
@@ -372,7 +372,7 @@ describe("timeline-v2 row model", () => {
         id: "employee-1-2026-06-01",
         employeeId: "employee-1",
         date: "2026-06-01",
-        model: { kind: "time-off" },
+        model: { kind: "empty" },
       },
     ]);
   });

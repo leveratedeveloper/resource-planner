@@ -14,7 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { AssignmentCategory } from "@/types";
-import { format, startOfDay, startOfMonth, isBefore, isAfter, isEqual, isSameMonth } from "date-fns";
+import { format, startOfDay, isSameMonth } from "date-fns";
 import { distributeMonthlyHours, type DistributionResult } from "@/lib/utils/allocation-distributor";
 import { validateActualHoursLimit } from "@/lib/utils/actual-hours-validation";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
@@ -33,7 +33,6 @@ interface MonthlyAllocationModalProps {
   existingAssignment?: Assignment; // If present, we're in EDIT mode
   existingActualAssignment?: ActualAssignment; // If present in actual mode, we're in EDIT mode
   mode?: 'plan' | 'actual'; // Determines if this is for plan or actual allocations
-  timeOffAssignments: Assignment[];
   adjustmentAssignments?: Assignment[]; // adjustment records yang sudah ada
   isFullAccess?: boolean; // whether user has full access
   monthlyTotalHours?: number; // Total hours for this month (from highlighted block)
@@ -69,7 +68,6 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   existingAssignment,
   existingActualAssignment,
   mode = 'plan',
-  timeOffAssignments,
   adjustmentAssignments,
   isFullAccess,
   monthlyTotalHours,
@@ -210,7 +208,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
         hoursPerDay: 0,
         skippedDays: 0,
         remainingHours: 0,
-        blockedDays: { timeOff: 0, weekend: 0 },
+        blockedDays: { weekend: 0 },
       };
     }
 
@@ -224,7 +222,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
         hoursPerDay: 0,
         skippedDays: 0,
         remainingHours: 0,
-        blockedDays: { timeOff: 0, weekend: 0 },
+        blockedDays: { weekend: 0 },
       };
     }
 
@@ -233,9 +231,8 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       totalHours: hours,
       monthStart: startDate,
       monthEnd: endDate,
-      timeOffAssignments,
     });
-  }, [totalHours, startDate, endDate, timeOffAssignments]);
+  }, [totalHours, startDate, endDate]);
 
   // Calculate adjustment distribution in real-time
   const adjustmentDistributionResult = useMemo((): DistributionResult => {
@@ -249,7 +246,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
         hoursPerDay: 0,
         skippedDays: 0,
         remainingHours: 0,
-        blockedDays: { timeOff: 0, weekend: 0 },
+        blockedDays: { weekend: 0 },
       };
     }
 
@@ -257,9 +254,8 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       totalHours: hours,
       monthStart: adjustmentStartDate,
       monthEnd: adjustmentEndDate,
-      timeOffAssignments,
     });
-  }, [adjustmentHours, adjustmentStartDate, adjustmentEndDate, timeOffAssignments]);
+  }, [adjustmentHours, adjustmentStartDate, adjustmentEndDate]);
 
   const hasAdjustmentDistributions = adjustmentDistributionResult.distributions.length > 0;
 
@@ -494,12 +490,6 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
                         <div className="flex justify-between text-gray-500">
                           <span>Weekends:</span>
                           <span>{distributionResult.blockedDays.weekend}</span>
-                        </div>
-                      )}
-                      {distributionResult.blockedDays.timeOff > 0 && (
-                        <div className="flex justify-between text-gray-500">
-                          <span>Time off:</span>
-                          <span>{distributionResult.blockedDays.timeOff}</span>
                         </div>
                       )}
                     </>

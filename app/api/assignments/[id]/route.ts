@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getAssignment, updateAssignment, deleteAssignment } from '@/lib/mysql-assignments/queries';
-import type { MySqlUpdateAssignmentRequest } from '@/lib/types/mysql';
+import type { MySqlAssignment } from '@/lib/types/mysql';
 import { getSession } from '@/lib/auth/session';
+
+type MySqlAssignmentRow = MySqlAssignment & {
+  total_hours?: number | string | null;
+};
 
 /**
  * Transform MySQL API assignment format (snake_case) to frontend format (camelCase)
  */
-function transformMySqlAssignmentToFrontend(mysqlAssignment: any) {
+function transformMySqlAssignmentToFrontend(mysqlAssignment: MySqlAssignmentRow) {
   return {
     id: mysqlAssignment.uuid,
     employeeId: mysqlAssignment.employee_uuid,
@@ -41,6 +45,12 @@ export async function GET(
     const { id } = await params;
 
     const assignment = await getAssignment(id);
+    if (assignment.is_time_off) {
+      return NextResponse.json(
+        { success: false, error: 'Time-off assignments are retired' },
+        { status: 410 }
+      );
+    }
     const transformedAssignment = transformMySqlAssignmentToFrontend(assignment);
 
     return NextResponse.json({
@@ -79,11 +89,16 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Plan assignments can only be updated by users with full access
-    // Time off can be updated by users for themselves
     const assignment = await getAssignment(id);
-    const isUpdatingOwnTimeOff = assignment.is_time_off && assignment.employee_uuid === session.employee?.uuid;
-    if (!session.access.can_view_all && !isUpdatingOwnTimeOff) {
+    if (assignment.is_time_off) {
+      return NextResponse.json(
+        { success: false, error: 'Time-off assignments are retired' },
+        { status: 410 }
+      );
+    }
+
+    // Plan assignments can only be updated by users with full access
+    if (!session.access.can_view_all) {
       return NextResponse.json(
         { error: 'Insufficient permissions - only users with full access can update plan assignments' },
         { status: 403 }
@@ -91,6 +106,13 @@ export async function PUT(
     }
 
     const body = await request.json();
+
+    if (body.isTimeOff === true || body.isTimeOff === 'true') {
+      return NextResponse.json(
+        { success: false, error: 'Time-off assignments are retired' },
+        { status: 410 }
+      );
+    }
 
     // Transform frontend format (camelCase) to MySQL format (snake_case)
     // Build update data, converting boolean values properly for PostgreSQL (expects integer 0/1)
@@ -113,8 +135,6 @@ export async function PUT(
       ...(body.hoursPerDay !== undefined && { hours_per_day: body.hoursPerDay }),
       ...(body.totalHours !== undefined && { total_hours: body.totalHours }),
       ...(body.allocationPercentage !== undefined && { allocation_percentage: body.allocationPercentage }),
-      ...(body.isTimeOff !== undefined && { is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0 }),
-      ...(body.timeOffTypeId !== undefined && { time_off_type_uuid: body.timeOffTypeId }),
       ...(body.category !== undefined && { category: body.category }),
       ...(body.isBillable !== undefined && { is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1 }),
       ...(body.status !== undefined && { status: body.status }),
@@ -163,11 +183,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Plan assignments can only be deleted by users with full access
-    // Time off can be deleted by users for themselves
     const assignment = await getAssignment(id);
-    const isDeletingOwnTimeOff = assignment.is_time_off && assignment.employee_uuid === session.employee?.uuid;
-    if (!session.access.can_view_all && !isDeletingOwnTimeOff) {
+    if (assignment.is_time_off) {
+      return NextResponse.json(
+        { success: false, error: 'Time-off assignments are retired' },
+        { status: 410 }
+      );
+    }
+
+    // Plan assignments can only be deleted by users with full access
+    if (!session.access.can_view_all) {
       return NextResponse.json(
         { error: 'Insufficient permissions - only users with full access can delete plan assignments' },
         { status: 403 }

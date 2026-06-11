@@ -157,14 +157,14 @@ export function summarizeMonthlyAssignments(
       const monthTotalHours = assignmentHoursPerDay * countWeekdays(overlapStart, overlapEnd);
       const key = [
         assignment.employeeId,
-        assignment.projectId ?? "time-off",
+        assignment.projectId ?? "unassigned",
         toLocalDateString(startOfMonth(month.start)),
         assignment.note ?? "",
         assignment.category ?? "",
         assignment.status,
         assignment.isBillable ? "billable" : "non-billable",
         assignment.isAdjustment ? "adjustment" : "plan",
-        assignment.isTimeOff ? "time-off" : "work",
+        "work",
       ].join(":");
       const monthStart = startOfMonth(month.start);
       const monthEnd = endOfMonth(month.start);
@@ -216,13 +216,13 @@ export function summarizeMonthlyActualAssignments(
       const monthHours = actual.hoursPerDay * countWeekdays(overlapStart, overlapEnd);
       const key = [
         actual.employeeUuid,
-        actual.projectUuid ?? "time-off",
+        actual.projectUuid ?? "unassigned",
         toLocalDateString(monthStart),
         actual.note ?? "",
         actual.category ?? "",
         actual.status,
         actual.isBillable ? "billable" : "non-billable",
-        actual.isTimeOff ? "time-off" : "work",
+        "work",
       ].join(":");
       const existing = summaries.get(key);
 

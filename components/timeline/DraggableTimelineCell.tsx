@@ -3,8 +3,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
-import { format, startOfDay, isBefore, isWithinInterval } from "date-fns";
-import type { Assignment } from "@/lib/query/hooks/useAssignments";
+import { format } from "date-fns";
 import {
   Popover,
   PopoverContent,
@@ -26,15 +25,12 @@ interface DraggableTimelineCellProps {
   days: Date[];
   cellWidth?: number;
   cellHeight?: number;
-  timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
-  isTimeOffMode?: boolean; // True when used for adding time-off (skip time-off blocking)
   disabled?: boolean; // Disable dragging (e.g., while creating/deleting)
   // Drag props from parent
   isDragging?: boolean;
   isInDragRange?: boolean;
   containerRef?: HTMLDivElement | null; // Container ref passed directly from parent
   onMouseDown?: (dayIndex: number, containerRef: HTMLDivElement | null, e?: React.MouseEvent) => void;
-  rowType?: 'plan' | 'actual'; // Row type for consistent coloring
 }
 
 export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
@@ -45,14 +41,11 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   days,
   cellWidth = 100,
   cellHeight = 60,
-  timeOffAssignments = [],
-  isTimeOffMode = false,
   disabled = false,
   isDragging = false,
   isInDragRange = false,
   containerRef,
   onMouseDown,
-  rowType = 'plan',
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showWeekendConfirm, setShowWeekendConfirm] = useState(false);
@@ -64,29 +57,13 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
   // Check if this is a weekend day
   const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
-  // Check if this day has time-off (100% allocation)
-  // Only check when NOT in time-off mode (time-off mode allows adding on any day)
-  const hasTimeOff = !isTimeOffMode && timeOffAssignments.some(a =>
-    isWithinInterval(startOfDay(day), {
-      start: startOfDay(new Date(a.startDate)),
-      end: startOfDay(new Date(a.endDate))
-    })
-  );
-
-  // Day is blocked only if it has time-off (past dates are now allowed)
-  const isBlocked = hasTimeOff;
+  const isBlocked = false;
 
   // Handle weekend confirmation
   const handleWeekendConfirm = useCallback(() => {
     setShowWeekendConfirm(false);
     onDragComplete(day, day);
   }, [day, onDragComplete]);
-
-  // Get the appropriate tooltip message for blocked days
-  const getBlockedMessage = () => {
-    if (hasTimeOff) return "Cannot schedule - Time Off";
-    return "";
-  };
 
   // Weekend cell with tooltip and confirmation
   if (isWeekend) {
@@ -101,12 +78,12 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         style={{ width: `${cellWidth}px`, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
+        data-testid="timeline-project-cell"
         data-date={dateKey}
         data-project-id={projectId}
         data-cell-state="weekend"
       >
-        {/* Show lock icon for blocked weekend dates (past or time-off) */}
+        {/* Show lock icon for blocked weekend dates. */}
         {isHovered && !isDragging && isBlocked && (
           <TooltipProvider delayDuration={200}>
             <Tooltip>
@@ -121,7 +98,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
                 side="top" 
                 className="bg-slate-700 text-white border-slate-600"
               >
-                {getBlockedMessage()}
+                Cannot schedule
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -184,7 +161,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
     );
   }
 
-  // Blocked date cell (past or time-off) - disabled state with lock icon
+  // Blocked date cell - disabled state with lock icon
   if (isBlocked) {
     return (
       <div
@@ -196,7 +173,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
         style={{ width: `${cellWidth}px`, height: cellHeight }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
+        data-testid="timeline-project-cell"
         data-date={dateKey}
         data-project-id={projectId}
         data-cell-state="blocked"
@@ -216,7 +193,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
                 side="top" 
                 className="bg-slate-700 text-white border-slate-600"
               >
-                {getBlockedMessage()}
+                Cannot schedule
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -244,7 +221,7 @@ export const DraggableTimelineCell: React.FC<DraggableTimelineCellProps> = ({
           onMouseDown(dayIndex, containerRef ?? null, e);
         }
       }}
-      data-testid={isTimeOffMode ? "timeline-timeoff-cell" : "timeline-project-cell"}
+      data-testid="timeline-project-cell"
       data-date={dateKey}
       data-project-id={projectId}
       data-cell-state="weekday"

@@ -7,7 +7,6 @@ import type { Resource } from "@/types";
 
 export type AllocationCellModel =
   | { kind: "empty" }
-  | { kind: "time-off" }
   | {
       kind: "allocation";
       planPct: number;
@@ -69,19 +68,6 @@ export function getAllocationCellModel({
   let totalPlanHours = 0;
   let totalActualHours = 0;
   let daysWithScheduleCount = 0;
-
-  const hasTimeOff =
-    !isMonthRangeView &&
-    daysToCheck.some((currentDay) =>
-      assignments.some(
-        (assignment) =>
-          assignment.employeeId === resource.id &&
-          assignment.isTimeOff &&
-          isDateInRange(currentDay, assignment.startDate, assignment.endDate)
-      )
-    );
-
-  if (hasTimeOff) return { kind: "time-off" };
 
   for (const currentDay of daysToCheck) {
     const dayOfWeek = currentDay.getDay();

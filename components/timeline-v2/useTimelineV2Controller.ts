@@ -95,32 +95,6 @@ export function useTimelineV2Controller({
     setPlannedPopover(args);
   }, []);
 
-  const handleCreateTimeOff = useCallback((args: {
-    resourceId: string;
-    startDate: Date;
-    endDate: Date;
-  }) => {
-    if (!canEditAssignments) return;
-
-    createAssignment.mutate({
-      employeeId: args.resourceId,
-      projectId: null,
-      taskId: null,
-      startDate: args.startDate.toISOString().slice(0, 10),
-      endDate: args.endDate.toISOString().slice(0, 10),
-      hoursPerDay: "8",
-      allocationPercentage: null,
-      isTimeOff: true,
-      isAdjustment: false,
-      timeOffTypeId: null,
-      category: "Other",
-      isBillable: false,
-      status: "confirmed",
-      note: "Time Off",
-      createdById: createdByUuid,
-    });
-  }, [canEditAssignments, createAssignment, createdByUuid]);
-
   const handleOpenMonthlyAllocation = useCallback(async (args: {
     resourceId: string;
     monthStart: Date;
@@ -387,7 +361,6 @@ export function useTimelineV2Controller({
     loadingMonthlyPlanDetailKey,
     canEditAssignments,
     handleCreatePlannedAssignment,
-    handleCreateTimeOff,
     handleOpenMonthlyAllocation,
     handleSavePlannedPopover,
     handleDeletePlannedAssignment,

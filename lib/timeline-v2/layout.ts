@@ -3,7 +3,6 @@ export const TIMELINE_V2_MIN_RESOURCE_COLUMN_WIDTH = 220;
 export const TIMELINE_V2_MAX_RESOURCE_COLUMN_WIDTH = 420;
 export const TIMELINE_V2_ROW_ESTIMATE = 56;
 export const TIMELINE_V2_COLLAPSED_ROW_HEIGHT = 48;
-export const TIMELINE_V2_TIME_OFF_ROW_HEIGHT = 32;
 export const TIMELINE_V2_CAMPAIGN_ROW_HEIGHT = 34;
 
 export function clampTimelineV2ResourceColumnWidth(width: number): number {
@@ -76,5 +75,5 @@ export function getTimelineV2EstimatedRowHeight(row?: {
 }): number {
   if (!row) return TIMELINE_V2_ROW_ESTIMATE;
   if (!row.isExpanded) return TIMELINE_V2_COLLAPSED_ROW_HEIGHT;
-  return TIMELINE_V2_COLLAPSED_ROW_HEIGHT + TIMELINE_V2_TIME_OFF_ROW_HEIGHT + Math.max(row.campaignGroups.length, 1) * TIMELINE_V2_CAMPAIGN_ROW_HEIGHT;
+  return TIMELINE_V2_COLLAPSED_ROW_HEIGHT + Math.max(row.campaignGroups.length, 1) * TIMELINE_V2_CAMPAIGN_ROW_HEIGHT;
 }

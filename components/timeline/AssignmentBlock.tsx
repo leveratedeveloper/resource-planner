@@ -3,7 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { differenceInDays, startOfDay, format, addDays, startOfWeek, endOfWeek, differenceInWeeks, isBefore, isWithinInterval } from "date-fns";
+import { differenceInDays, startOfDay, format, addDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -34,7 +34,6 @@ interface AssignmentBlockProps {
   isMonthRangeView?: boolean; // true when each cell represents a month
   onUpdate?: (id: string, updates: unknown) => void;
   onDelete?: (id: string) => void;
-  timeOffAssignments?: Assignment[]; // Time-off assignments for this resource
   isDeleting?: boolean; // Show deleting state
   isUpdating?: boolean; // Show updating state (during drag/resize)
   showProjectName?: boolean; // Show project name in block (default: true, set false when already shown in row header)
@@ -53,7 +52,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   isMonthRangeView = false,
   onUpdate,
   onDelete,
-  timeOffAssignments = [],
   isDeleting = false,
   isUpdating = false,
   disabled = false,
@@ -85,8 +83,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const hasResizedRef = useRef(false);
   const mouseDownPosRef = useRef({ x: 0, y: 0 });
 
-  const [isProcessing, setIsProcessing] = useState(false);
-
   const offsetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
 
@@ -95,26 +91,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
-
-  const hasTimeOffOnDate = useCallback((date: Date) => {
-    return timeOffAssignments.some(a =>
-      isWithinInterval(startOfDay(date), {
-        start: startOfDay(new Date(a.startDate)),
-        end: startOfDay(new Date(a.endDate))
-      })
-    );
-  }, [timeOffAssignments]);
-
-  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
-    return timeOffAssignments.some(a => {
-      if (a.id === assignment.id) return false;
-      const timeOffStart = startOfDay(new Date(a.startDate));
-      const timeOffEnd = startOfDay(new Date(a.endDate));
-      const checkStart = startOfDay(rangeStart);
-      const checkEnd = startOfDay(rangeEnd);
-      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
-    });
-  }, [timeOffAssignments, assignment.id]);
 
   const isWeekendDate = useCallback((date: Date) => {
     const day = date.getDay();
@@ -138,17 +114,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
       isMonthRangeView,
     });
   }, [days, isMonthRangeView, isWeekView]);
-
-  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
-  const hasTimeOffOnDateRef = useRef(hasTimeOffOnDate);
-
-  useEffect(() => {
-    hasTimeOffInRangeRef.current = hasTimeOffInRange;
-  }, [hasTimeOffInRange]);
-
-  useEffect(() => {
-    hasTimeOffOnDateRef.current = hasTimeOffOnDate;
-  }, [hasTimeOffOnDate]);
 
   // Date calculations
   const startDate = startOfDay(new Date(assignment.startDate));
@@ -186,9 +151,8 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
   const LEFT_OFFSET = `${displayOffset * cellPercentage}%`;
   const WIDTH = `${displayDuration * cellPercentage}%`;
 
-  const isTimeOff = assignment.isTimeOff;
-  const bgColor = isTimeOff ? "#6b7280" : "#2563eb";
-  const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown Project");
+  const bgColor = "#2563eb";
+  const displayName = project?.name || "Unknown Project";
 
   const hoursPerDay = Number.parseFloat(assignment.hoursPerDay);
   const displayRange = { startDate: days[0] ?? startDate, endDate: days[days.length - 1] ?? endDate };
@@ -248,11 +212,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
 
           if (edge === 'left') {
             const newStartDate = addDays(startDate, daysToMove);
-            if (hasTimeOffInRangeRef.current(newStartDate, endDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
             if (newStartDate <= endDate) {
               onUpdate(assignment.id, { startDate: newStartDate });
               setIsResizing(null);
@@ -261,11 +220,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             }
           } else {
             const newEndDate = addDays(endDate, daysToMove);
-            if (hasTimeOffInRangeRef.current(startDate, newEndDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
             if (newEndDate >= startDate) {
               onUpdate(assignment.id, { endDate: newEndDate });
               setIsResizing(null);
@@ -279,12 +233,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             const currentIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
             const newStartDate = days[newIdx];
-
-            if (newStartDate && hasTimeOffInRangeRef.current(newStartDate, endDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
 
             if (newStartDate && newStartDate <= endDate) {
               if (!isWeekView && isWeekendDate(newStartDate)) {
@@ -306,12 +254,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
             const currentIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
             const newEndDate = days[newIdx];
-
-            if (newEndDate && hasTimeOffInRangeRef.current(startDate, newEndDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
 
             if (newEndDate && newEndDate >= startDate) {
               if (!isWeekView && isWeekendDate(newEndDate)) {
@@ -444,12 +386,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           const newStartDate = addDays(startDate, daysToMove);
           const newEndDate = addDays(endDate, daysToMove);
 
-          if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return;
-          }
-
           onUpdate(assignment.id, { startDate: newStartDate, endDate: newEndDate });
           setIsDragging(false);
           setDragOffset(0);
@@ -484,12 +420,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           const newEndDate = days[newEndIdx];
 
           if (!newStartDate || !newEndDate) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return;
-          }
-
-          if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
             setIsDragging(false);
             setDragOffset(0);
             return;
@@ -545,7 +475,6 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
               className={cn(
                 "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
                 !isResizing && !isDragging && "transition-all duration-100 ease-out",
-                isTimeOff && "bg-gray-500 opacity-80",
                 isResizing && "cursor-col-resize ring-2 ring-blue-400",
                 isDragging ? "cursor-grabbing opacity-70 ring-2 ring-blue-400 scale-[1.01]" : "cursor-grab",
                 isDeleting && "opacity-50 pointer-events-none animate-pulse",

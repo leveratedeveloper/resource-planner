@@ -44,17 +44,6 @@ function getAllocationStyle(
 }
 
 function renderAllocationCell(model: AllocationCellModel, cellWidth: number, height: number) {
-  if (model.kind === "time-off") {
-    return (
-      <div
-        className="shrink-0 border-r border-white/20 bg-gray-600 flex items-center justify-center text-xs font-bold text-white"
-        style={{ width: `${cellWidth}px`, height }}
-      >
-        Time Off
-      </div>
-    );
-  }
-
   if (model.kind === "empty") {
     return (
       <div

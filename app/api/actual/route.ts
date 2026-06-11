@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getActualAssignments, createActualAssignment, getActual, updateActualAssignment, deleteActualAssignment } from "@/lib/mysql-assignments/queries";
+import { getActualAssignments, createActualAssignment } from "@/lib/mysql-assignments/queries";
 import { getSession } from "@/lib/auth/session";
+
+type MySqlActualAssignmentRow = {
+  uuid: string;
+  employee_uuid: string;
+  project_uuid: string | null;
+  task_uuid: string | null;
+  start_date: string;
+  end_date: string;
+  hours_per_day: string;
+  allocation_percentage: string | null;
+  is_time_off: boolean;
+  time_off_type_uuid: string | null;
+  category: string | null;
+  is_billable: boolean;
+  status: string;
+  note: string | null;
+  created_by_uuid: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 /**
  * Transform MySQL actual assignment format (snake_case) to frontend format (camelCase)
  */
-function transformMySqlActualToFrontend(mysqlActual: any) {
+function transformMySqlActualToFrontend(mysqlActual: MySqlActualAssignmentRow) {
   return {
     uuid: mysqlActual.uuid,
     employeeUuid: mysqlActual.employee_uuid,
@@ -55,9 +75,11 @@ export async function GET(request: NextRequest) {
       project_uuid,
       start_date,
       end_date,
-    }) as any[];
+    }) as MySqlActualAssignmentRow[];
 
-    const transformedActuals = actuals.map(transformMySqlActualToFrontend);
+    const transformedActuals = actuals
+      .filter((actual) => !actual.is_time_off)
+      .map(transformMySqlActualToFrontend);
 
     return NextResponse.json({
       success: true,
@@ -87,6 +109,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    if (body.isTimeOff === true || body.isTimeOff === 'true') {
+      return NextResponse.json(
+        { success: false, error: "Time-off actual assignments are retired" },
+        { status: 410 }
+      );
+    }
+
     console.log('====================================');
     console.log('[API /actual POST] Session:', {
       employeeId: session.employee?.id,
@@ -114,8 +143,8 @@ export async function POST(request: NextRequest) {
       hours_per_day: body.hoursPerDay || '8.00',
       allocation_percentage: body.allocationPercentage || null,
       // Convert boolean values properly for PostgreSQL (expects integer 0/1)
-      is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0,
-      time_off_type_uuid: body.timeOffTypeUuid || null,
+      is_time_off: 0,
+      time_off_type_uuid: null,
       category: body.category || null,
       is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1,
       status: body.status || 'completed',

@@ -102,7 +102,6 @@ vi.mock("@/components/timeline-v2/useTimelineV2Controller", () => ({
     handleConfirmMonthlyAllocation: vi.fn(),
     handleCreatePlannedAssignment: vi.fn(),
     handleCreateActualAssignment: vi.fn(),
-    handleCreateTimeOff: vi.fn(),
     handleOpenMonthlyAllocation: vi.fn(),
     handleUpdatePlannedAssignment: vi.fn(),
     handleDeletePlannedAssignment: vi.fn(),

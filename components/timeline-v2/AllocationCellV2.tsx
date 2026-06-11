@@ -39,14 +39,6 @@ export const AllocationCellV2 = React.memo(function AllocationCellV2({
 }: AllocationCellV2Props) {
   const model = allocationCell.model;
 
-  if (model.kind === "time-off") {
-    return (
-      <div className="shrink-0 border-r border-white/20 bg-gray-600 flex items-center justify-center text-xs font-bold text-white" style={{ width: `${cellWidth}px`, height }}>
-        Time Off
-      </div>
-    );
-  }
-
   if (model.kind === "empty") {
     return <div className="shrink-0 border-r border-dashed" style={{ width: `${cellWidth}px`, height }} />;
   }

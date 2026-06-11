@@ -40,10 +40,8 @@ Provide recommendations as JSON with this structure:
 Analyze the conflicts provided and suggest specific resolution strategies.
 
 Conflict types:
-1. time_off_deadline: Work ends too close to or during time-off
-2. overallocation: Resource assigned more than 100% on same day
-3. resource_unavailable: Work assigned during confirmed time-off
-4. billable_target: Low billable ratio despite high allocation
+1. overallocation: Resource assigned more than 100% on same day
+2. billable_target: Low billable ratio despite high allocation
 
 For each conflict, consider:
 - Impact severity and urgency

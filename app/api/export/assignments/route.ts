@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform to export format
-    const exportData = filteredAssignments.map(assignment => ({
+    const exportData = filteredAssignments.filter((assignment) => !assignment.is_time_off).map(assignment => ({
       employeeName: assignment.employee?.full_name || 'Unknown',
       employeeId: assignment.employee_uuid,
       department: assignment.employee?.department_name || '',
@@ -86,7 +86,6 @@ export async function GET(request: NextRequest) {
       category: assignment.category,
       status: assignment.status,
       billable: assignment.is_billable ? 'Yes' : 'No',
-      isTimeOff: assignment.is_time_off ? 'Yes' : 'No',
       note: assignment.note || '',
     }));
 

@@ -13,7 +13,6 @@ import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline/assignment-
 import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
 const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
-const TIME_OFF_ROW_HEIGHT = 32;
 const CAMPAIGN_ROW_HEIGHT = 34;
 
 function buildSegmentAssignment(
@@ -39,7 +38,6 @@ type ResourceRowV2Props = {
   onUpdatePlanned: (id: string, updates: unknown) => void;
   onDeletePlanned: (id: string) => void;
   onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenTimeOffCreate: (args: { resourceId: string; startDate: Date; endDate: Date }) => void;
   onOpenMonthlyAllocation: (args: {
     resourceId: string;
     monthStart: Date;
@@ -85,7 +83,6 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
   onUpdatePlanned,
   onDeletePlanned,
   onOpenPlannedCreate,
-  onOpenTimeOffCreate,
   onOpenMonthlyAllocation,
 }: ResourceRowV2Props) {
   const isExpanded = row.isExpanded;
@@ -122,68 +119,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
 
       {isExpanded ? (
         <div>
-          <div className="flex bg-gray-50/50" style={{ height: TIME_OFF_ROW_HEIGHT }} data-testid="resource-row-v2-timeoff-row">
-            <div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-gray-50/50 pl-12" style={{ width: resourceColumnWidth, height: TIME_OFF_ROW_HEIGHT }}>
-              <Icon icon="lucide:calendar-off" className="h-4 w-4 text-gray-500" />
-              <span className="text-sm text-gray-600">Time Off</span>
-            </div>
-            {showTimelineLoading ? (
-              <TimelineRowLoadingCellsV2 width={columns.length * cellWidth} height={TIME_OFF_ROW_HEIGHT} dayCount={columns.length} />
-            ) : (
-              <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: TIME_OFF_ROW_HEIGHT }}>
-                {!monthRangeView ? (
-                  columns.map((column) => (
-                    <DraggableTimelineCell
-                      key={column.id}
-                      day={column.date}
-                      projectId=""
-                      projectColor="#6b7280"
-                      days={columns.map((item) => item.date)}
-                      cellWidth={cellWidth}
-                      cellHeight={TIME_OFF_ROW_HEIGHT}
-                      isTimeOffMode
-                      disabled={!canEditAssignments}
-                      onDragComplete={(startDay, endDay) => {
-                        if (!canEditAssignments) return;
-                        onOpenTimeOffCreate({ resourceId: row.resource.id, startDate: startDay, endDate: endDay });
-                      }}
-                      onMouseDown={(dayIndex) => {
-                        if (!canEditAssignments) return;
-                        const date = columns[Math.max(0, Math.min(dayIndex, columns.length - 1))].date;
-                        onOpenTimeOffCreate({
-                          resourceId: row.resource.id,
-                          startDate: date,
-                          endDate: date,
-                        });
-                      }}
-                      rowType="plan"
-                    />
-                  ))
-                ) : null}
-                {row.timeOffAssignments.map((assignment) => (
-                  <AssignmentBlockV2
-                    key={assignment.id}
-                    kind="timeOff"
-                    assignment={assignment}
-                    project={undefined}
-                    days={columns.map((item) => item.date)}
-                    resourceRowHeight={TIME_OFF_ROW_HEIGHT}
-                    cellWidth={cellWidth}
-                    isWeekView={false}
-                    isMonthRangeView={monthRangeView}
-                    onUpdate={onUpdatePlanned}
-                    onDelete={onDeletePlanned}
-                    disabled={!canEditAssignments}
-                    isUpdating={false}
-                    isDeleting={false}
-                    timeOffAssignments={row.timeOffAssignments}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-            {showExpandedLoading ? (
+          {showExpandedLoading ? (
             <TimelineExpandedSkeletonV2 width={resourceColumnWidth} />
           ) : (
             row.campaignGroups.map((group) => {
@@ -254,7 +190,6 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         days={projectDays}
                         cellWidth={cellWidth}
                         cellHeight={CAMPAIGN_ROW_HEIGHT}
-                        timeOffAssignments={row.timeOffAssignments}
                         disabled={!canEditAssignments}
                         isDragging={false}
                         isInDragRange={false}
@@ -277,7 +212,6 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                             endDate: date,
                           });
                         }}
-                        rowType="plan"
                       />
                     )) : null}
                     {group.row.planDisplaySegments.map((segment) => (
@@ -297,7 +231,6 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         isHighlighted={group.isHighlighted}
                         isUpdating={false}
                         isDeleting={false}
-                        timeOffAssignments={row.timeOffAssignments}
                       />
                     ))}
                   </div>

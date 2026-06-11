@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { format, differenceInDays } from 'date-fns';
 import type { Assignment } from '@/lib/query/hooks/useAssignments';
 import { useProjects } from '@/lib/query/hooks/useProjects';
@@ -84,17 +84,6 @@ export function EditAssignmentDialog({
   const employee = employees?.find((e) => e.id === assignment.employeeId);
   const createdBy = employees?.find((e) => e.id === assignment.createdById);
 
-  // Store dates in state to ensure they stay in sync with assignment prop
-  // Use string dates directly to avoid timezone issues
-  const [startDateStr, setStartDateStr] = useState(() => assignment.startDate);
-  const [endDateStr, setEndDateStr] = useState(() => assignment.endDate);
-
-  // Sync dates when assignment prop changes
-  useEffect(() => {
-    setStartDateStr(assignment.startDate);
-    setEndDateStr(assignment.endDate);
-  }, [assignment.startDate, assignment.endDate, assignment.id]);
-
   // For display only - convert to Date for formatting
   const startDate = new Date(assignment.startDate);
   const endDate = new Date(assignment.endDate);
@@ -115,8 +104,8 @@ export function EditAssignmentDialog({
     onSave({
       employeeId: assignment.employeeId,
       projectId: assignment.projectId,
-      startDate: startDateStr, // Use synced state date
-      endDate: endDateStr, // Use synced state date
+      startDate: assignment.startDate,
+      endDate: assignment.endDate,
       hoursPerDay: parsed.toString(),
       category,
       isBillable,
@@ -148,7 +137,7 @@ export function EditAssignmentDialog({
                 style={{ backgroundColor: project?.color || '#94a3b8' }}
               />
               <div className="flex flex-col">
-                <span>{project?.name || 'Time Off'}</span>
+                <span>{project?.name || 'Unknown Project'}</span>
                 <span className="text-sm font-normal text-muted-foreground">{employee?.fullName || 'Unknown'}</span>
               </div>
             </DialogTitle>
@@ -322,7 +311,7 @@ export function EditAssignmentDialog({
             <AlertDialogDescription>
               {project
                 ? `Are you sure you want to delete the assignment for ${employee?.fullName} on ${project.name}?`
-                : `Are you sure you want to delete the time-off for ${employee?.fullName}?`}
+                : `Are you sure you want to delete this assignment for ${employee?.fullName}?`}
               {' '}This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -9,7 +9,7 @@ import type { Resource } from "@/types";
 
 export type TimelineV2ViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
 export type TimelineV2Resolution = "day" | "month";
-export type TimelineV2LaneKind = "allocation" | "timeOff" | "plan" | "actual";
+export type TimelineV2LaneKind = "allocation" | "plan" | "actual";
 
 export type TimelineV2Column = {
   id: string;
@@ -70,7 +70,6 @@ export type TimelineV2ResourceRow = {
   resource: TimelineV2Resource;
   assignments: Assignment[];
   actualAssignments: ActualAssignment[];
-  timeOffAssignments: Assignment[];
   allocationCells: TimelineV2AllocationCell[];
   campaignGroups: TimelineV2CampaignGroup[];
   isExpanded: boolean;

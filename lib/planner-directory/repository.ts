@@ -251,7 +251,7 @@ function buildUpsertStatement(
 }
 
 function escapeLikePattern(value: string): string {
-  return `%${value.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+  return `%${value.trim().toLowerCase().replace(/[!%_]/g, "!$&")}%`;
 }
 
 function buildLikeSearchClause(
@@ -269,7 +269,7 @@ function buildLikeSearchClause(
   const comparisons = columns.map((column) => {
     params.push(pattern);
     const placeholder = dialect === "postgresql" ? `$${params.length}` : "?";
-    return `LOWER(COALESCE(${column}, '')) LIKE ${placeholder} ESCAPE '\\'`;
+    return `LOWER(COALESCE(${column}, '')) LIKE ${placeholder} ESCAPE '!'`;
   });
 
   return comparisons.length > 0 ? `(${comparisons.join(" OR ")})` : "";

@@ -74,7 +74,7 @@ describe("timeline allocation cell model", () => {
     expect(model.kind).toBe("empty");
   });
 
-  it("shows time off over daily allocation", () => {
+  it("ignores legacy time-off records in daily allocation cells", () => {
     const model = getAllocationCellModel({
       day: new Date("2026-05-18T00:00:00"),
       resource,
@@ -84,10 +84,10 @@ describe("timeline allocation cell model", () => {
       isWeekView: false,
     });
 
-    expect(model.kind).toBe("time-off");
+    expect(model.kind).toBe("empty");
   });
 
-  it("keeps month-range cells in allocation mode when time off overlaps planned work", () => {
+  it("keeps month-range cells based only on work when legacy time off overlaps planned work", () => {
     const model = getAllocationCellModel({
       day: new Date("2026-04-01T00:00:00"),
       resource,
@@ -118,7 +118,7 @@ describe("timeline allocation cell model", () => {
     });
   });
 
-  it("returns an empty month cell when time off is the only record in the month", () => {
+  it("returns an empty month cell when legacy time off is the only record in the month", () => {
     const model = getAllocationCellModel({
       day: new Date("2026-04-01T00:00:00"),
       resource,

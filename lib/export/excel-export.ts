@@ -5,7 +5,7 @@
 
 import ExcelJS from 'exceljs';
 import { ResourceCapacityAnalysis } from '@/lib/analysis/types';
-import type { UtilizationExportData, ProjectExportData } from './csv-export';
+import type { ProjectExportData } from './csv-export';
 
 // ============================================================================
 // Excel Styling Constants
@@ -15,7 +15,7 @@ const HEADER_STYLE = {
   font: { bold: true, color: { argb: 'FFFFFFFF' } },
   fill: {
     type: 'pattern' as const,
-    pattern: 'solid' as any,
+    pattern: 'solid' as const,
     fgColor: { argb: 'FF4472C4' },
   },
   border: {
@@ -31,7 +31,7 @@ const SUBHEADER_STYLE = {
   font: { bold: true, color: { argb: 'FFFFFFFF' } },
   fill: {
     type: 'pattern' as const,
-    pattern: 'solid' as any,
+    pattern: 'solid' as const,
     fgColor: { argb: 'FF5B9BD5' },
   },
   border: {
@@ -300,7 +300,7 @@ function createDetailSheet(
   // Apply base style to all data rows
   const dataRows = worksheet.getRows(2, data.length);
   if (dataRows) {
-    dataRows.forEach((row, index) => {
+    dataRows.forEach((row) => {
       applyRowStyle(row, CELL_STYLE);
     });
   }
@@ -312,11 +312,11 @@ function createDetailSheet(
     const statusCell = row.getCell(9); // Status column
 
     if (item.status === 'overallocated') {
-      utilCell.fill = { type: 'pattern', pattern: 'solid' as any, fgColor: { argb: 'FFFFC7CE' } };
-      statusCell.fill = { type: 'pattern', pattern: 'solid' as any, fgColor: { argb: 'FFFFC7CE' } };
+      utilCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+      statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
     } else if (item.status === 'underutilized') {
-      utilCell.fill = { type: 'pattern', pattern: 'solid' as any, fgColor: { argb: 'FFFFE699' } };
-      statusCell.fill = { type: 'pattern', pattern: 'solid' as any, fgColor: { argb: 'FFFFE699' } };
+      utilCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } };
+      statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } };
     }
   });
 
@@ -632,7 +632,6 @@ export interface AssignmentsExcelExportOptions {
     category: string | null;
     status: string;
     billable: string;
-    isTimeOff: string;
     note: string | null;
   }>;
   groupByBrand?: boolean;
@@ -716,16 +715,14 @@ function createAssignmentsSummarySheet(
   const totalAssignments = assignments.length;
   const totalHours = assignments.reduce((sum, a) => sum + calculateHours(a.startDate, a.endDate, a.hoursPerDay), 0);
   const billableCount = assignments.filter(a => a.billable === 'Yes').length;
-  const timeOffCount = assignments.filter(a => a.isTimeOff === 'Yes').length;
 
   worksheet.addRow(['Total Assignments', totalAssignments]);
   worksheet.addRow(['Total Hours', Math.round(totalHours)]);
   worksheet.addRow(['Billable Assignments', billableCount]);
-  worksheet.addRow(['Time Off Assignments', timeOffCount]);
   worksheet.addRow(['Unique Resources', new Set(assignments.map(a => a.employeeId)).size]);
   worksheet.addRow(['Unique Projects', new Set(assignments.map(a => a.projectName)).size]);
 
-  currentRow += 6;
+  currentRow += 5;
 
   // By Brand
   const brandCounts = new Map<string, number>();
@@ -793,7 +790,6 @@ function createAssignmentsDetailSheet(
     'Category',
     'Status',
     'Billable',
-    'Time Off',
     'Notes',
   ]);
 
@@ -816,7 +812,6 @@ function createAssignmentsDetailSheet(
       assignment.category || '',
       assignment.status,
       assignment.billable,
-      assignment.isTimeOff,
       assignment.note || '',
     ]
   );

@@ -23,7 +23,6 @@ type TimelineBodyV2Props = {
   onUpdatePlanned: (id: string, updates: unknown) => void;
   onDeletePlanned: (id: string) => void;
   onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenTimeOffCreate: (args: { resourceId: string; startDate: Date; endDate: Date }) => void;
   onOpenMonthlyAllocation: (args: {
     resourceId: string;
     monthStart: Date;
@@ -55,7 +54,6 @@ export function TimelineBodyV2({
   onUpdatePlanned,
   onDeletePlanned,
   onOpenPlannedCreate,
-  onOpenTimeOffCreate,
   onOpenMonthlyAllocation,
   isFetchingNextEmployeePage,
 }: TimelineBodyV2Props) {
@@ -88,7 +86,6 @@ export function TimelineBodyV2({
                   onUpdatePlanned={onUpdatePlanned}
                   onDeletePlanned={onDeletePlanned}
                   onOpenPlannedCreate={onOpenPlannedCreate}
-                  onOpenTimeOffCreate={onOpenTimeOffCreate}
                   onOpenMonthlyAllocation={onOpenMonthlyAllocation}
                 />
               </div>

@@ -88,7 +88,7 @@ export async function getAssignments(filters?: {
   end_date?: string;
   status?: string;
 }) {
-  let query = 'SELECT * FROM assignments WHERE 1=1';
+  let query = 'SELECT * FROM assignments WHERE COALESCE(is_time_off, 0) = 0';
   const params: any[] = [];
 
   if (filters?.employee_uuid) {
@@ -125,7 +125,7 @@ export async function getAssignments(filters?: {
 }
 
 export async function getTimelineAssignments(filters: TimelineAssignmentFilters) {
-  let query = `SELECT ${TIMELINE_ASSIGNMENT_COLUMNS} FROM assignments WHERE end_date >= ? AND start_date <= ?`;
+  let query = `SELECT ${TIMELINE_ASSIGNMENT_COLUMNS} FROM assignments WHERE end_date >= ? AND start_date <= ? AND COALESCE(is_time_off, 0) = 0`;
   const params: any[] = [filters.start_date, filters.end_date];
 
   if (filters.employee_uuid) {
@@ -384,7 +384,7 @@ export async function getActualAssignments(filters?: {
   start_date?: string;
   end_date?: string;
 }) {
-  let query = 'SELECT * FROM actual WHERE 1=1';
+  let query = 'SELECT * FROM actual WHERE COALESCE(is_time_off, 0) = 0';
   const params: any[] = [];
 
   if (filters?.employee_uuid) {
@@ -410,7 +410,7 @@ export async function getActualAssignments(filters?: {
 }
 
 export async function getTimelineActualAssignments(filters: TimelineAssignmentFilters) {
-  let query = `SELECT ${TIMELINE_ACTUAL_COLUMNS} FROM actual WHERE end_date >= ? AND start_date <= ?`;
+  let query = `SELECT ${TIMELINE_ACTUAL_COLUMNS} FROM actual WHERE end_date >= ? AND start_date <= ? AND COALESCE(is_time_off, 0) = 0`;
   const params: any[] = [filters.start_date, filters.end_date];
 
   if (filters.employee_uuid) {

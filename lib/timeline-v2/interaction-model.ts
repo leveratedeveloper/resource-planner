@@ -1,5 +1,4 @@
 import { addDays, startOfDay } from "date-fns";
-import type { Assignment } from "@/lib/query/hooks/useAssignments";
 
 export function isTimelineV2Weekend(date: Date): boolean {
   const day = date.getDay();
@@ -17,25 +16,6 @@ export function countTimelineV2Workdays(start: Date, end: Date): number {
   }
 
   return Math.max(1, count);
-}
-
-export function hasTimelineV2TimeOffInRange(
-  assignments: Assignment[],
-  start: Date,
-  end: Date,
-  ignoredAssignmentId?: string
-): boolean {
-  const rangeStart = startOfDay(start);
-  const rangeEnd = startOfDay(end);
-
-  return assignments.some((assignment) => {
-    if (!assignment.isTimeOff) return false;
-    if (ignoredAssignmentId && assignment.id === ignoredAssignmentId) return false;
-
-    const assignmentStart = startOfDay(new Date(assignment.startDate));
-    const assignmentEnd = startOfDay(new Date(assignment.endDate));
-    return rangeStart <= assignmentEnd && rangeEnd >= assignmentStart;
-  });
 }
 
 export function getTimelineV2DragRange(startIndex: number, endIndex: number) {

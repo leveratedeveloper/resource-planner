@@ -4,17 +4,12 @@
  * Designed to run in Web Worker for performance
  */
 
-import { Resource } from "@/types";
 import {
   Conflict,
   ConflictType,
-  ConflictSeverity,
   ResourceCapacityAnalysis,
   AnalysisInput,
-  AnalysisAssignment,
-  AnalysisProject,
 } from "./types";
-import { getDateRange, isDateStrInAssignment } from "./capacity-analyzer";
 import { toLocalDateKey } from "./date-utils";
 
 // ============================================================================
@@ -35,21 +30,6 @@ function generateConflictId(
   return `conflict-${type}-${resourceId}-${date}-${sortedAssignments}`;
 }
 
-function getSeverity(type: ConflictType): ConflictSeverity {
-  switch (type) {
-    case "time_off_deadline":
-      return "critical";
-    case "overallocation":
-      return "warning";
-    case "resource_unavailable":
-      return "critical";
-    case "billable_target":
-      return "info";
-    default:
-      return "warning";
-  }
-}
-
 // ============================================================================
 // Conflict Detection Functions
 // ============================================================================
@@ -58,8 +38,7 @@ function getSeverity(type: ConflictType): ConflictSeverity {
  * Detect overallocation conflicts (>100% on same day)
  */
 export function detectOverallocationConflicts(
-  capacityAnalysis: ResourceCapacityAnalysis[],
-  resources: Resource[]
+  capacityAnalysis: ResourceCapacityAnalysis[]
 ): Conflict[] {
   const conflicts: Conflict[] = [];
 
@@ -80,54 +59,6 @@ export function detectOverallocationConflicts(
         description: `${analysis.resourceName} is at ${Math.round(day.utilizationPercent)}% capacity (${day.hoursAllocated}h allocated, ${day.hoursAvailable}h available)`,
         affectedAssignments,
         suggestedResolution: `Consider reassigning ${Math.round(day.hoursAllocated - day.hoursAvailable)}h to another team member`,
-      });
-    }
-  }
-
-  return conflicts;
-}
-
-/**
- * Detect resource unavailability conflicts (assigned during time-off)
- */
-export function detectTimeOffConflicts(
-  assignments: AnalysisAssignment[],
-  resources: Resource[],
-  projects: AnalysisProject[]
-): Conflict[] {
-  const conflicts: Conflict[] = [];
-  const resourceMap = new Map(resources.map((r) => [r.id, r]));
-  const projectMap = new Map(projects.map((p) => [p.id, p]));
-
-  // Get all time-off assignments
-  const timeOffAssignments = assignments.filter((a) => a.isTimeOff);
-  const workAssignments = assignments.filter((a) => !a.isTimeOff);
-
-  for (const timeOff of timeOffAssignments) {
-    const resource = resourceMap.get(timeOff.resourceId);
-    if (!resource) continue;
-
-    // Find work assignments that overlap with this time-off
-    const overlappingWork = workAssignments.filter(
-      (work) =>
-        work.resourceId === timeOff.resourceId &&
-        datesOverlap(timeOff, work)
-    );
-
-    for (const work of overlappingWork) {
-      const project = work.projectId ? projectMap.get(work.projectId) : undefined;
-      const overlapDates = getOverlapDates(timeOff, work);
-
-      conflicts.push({
-        id: generateConflictId("resource_unavailable", resource.id, overlapDates[0], [timeOff.id, work.id]),
-        type: "resource_unavailable",
-        severity: "critical",
-        resourceId: resource.id,
-        resourceName: resource.name,
-        date: overlapDates[0], // First overlap date
-        description: `${resource.name} has time-off from ${formatDate(timeOff.startDate)} to ${formatDate(timeOff.endDate)}, but is assigned to "${project?.name || 'Unknown Project'}" during this period`,
-        affectedAssignments: [timeOff.id, work.id],
-        suggestedResolution: `Reassign "${project?.name}" work to another team member or adjust the assignment dates`,
       });
     }
   }
@@ -166,109 +97,6 @@ export function detectBillableTargetConflicts(
   return conflicts;
 }
 
-/**
- * Detect time-off vs deadline conflicts (within 3 days)
- */
-export function detectDeadlineConflicts(
-  assignments: AnalysisAssignment[],
-  resources: Resource[],
-  projects: AnalysisProject[]
-): Conflict[] {
-  const conflicts: Conflict[] = [];
-  const resourceMap = new Map(resources.map((r) => [r.id, r]));
-  const projectMap = new Map(projects.map((p) => [p.id, p]));
-
-  const timeOffAssignments = assignments.filter((a) => a.isTimeOff);
-  const workAssignments = assignments.filter((a) => !a.isTimeOff);
-
-  for (const timeOff of timeOffAssignments) {
-    const resource = resourceMap.get(timeOff.resourceId);
-    if (!resource) continue;
-
-    const timeOffStart = new Date(timeOff.startDate);
-
-    // Find work assignments ending within 3 days before time-off starts
-    const nearbyDeadlines = workAssignments.filter((work) => {
-      if (work.resourceId !== timeOff.resourceId) return false;
-      
-      const workEnd = new Date(work.endDate);
-      const daysBeforeTimeOff = Math.ceil(
-        (timeOffStart.getTime() - workEnd.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      return daysBeforeTimeOff >= 0 && daysBeforeTimeOff <= 3;
-    });
-
-    for (const work of nearbyDeadlines) {
-      const project = work.projectId ? projectMap.get(work.projectId) : undefined;
-      const workEnd = new Date(work.endDate);
-      const daysBeforeTimeOff = Math.ceil(
-        (timeOffStart.getTime() - workEnd.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      conflicts.push({
-        id: generateConflictId("time_off_deadline", resource.id, formatDate(work.endDate), [work.id, timeOff.id]),
-        type: "time_off_deadline",
-        severity: daysBeforeTimeOff <= 1 ? "critical" : "warning",
-        resourceId: resource.id,
-        resourceName: resource.name,
-        date: formatDate(work.endDate),
-        description: `${resource.name}'s "${project?.name}" ends on ${formatDate(work.endDate)}, just ${daysBeforeTimeOff} day(s) before time-off starts on ${formatDate(timeOff.startDate)}`,
-        affectedAssignments: [work.id, timeOff.id],
-        suggestedResolution: daysBeforeTimeOff === 0 
-          ? `Move deadline to ${formatDate(addDays(new Date(timeOff.endDate), 1))} (after time-off ends)`
-          : `Consider completing work earlier or adjusting timeline`,
-      });
-    }
-  }
-
-  return conflicts;
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function datesOverlap(a1: AnalysisAssignment, a2: AnalysisAssignment): boolean {
-  const a1Start = new Date(a1.startDate);
-  const a1End = new Date(a1.endDate);
-  const a2Start = new Date(a2.startDate);
-  const a2End = new Date(a2.endDate);
-
-  return a1Start <= a2End && a2Start <= a1End;
-}
-
-function getOverlapDates(a1: AnalysisAssignment, a2: AnalysisAssignment): string[] {
-  const start = new Date(Math.max(
-    new Date(a1.startDate).getTime(),
-    new Date(a2.startDate).getTime()
-  ));
-  const end = new Date(Math.min(
-    new Date(a1.endDate).getTime(),
-    new Date(a2.endDate).getTime()
-  ));
-
-  return getDateRange(
-    toLocalDateKey(start),
-    toLocalDateKey(end)
-  );
-}
-
-function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function addDays(date: Date, days: number): Date {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-}
-
 // ============================================================================
 // Main Detection Function
 // ============================================================================
@@ -284,17 +112,7 @@ export function detectConflicts(
 
   // Detect overallocation conflicts
   allConflicts.push(
-    ...detectOverallocationConflicts(capacityAnalysis, input.resources)
-  );
-
-  // Detect time-off conflicts (resource unavailable)
-  allConflicts.push(
-    ...detectTimeOffConflicts(input.assignments, input.resources, input.projects)
-  );
-
-  // Detect deadline conflicts (near time-off)
-  allConflicts.push(
-    ...detectDeadlineConflicts(input.assignments, input.resources, input.projects)
+    ...detectOverallocationConflicts(capacityAnalysis)
   );
 
   // Detect billable target issues

@@ -171,8 +171,6 @@ export const ConflictsTab: React.FC<ConflictsTabProps> = ({
           <SelectContent>
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="overallocation">Overallocation</SelectItem>
-            <SelectItem value="time_off_deadline">Time-Off/Deadline</SelectItem>
-            <SelectItem value="resource_unavailable">Unavailable</SelectItem>
             <SelectItem value="billable_target">Billable Target</SelectItem>
           </SelectContent>
         </Select>

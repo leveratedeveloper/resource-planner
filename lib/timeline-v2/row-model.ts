@@ -132,7 +132,9 @@ export function buildTimelineV2Rows({
   const actualsByEmployee = groupTimelineV2ActualAssignmentsByEmployee(actualAssignments);
 
   return employees.map((employee) => {
-    const resourceAssignments = assignmentsByEmployee.get(employee.id) ?? [];
+    const resourceAssignments = (assignmentsByEmployee.get(employee.id) ?? []).filter(
+      (assignment) => !assignment.isTimeOff
+    );
     const employeeActuals = actualsByEmployee.get(employee.id) ?? [];
     const resourceProjects = getPlanCampaignProjects(resourceAssignments, projectById);
     const resource: TimelineV2Resource = {
@@ -195,7 +197,6 @@ export function buildTimelineV2Rows({
       resource,
       assignments: resourceAssignments,
       actualAssignments: employeeActuals,
-      timeOffAssignments: resourceAssignments.filter((assignment) => assignment.isTimeOff),
       allocationCells: buildTimelineV2AllocationCells({
         resource,
         assignments: resourceAssignments,

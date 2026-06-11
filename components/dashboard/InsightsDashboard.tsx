@@ -567,7 +567,7 @@ export function InsightsDashboard() {
 
           <RiskQueueCard
             title="Conflict Watchlist"
-            description="Scheduling issues that could block delivery, billing, or time-off coverage."
+            description="Scheduling issues that could block delivery, billing, or utilization goals."
             emptyLabel="No active conflicts detected"
           >
             {topConflicts.map((conflict) => (
@@ -984,7 +984,7 @@ function DashboardConflictsPanel({
   }
 
   if (conflicts.length === 0) {
-    return <EmptyPanel icon="lucide:check-circle" title="No conflicts detected" description="Current assignments are clear of overload, time-off, and scheduling conflicts." />;
+    return <EmptyPanel icon="lucide:check-circle" title="No conflicts detected" description="Current assignments are clear of overload and scheduling conflicts." />;
   }
 
   return (

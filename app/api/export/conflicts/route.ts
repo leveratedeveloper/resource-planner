@@ -131,24 +131,6 @@ function detectConflictsFromAssignments(
         });
       }
 
-      // Detect time-off conflicts
-      const timeOffAssignments = activeAssignments.filter(a => a.is_time_off);
-      const workAssignments = activeAssignments.filter(a => !a.is_time_off);
-
-      if (timeOffAssignments.length > 0 && workAssignments.length > 0) {
-        conflicts.push({
-          id: `conflict-${empUuid}-${dateStr}-timeoff`,
-          type: 'resource_unavailable',
-          severity: 'critical',
-          resourceId: empUuid,
-          resourceName: employee.full_name,
-          department: employee.department_name,
-          date: dateStr,
-          description: `Has both time-off and work assignments on the same day`,
-          affectedAssignments: activeAssignments.map(a => a.uuid),
-          suggestedResolution: 'Reschedule work assignments or move time-off to different date',
-        });
-      }
     }
   }
 

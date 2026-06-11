@@ -3,7 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { differenceInDays, startOfDay, format, addDays, isWithinInterval, startOfWeek } from "date-fns";
+import { differenceInDays, startOfDay, format, addDays } from "date-fns";
 import { cn, toLocalDateString } from "@/lib/utils";
 import {
   Tooltip,
@@ -34,7 +34,6 @@ interface ActualAssignmentBlockProps {
   isMonthRangeView?: boolean;
   onUpdate?: (uuid: string, updates: Partial<ActualAssignment>) => void;
   onDelete?: (uuid: string) => void;
-  timeOffAssignments?: ActualAssignment[];
   isDeleting?: boolean;
   isUpdating?: boolean;
   disabled?: boolean;
@@ -52,7 +51,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
   isMonthRangeView = false,
   onUpdate,
   onDelete,
-  timeOffAssignments = [],
   isDeleting = false,
   isUpdating = false,
   disabled = false,
@@ -100,26 +98,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
 
   const startDate = startOfDay(new Date(assignment.startDate));
   const endDate = startOfDay(new Date(assignment.endDate));
-  const hasTimeOffOnDate = useCallback((date: Date) => {
-    return timeOffAssignments.some(a =>
-      isWithinInterval(startOfDay(date), {
-        start: startOfDay(new Date(a.startDate)),
-        end: startOfDay(new Date(a.endDate))
-      })
-    );
-  }, [timeOffAssignments]);
-
-  const hasTimeOffInRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
-    return timeOffAssignments.some(a => {
-      if (a.uuid === assignment.uuid) return false;
-      const timeOffStart = startOfDay(new Date(a.startDate));
-      const timeOffEnd = startOfDay(new Date(a.endDate));
-      const checkStart = startOfDay(rangeStart);
-      const checkEnd = startOfDay(rangeEnd);
-      return checkStart <= timeOffEnd && checkEnd >= timeOffStart;
-    });
-  }, [timeOffAssignments, assignment.uuid]);
-
   const isWeekendDate = useCallback((date: Date) => {
     const day = date.getDay();
     return day === 0 || day === 6;
@@ -142,9 +120,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
       isMonthRangeView,
     });
   }, [days, isMonthRangeView, isWeekView]);
-
-  const hasTimeOffInRangeRef = useRef(hasTimeOffInRange);
-  hasTimeOffInRangeRef.current = hasTimeOffInRange;
 
   const durationDays = differenceInDays(startDate, endDate) + 1;
   const blockPosition = getAssignmentBlockPosition({
@@ -177,9 +152,8 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
   const LEFT_OFFSET = `${displayOffset * cellPercentage}%`;
   const WIDTH = `${displayDuration * cellPercentage}%`;
 
-  const isTimeOff = assignment.isTimeOff;
-  const bgColor = isTimeOff ? "#6b7280" : "#16a34a";
-  const displayName = isTimeOff ? "Time Off" : (project?.name || "Unknown Project");
+  const bgColor = "#16a34a";
+  const displayName = project?.name || "Unknown Project";
 
   const hoursPerDay = assignment.hoursPerDay;
   const displayRange = { startDate: days[0] ?? startDate, endDate: days[days.length - 1] ?? endDate };
@@ -234,12 +208,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
           const daysToMove = deltaColumns * 7;
 
           if (edge === 'left') {
-            let newStartDate = addDays(startDate, daysToMove);
-            if (hasTimeOffInRangeRef.current(newStartDate, endDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
+            const newStartDate = addDays(startDate, daysToMove);
             if (newStartDate <= endDate) {
               onUpdate(assignment.uuid, { startDate: toLocalDateString(newStartDate) });
               setIsResizing(null);
@@ -247,12 +216,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
               return;
             }
           } else {
-            let newEndDate = addDays(endDate, daysToMove);
-            if (hasTimeOffInRangeRef.current(startDate, newEndDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
+            const newEndDate = addDays(endDate, daysToMove);
             if (newEndDate >= startDate) {
               onUpdate(assignment.uuid, { endDate: toLocalDateString(newEndDate) });
               setIsResizing(null);
@@ -265,12 +229,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
             const currentIdx = startVisibleIdx >= 0 ? startVisibleIdx : 0;
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
             const newStartDate = days[newIdx];
-
-            if (newStartDate && hasTimeOffInRangeRef.current(newStartDate, endDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
 
             if (newStartDate && newStartDate <= endDate) {
               if (!isWeekView && isWeekendDate(newStartDate)) {
@@ -290,12 +248,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
             const currentIdx = endVisibleIdx >= 0 ? endVisibleIdx : days.length - 1;
             const newIdx = Math.max(0, Math.min(days.length - 1, currentIdx + deltaColumns));
             const newEndDate = days[newIdx];
-
-            if (newEndDate && hasTimeOffInRangeRef.current(startDate, newEndDate)) {
-              setIsResizing(null);
-              setTempOffset(0);
-              return;
-            }
 
             if (newEndDate && newEndDate >= startDate) {
               if (!isWeekView && isWeekendDate(newEndDate)) {
@@ -321,7 +273,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  }, [disabled, cellWidth, onUpdate, assignment.uuid, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate]);
+  }, [disabled, cellWidth, onUpdate, assignment.uuid, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate, startVisibleIdx, endVisibleIdx]);
 
   // Edit handlers
   const handleSave = useCallback((updates: Partial<ActualAssignment>) => {
@@ -361,7 +313,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
     setPendingResize(null);
   }, []);
 
-  const handleBlockClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
+  const handleBlockClick = useCallback(() => {
     if (disabled) return;
 
     if (!hasDraggedRef.current && !hasResizedRef.current) {
@@ -428,12 +380,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
           const newStartDate = addDays(startDate, daysToMove);
           const newEndDate = addDays(endDate, daysToMove);
 
-          if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return;
-          }
-
           onUpdate(assignment.uuid, { startDate: toLocalDateString(newStartDate), endDate: toLocalDateString(newEndDate) });
           setIsDragging(false);
           setDragOffset(0);
@@ -466,16 +412,10 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
             }
           }
 
-          let newStartDate = days[newStartIdx];
-          let newEndDate = days[newEndIdx];
+          const newStartDate = days[newStartIdx];
+          const newEndDate = days[newEndIdx];
 
           if (!newStartDate || !newEndDate) {
-            setIsDragging(false);
-            setDragOffset(0);
-            return;
-          }
-
-          if (hasTimeOffInRangeRef.current(newStartDate, newEndDate)) {
             setIsDragging(false);
             setDragOffset(0);
             return;
@@ -512,7 +452,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  }, [disabled, cellWidth, onUpdate, assignment.uuid, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate]);
+  }, [disabled, cellWidth, onUpdate, assignment.uuid, startDate, endDate, days, findVisibleIndex, findCorrectVisibleIndex, isWeekView, isWeekendDate, startVisibleIdx, endVisibleIdx]);
 
   return (
     <>
@@ -524,7 +464,6 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
               className={cn(
                 "absolute rounded-md shadow-sm border text-xs text-white overflow-hidden flex items-center justify-between group",
                 !isResizing && !isDragging && "transition-all duration-100 ease-out",
-                isTimeOff && "bg-gray-500 opacity-80",
                 isResizing && "cursor-col-resize ring-2 ring-green-400",
                 isDragging ? "cursor-grabbing opacity-70 ring-2 ring-green-400 scale-[1.01]" : "cursor-grab",
                 isDeleting && "opacity-50 pointer-events-none animate-pulse",
@@ -597,7 +536,7 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
                 )}
                 {assignment.note && (
                   <div className="mt-2 text-xs text-slate-400 italic border-t border-slate-700 pt-2 line-clamp-3 overflow-hidden">
-                    "{assignment.note}"
+                    &quot;{assignment.note}&quot;
                   </div>
                 )}
               </div>
@@ -622,12 +561,12 @@ export const ActualAssignmentBlock: React.FC<ActualAssignmentBlockProps> = ({
       )}
 
       {/* Weekend confirmation popover */}
-      {showWeekendConfirm && blockRef.current && (
+      {showWeekendConfirm && (
         <Popover open={showWeekendConfirm} onOpenChange={setShowWeekendConfirm}>
           <PopoverAnchor
             virtualRef={{
               current: {
-                getBoundingClientRect: () => blockRef.current!.getBoundingClientRect(),
+                getBoundingClientRect: () => blockRef.current?.getBoundingClientRect() ?? new DOMRect(),
               }
             }}
           />

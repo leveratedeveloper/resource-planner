@@ -23,17 +23,15 @@ type BaseProps = {
 };
 
 type PlanProps = BaseProps & {
-  kind: "plan" | "timeOff";
+  kind: "plan";
   assignment: Assignment;
   project?: ProjectOption;
-  timeOffAssignments?: Assignment[];
 };
 
 type ActualProps = BaseProps & {
   kind: "actual";
   assignment: ActualAssignment;
   project?: ProjectOption;
-  timeOffAssignments?: ActualAssignment[];
   plannedHoursLimit?: number;
   currentActualHours?: number;
 };
@@ -52,7 +50,6 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
       isMonthRangeView,
       onUpdate,
       onDelete,
-      timeOffAssignments = [],
       isDeleting = false,
       isUpdating = false,
       disabled = false,
@@ -71,7 +68,6 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
         isMonthRangeView={isMonthRangeView}
         onUpdate={onUpdate as never}
         onDelete={onDelete}
-        timeOffAssignments={timeOffAssignments}
         isDeleting={isDeleting}
         isUpdating={isUpdating}
         disabled={disabled}
@@ -91,7 +87,6 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
     isMonthRangeView,
     onUpdate,
     onDelete,
-    timeOffAssignments = [],
     isDeleting = false,
     isUpdating = false,
     disabled = false,
@@ -110,7 +105,6 @@ export function AssignmentBlockV2(props: AssignmentBlockV2Props) {
       isMonthRangeView={isMonthRangeView}
       onUpdate={onUpdate as never}
       onDelete={onDelete}
-      timeOffAssignments={timeOffAssignments}
       isDeleting={isDeleting}
       isUpdating={isUpdating}
       disabled={disabled}

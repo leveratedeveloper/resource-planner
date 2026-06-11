@@ -598,7 +598,6 @@ export function TimelineV2({
           onUpdatePlanned={controller.handleUpdatePlannedAssignment}
           onDeletePlanned={controller.handleDeletePlannedAssignment}
           onOpenPlannedCreate={controller.handleCreatePlannedAssignment}
-          onOpenTimeOffCreate={controller.handleCreateTimeOff}
           onOpenMonthlyAllocation={controller.handleOpenMonthlyAllocation}
           isFetchingNextEmployeePage={isFetchingNextEmployeePage}
         />
@@ -628,7 +627,6 @@ export function TimelineV2({
           }}
           project={controller.monthlyAllocationModal.project}
           existingAssignment={controller.monthlyAllocationModal.existingAssignment}
-          timeOffAssignments={controller.monthlyAllocationModal.detailAssignments?.filter((assignment) => assignment.isTimeOff) ?? []}
           adjustmentAssignments={controller.monthlyAllocationModal.adjustmentAssignments}
           isFullAccess={session?.access?.can_view_all}
           monthlyTotalHours={controller.monthlyAllocationModal.monthlyTotalHours}
