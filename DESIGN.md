@@ -304,4 +304,10 @@ Save is immediate; the only surviving confirmation is destructive delete (AlertD
 
 ## 6. Perf log
 
-_(Phase 2.1 records the `npm run build` baseline here; Phase 6.7 records the final numbers.)_
+Metric: total bytes of `.next/static/chunks/*.js` after `npm run build` (Next 16/Turbopack
+no longer prints a per-route size table). Same machine, same command, each phase.
+
+| Checkpoint | Total client JS | Chunks | Largest chunk |
+|---|---|---|---|
+| Phase 2.1 baseline (pre-teardown, commit 7fc9ba9) | 2.4 MB | 20 | 1,203 KB |
+| Phase 2.6 (dead code deleted, editors lazy-loaded) | 2.4 MB | 29 | 1,141 KB (−62 KB eager; 4 editor surfaces moved to on-demand chunks) |

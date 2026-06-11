@@ -217,7 +217,6 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                     {group.row.planDisplaySegments.map((segment) => (
                       <AssignmentBlockV2
                         key={segment.id}
-                        kind="plan"
                         assignment={buildSegmentAssignment(segment)}
                         project={campaign}
                         days={projectDays}

@@ -16,9 +16,7 @@ import {
 import { AssignmentCategory } from "@/types";
 import { format, startOfDay, isSameMonth } from "date-fns";
 import { distributeMonthlyHours, type DistributionResult } from "@/lib/utils/allocation-distributor";
-import { validateActualHoursLimit } from "@/lib/utils/actual-hours-validation";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
 interface MonthlyAllocationModalProps {
@@ -31,15 +29,11 @@ interface MonthlyAllocationModalProps {
   };
   project: ProjectOption;
   existingAssignment?: Assignment; // If present, we're in EDIT mode
-  existingActualAssignment?: ActualAssignment; // If present in actual mode, we're in EDIT mode
-  mode?: 'plan' | 'actual'; // Determines if this is for plan or actual allocations
   adjustmentAssignments?: Assignment[]; // adjustment records yang sudah ada
   isFullAccess?: boolean; // whether user has full access
   monthlyTotalHours?: number; // Total hours for this month (from highlighted block)
   planTotalHours?: number; // Plan-only hours (excluding adjustments)
   adjustmentTotalHours?: number; // Adjustment-only hours for this month
-  plannedHoursLimit?: number; // Total planned hours limit (plan + adj) for actual validation
-  currentActualHours?: number; // Already allocated actual hours for this project-month
   onClose: () => void;
   onSave: (data: {
     projectId: string;
@@ -66,20 +60,15 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   resource,
   project,
   existingAssignment,
-  existingActualAssignment,
-  mode = 'plan',
   adjustmentAssignments,
   isFullAccess,
   monthlyTotalHours,
   planTotalHours,
   adjustmentTotalHours,
-  plannedHoursLimit,
-  currentActualHours,
   onClose,
   onSave,
   onDelete,
 }) => {
-  const isActual = mode === 'actual';
   const [mounted, setMounted] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [totalHours, setTotalHours] = useState("0");
@@ -104,7 +93,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
   const [removeAdjustment, setRemoveAdjustment] = useState(false);
 
   // Determine if we're in edit mode
-  const isEditMode = isActual ? !!existingActualAssignment : !!existingAssignment;
+  const isEditMode = !!existingAssignment;
 
   // Log when in edit mode and when props change
   useEffect(() => {
@@ -120,22 +109,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
 
   // Initialize form values - only set if user hasn't manually edited yet
   useEffect(() => {
-    if (isActual && existingActualAssignment && !userHasEditedHours) {
-      // ACTUAL EDIT mode
-      const editDefaultStart = isSameMonth(today, monthStart)
-        ? (today > monthEnd ? monthEnd : today)
-        : monthStart;
-      setStartDate(startOfDay(editDefaultStart));
-      setEndDate(startOfDay(monthEnd));
-
-      const hoursValue = monthlyTotalHours?.toString() ?? "0";
-      setTotalHours(hoursValue);
-
-      if (existingActualAssignment.category) {
-        setCategory(existingActualAssignment.category as AssignmentCategory);
-      }
-      setIsBillable(existingActualAssignment.isBillable);
-    } else if (!isActual && existingAssignment && !userHasEditedHours) {
+    if (existingAssignment && !userHasEditedHours) {
       // PLAN EDIT mode: default to today if same month, otherwise start from 1st of that month
       // But cap today at month end if today is past the month
       const editDefaultStart = isSameMonth(today, monthStart)
@@ -164,7 +138,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
         setAdjustmentHours("0");
         setShowAdjustment(false);
       }
-    } else if (!userHasEditedHours && !existingAssignment && !existingActualAssignment) {
+    } else if (!userHasEditedHours && !existingAssignment) {
       // CREATE mode: default to today if same month, otherwise start from 1st of that month
       // But cap today at month end if today is past the month
       const createDefaultStart = isSameMonth(today, monthStart)
@@ -175,7 +149,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       setTotalHours("0"); // Default to 0 in create mode
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingAssignment?.id, existingActualAssignment?.uuid, monthlyTotalHours, planTotalHours, adjustmentTotalHours]);
+  }, [existingAssignment?.id, monthlyTotalHours, planTotalHours, adjustmentTotalHours]);
 
   useEffect(() => {
     setMounted(true);
@@ -288,15 +262,6 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
       return;
     }
 
-    // Validate actual hours against planned limit
-    if (isActual && plannedHoursLimit !== undefined && currentActualHours !== undefined) {
-      const validation = validateActualHoursLimit(plannedHoursLimit, currentActualHours, hours);
-      if (!validation.isValid) {
-        setHoursError("Cannot add more actual hours. Please contact your supervisor.");
-        return;
-      }
-    }
-
     onSave({
       projectId: project.id,
       totalHours: hours,
@@ -355,14 +320,9 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
             {/* Mode indicator & employee info */}
             <div>
               <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                isActual
-                  ? (isEditMode ? "bg-emerald-100 text-emerald-800" : "bg-green-100 text-green-800")
-                  : (isEditMode ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800")
+                isEditMode ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
               }`}>
-                {isActual
-                  ? (isEditMode ? "Edit actual assignment details" : "Create actual assignment")
-                  : (isEditMode ? "Edit plan assignment details" : "Create plan assignment")
-                }
+                {isEditMode ? "Edit plan assignment details" : "Create plan assignment"}
               </span>
               <div className="mt-2 text-sm text-muted-foreground">
                 <div className="font-medium text-foreground">{resource.name}</div>
@@ -474,7 +434,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Total to allocate:</span>
-                    <span className={`font-semibold ${isActual ? 'text-green-600' : 'text-blue-600'}`}>{distributionResult.totalHours.toFixed(1)}h</span>
+                    <span className="font-semibold text-blue-600">{distributionResult.totalHours.toFixed(1)}h</span>
                   </div>
                   {distributionResult.remainingHours > 0 && (
                     <div className="flex justify-between mt-1 pt-1 border-t border-amber-200">
@@ -498,31 +458,8 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
               )}
             </div>
 
-            {/* Actual Hours Limit Indicator */}
-            {isActual && plannedHoursLimit !== undefined && currentActualHours !== undefined && (
-              <div className="p-3 bg-emerald-50 rounded-md border border-emerald-200">
-                <div className="text-xs font-semibold text-emerald-700 mb-2">Hours Limit</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-emerald-600">Planned limit:</span>
-                    <span className="font-semibold">{plannedHoursLimit.toFixed(1)}h</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-emerald-600">Already allocated:</span>
-                    <span className="font-semibold">{currentActualHours.toFixed(1)}h</span>
-                  </div>
-                  <div className="flex justify-between pt-1 border-t border-emerald-200">
-                    <span className="text-emerald-600">Available:</span>
-                    <span className={`font-semibold ${(plannedHoursLimit - currentActualHours) <= 0 ? 'text-red-600' : 'text-green-700'}`}>
-                      {Math.max(0, plannedHoursLimit - currentActualHours).toFixed(1)}h
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Adjustment Hours Section - only in plan edit mode for full access users */}
-            {!isActual && isEditMode && isFullAccess && (
+            {isEditMode && isFullAccess && (
               <div className="border rounded-md overflow-hidden">
                 <button
                   type="button"
@@ -732,7 +669,7 @@ export const MonthlyAllocationModal: React.FC<MonthlyAllocationModalProps> = ({
             <Button
               onClick={() => handleSave()}
               disabled={!hasDistributions || hoursError !== null || dateError !== null}
-              className={`text-sm ${isActual ? 'bg-green-600 hover:bg-green-700' : ''}`}
+              className="text-sm"
             >
               Save
             </Button>

@@ -17,7 +17,13 @@ import {
   PopoverAnchor,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { EditAssignmentDialog } from "./EditAssignmentDialog";
+import dynamic from "next/dynamic";
+
+// Loaded on demand — the edit dialog is not needed for first paint.
+const EditAssignmentDialog = dynamic(
+  () => import("./EditAssignmentDialog").then((mod) => mod.EditAssignmentDialog),
+  { ssr: false }
+);
 import { getAssignmentBlockPosition, getAssignmentVisibleIndex } from "@/lib/timeline/assignment-positioning";
 import {
   calculateAssignmentDisplayTotalHours,
@@ -556,7 +562,7 @@ export const AssignmentBlock: React.FC<AssignmentBlockProps> = ({
           </TooltipContent>
         </Tooltip>
 
-        {!disabled && (
+        {!disabled && isEditDialogOpen && (
           <EditAssignmentDialog
             key={`${assignment.id}-${isEditDialogOpen ? "open" : "closed"}-${assignment.updatedAt}`}
             assignment={assignment}

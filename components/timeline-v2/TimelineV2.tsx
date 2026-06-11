@@ -31,13 +31,26 @@ import { TimelineHeaderV2 } from "@/components/timeline-v2/TimelineHeaderV2";
 import { TimelineBodyV2 } from "@/components/timeline-v2/TimelineBodyV2";
 import { TimelineInitialSkeletonV2, TimelineEmptyStateV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 import { useTimelineV2Controller } from "@/components/timeline-v2/useTimelineV2Controller";
-import { AssignmentPopover } from "@/components/timeline/AssignmentPopover";
-import { MonthlyAllocationModal } from "@/components/timeline/MonthlyAllocationModal";
-import { MonthlyAllocationConfirmation } from "@/components/timeline/MonthlyAllocationConfirmation";
+import dynamic from "next/dynamic";
 import { startOfWeek, startOfDay } from "date-fns";
 import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
 const DEFAULT_TIMELINE_VIEW: TimelineV2ViewMode = "quarter";
+
+// Editing surfaces are conditionally rendered and never needed for first paint —
+// load them on demand so they stay out of the initial bundle.
+const AssignmentPopover = dynamic(
+  () => import("@/components/timeline/AssignmentPopover").then((mod) => mod.AssignmentPopover),
+  { ssr: false }
+);
+const MonthlyAllocationModal = dynamic(
+  () => import("@/components/timeline/MonthlyAllocationModal").then((mod) => mod.MonthlyAllocationModal),
+  { ssr: false }
+);
+const MonthlyAllocationConfirmation = dynamic(
+  () => import("@/components/timeline/MonthlyAllocationConfirmation").then((mod) => mod.MonthlyAllocationConfirmation),
+  { ssr: false }
+);
 
 type TimelineV2Props = {
   initialTimelineAnchor: string;
