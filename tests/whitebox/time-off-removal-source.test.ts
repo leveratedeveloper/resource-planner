@@ -2,9 +2,9 @@ import { readFileSync } from "fs";
 
 describe("time-off feature removal source guards", () => {
   it("does not expose time-off creation or lane UI in timeline v2", () => {
-    const timeline = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
-    const body = readFileSync("components/timeline-v2/TimelineBodyV2.tsx", "utf8");
-    const resourceRow = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+    const timeline = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
+    const body = readFileSync("components/timeline-v2/TimelineBody.tsx", "utf8");
+    const resourceRow = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
     const controller = readFileSync("components/timeline-v2/useTimelineV2Controller.ts", "utf8");
 
     expect(timeline).not.toContain("onOpenTimeOffCreate");

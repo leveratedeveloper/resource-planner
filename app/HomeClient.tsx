@@ -10,7 +10,7 @@ import {
 } from "react";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { SetupManager } from "@/components/setup/SetupManager";
-import { TimelineV2 } from "@/components/timeline-v2";
+import { Timeline } from "@/components/timeline-v2";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
@@ -59,7 +59,7 @@ export function HomePlannerTimeline({
   }, []);
 
   return (
-    <TimelineV2
+    <Timeline
       initialTimelineAnchor={initialTimelineAnchor}
       brandId={filters.brandId}
       department={filters.department}

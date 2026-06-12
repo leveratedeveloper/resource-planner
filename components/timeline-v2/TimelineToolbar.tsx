@@ -5,43 +5,40 @@ import { format, addWeeks, subWeeks, addMonths, subMonths, addQuarters, subQuart
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
 import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
-export type TimelineToolbarV2Props = {
+type TimelineToolbarProps = {
   currentDate: Date;
-  viewMode: TimelineV2ViewMode;
-  showWeekends: boolean;
-  onViewModeChange: (mode: TimelineV2ViewMode) => void;
-  onDateChange: (date: Date) => void;
-  onToggleWeekends: () => void;
-  onToday: () => void;
 };
 
-export function TimelineToolbarV2({
-  currentDate,
-  viewMode,
-  showWeekends,
-  onViewModeChange,
-  onDateChange,
-  onToggleWeekends,
-  onToday,
-}: TimelineToolbarV2Props) {
+export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate }: TimelineToolbarProps) {
+  const viewMode = useTimelineViewStore((state) => state.viewMode);
+  const showWeekends = useTimelineViewStore((state) => state.showWeekends);
+  const setViewMode = useTimelineViewStore((state) => state.setViewMode);
+  const setAnchorDate = useTimelineViewStore((state) => state.setAnchorDate);
+  const toggleWeekends = useTimelineViewStore((state) => state.toggleWeekends);
+
+  const handleToday = () => {
+    setAnchorDate(new Date());
+  };
+
   const handlePrev = () => {
     switch (viewMode) {
       case "week":
-        onDateChange(subWeeks(currentDate, 1));
+        setAnchorDate(subWeeks(currentDate, 1));
         break;
       case "month":
-        onDateChange(subMonths(currentDate, 1));
+        setAnchorDate(subMonths(currentDate, 1));
         break;
       case "quarter":
-        onDateChange(subQuarters(currentDate, 1));
+        setAnchorDate(subQuarters(currentDate, 1));
         break;
       case "halfYear":
-        onDateChange(subMonths(currentDate, 6));
+        setAnchorDate(subMonths(currentDate, 6));
         break;
       case "year":
-        onDateChange(subYears(currentDate, 1));
+        setAnchorDate(subYears(currentDate, 1));
         break;
     }
   };
@@ -49,19 +46,19 @@ export function TimelineToolbarV2({
   const handleNext = () => {
     switch (viewMode) {
       case "week":
-        onDateChange(addWeeks(currentDate, 1));
+        setAnchorDate(addWeeks(currentDate, 1));
         break;
       case "month":
-        onDateChange(addMonths(currentDate, 1));
+        setAnchorDate(addMonths(currentDate, 1));
         break;
       case "quarter":
-        onDateChange(addQuarters(currentDate, 1));
+        setAnchorDate(addQuarters(currentDate, 1));
         break;
       case "halfYear":
-        onDateChange(addMonths(currentDate, 6));
+        setAnchorDate(addMonths(currentDate, 6));
         break;
       case "year":
-        onDateChange(addYears(currentDate, 1));
+        setAnchorDate(addYears(currentDate, 1));
         break;
     }
   };
@@ -73,7 +70,7 @@ export function TimelineToolbarV2({
           <Button
             variant="outline"
             size="sm"
-            onClick={onToday}
+            onClick={handleToday}
             className="text-xs"
             data-testid="timeline-v2-today-button"
           >
@@ -82,9 +79,8 @@ export function TimelineToolbarV2({
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               onClick={handlePrev}
-              className="h-8 w-8"
               data-testid="timeline-v2-prev-button"
               aria-label="Previous timeline period"
             >
@@ -92,9 +88,8 @@ export function TimelineToolbarV2({
             </Button>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               onClick={handleNext}
-              className="h-8 w-8"
               data-testid="timeline-v2-next-button"
               aria-label="Next timeline period"
             >
@@ -122,7 +117,7 @@ export function TimelineToolbarV2({
               key={mode}
               variant={viewMode === mode ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => onViewModeChange(mode)}
+              onClick={() => setViewMode(mode as TimelineV2ViewMode)}
               className={cn("h-7 px-3 text-xs", viewMode === mode && "bg-background shadow-sm")}
               data-testid={`timeline-v2-view-${mode === "halfYear" ? "half-year" : mode}`}
             >
@@ -136,7 +131,7 @@ export function TimelineToolbarV2({
             <Button
               variant={showWeekends ? "default" : "outline"}
               size="sm"
-              onClick={onToggleWeekends}
+              onClick={toggleWeekends}
               className="gap-1 text-xs"
               data-testid="timeline-v2-weekend-toggle"
             >
@@ -153,4 +148,4 @@ export function TimelineToolbarV2({
       </div>
     </div>
   );
-}
+});

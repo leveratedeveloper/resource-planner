@@ -40,7 +40,7 @@ describe("planner startup", () => {
   });
 
   it("logs timeline first visible after the initial loading state clears", () => {
-    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(timelineSource).toContain('phase: "timeline_first_visible"');
     expect(timelineSource).toContain("hasLoggedTimelineFirstVisibleRef");

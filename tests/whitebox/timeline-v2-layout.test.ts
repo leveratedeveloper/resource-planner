@@ -1,61 +1,49 @@
 import { describe, expect, it } from "vitest";
 import {
+  TIMELINE_DIMENSIONS,
   clampTimelineV2ResourceColumnWidth,
+  getTimelineEstimatedRowHeight,
   getTimelineV2CellWidth,
-  getTimelineV2EstimatedRowHeight,
-  getTimelineV2Layout,
-  getTimelineV2TodayScrollLeft,
   getTimelineV2RangePosition,
   getTimelineV2VisibleWidth,
 } from "@/lib/timeline-v2/layout";
 
 describe("timeline-v2 layout", () => {
-  it("clamps the resource column to the existing visual bounds", () => {
-    expect(clampTimelineV2ResourceColumnWidth(100)).toBe(220);
-    expect(clampTimelineV2ResourceColumnWidth(250)).toBe(250);
-    expect(clampTimelineV2ResourceColumnWidth(800)).toBe(420);
+  it("clamps the resource column width to the token bounds", () => {
+    expect(clampTimelineV2ResourceColumnWidth(100)).toBe(TIMELINE_DIMENSIONS.resourceCol.min);
+    expect(clampTimelineV2ResourceColumnWidth(1000)).toBe(TIMELINE_DIMENSIONS.resourceCol.max);
+    expect(clampTimelineV2ResourceColumnWidth(300)).toBe(300);
   });
 
-  it("uses exact available width for visible columns", () => {
-    expect(getTimelineV2Layout({ availableWidth: 1000, columnCount: 5 })).toEqual({
-      columnWidth: 200,
-      timelineWidth: 1000,
+  it("derives the visible width and cell width from the container", () => {
+    expect(getTimelineV2VisibleWidth(1256, 256)).toBe(1000);
+    expect(getTimelineV2VisibleWidth(50, 256)).toBe(100);
+    expect(getTimelineV2CellWidth(1000, 5)).toBe(200);
+    expect(getTimelineV2CellWidth(1000, 0)).toBe(1000);
+  });
+
+  it("positions ranges as percentages of the column count", () => {
+    expect(getTimelineV2RangePosition({ startIndex: 1, endIndex: 2, columnCount: 4 })).toEqual({
+      leftPct: 25,
+      widthPct: 50,
+    });
+    // Out-of-bounds indices clamp into the visible range.
+    expect(getTimelineV2RangePosition({ startIndex: -3, endIndex: 99, columnCount: 4 })).toEqual({
+      leftPct: 0,
+      widthPct: 100,
     });
   });
 
-  it("derives a stable visible width and cell width", () => {
-    expect(getTimelineV2VisibleWidth(1500, 250)).toBe(1250);
-    expect(getTimelineV2VisibleWidth(200, 250)).toBe(100);
-    expect(getTimelineV2CellWidth(1250, 5)).toBe(250);
-    expect(getTimelineV2CellWidth(100, 0)).toBe(100);
-  });
-
-  it("converts column ranges to percentage positions", () => {
-    expect(getTimelineV2RangePosition({ startIndex: 1, endIndex: 3, columnCount: 5 })).toEqual({
-      leftPct: 20,
-      widthPct: 60,
-    });
-  });
-
-  it("calculates a centered Today scroll target and expanded row estimate", () => {
-    expect(
-      getTimelineV2TodayScrollLeft({
-        todayIndex: 4,
-        cellWidth: 250,
-        viewportWidth: 900,
-      })
-    ).toBe(675);
-    expect(
-      getTimelineV2EstimatedRowHeight({
-        isExpanded: false,
-        campaignGroups: [],
-      })
-    ).toBe(48);
-    expect(
-      getTimelineV2EstimatedRowHeight({
-        isExpanded: true,
-        campaignGroups: [{}, {}, {}],
-      })
-    ).toBe(48 + 32 + 3 * 34);
+  it("estimates row heights from the dimension tokens", () => {
+    expect(getTimelineEstimatedRowHeight({ isExpanded: false, laneCount: 5 })).toBe(
+      TIMELINE_DIMENSIONS.row
+    );
+    expect(getTimelineEstimatedRowHeight({ isExpanded: true, laneCount: 3 })).toBe(
+      TIMELINE_DIMENSIONS.row + 3 * TIMELINE_DIMENSIONS.lane
+    );
+    // Expanded rows always reserve at least one lane.
+    expect(getTimelineEstimatedRowHeight({ isExpanded: true, laneCount: 0 })).toBe(
+      TIMELINE_DIMENSIONS.row + TIMELINE_DIMENSIONS.lane
+    );
   });
 });

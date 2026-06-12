@@ -3,12 +3,12 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-type TimelineDataStatusV2Props = {
+type DataStatusProps = {
   tone: "warning" | "syncing";
   message: string;
 };
 
-export function TimelineDataStatusV2({ tone, message }: TimelineDataStatusV2Props) {
+export function DataStatus({ tone, message }: DataStatusProps) {
   return (
     <div
       className={cn(

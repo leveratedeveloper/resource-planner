@@ -62,12 +62,12 @@ describe("timeline view store", () => {
     expect(useTimelineViewStore.getState().hasHydratedWeekendPreference).toBe(true);
   });
 
-  it("clamps the resource column width to [220, 420]", () => {
+  it("clamps the resource column width to the token bounds [224, 416]", () => {
     useTimelineViewStore.getState().setResourceColumnWidth(100);
-    expect(useTimelineViewStore.getState().resourceColumnWidth).toBe(220);
+    expect(useTimelineViewStore.getState().resourceColumnWidth).toBe(224);
 
     useTimelineViewStore.getState().setResourceColumnWidth(1000);
-    expect(useTimelineViewStore.getState().resourceColumnWidth).toBe(420);
+    expect(useTimelineViewStore.getState().resourceColumnWidth).toBe(416);
 
     useTimelineViewStore.getState().setResourceColumnWidth(300);
     expect(useTimelineViewStore.getState().resourceColumnWidth).toBe(300);

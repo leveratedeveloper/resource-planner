@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import dynamic from "next/dynamic";
 import { useAuth } from "@/context/AuthContext";
 import { usePlannerHomeBootstrap } from "@/lib/query/hooks";
 import type { Brand } from "@/lib/query/hooks/useBrands";
@@ -16,21 +17,17 @@ import { useTimelineEmployees } from "@/lib/timeline-v2/use-timeline-employees";
 import { useTimelineExpansionStore } from "@/lib/timeline-v2/expansion-store";
 import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
 import {
-  TIMELINE_V2_CAMPAIGN_ROW_HEIGHT,
-  TIMELINE_V2_COLLAPSED_ROW_HEIGHT,
-  TIMELINE_V2_ROW_ESTIMATE,
+  TIMELINE_DIMENSIONS,
+  getTimelineEstimatedRowHeight,
   getTimelineV2CellWidth,
-  getTimelineV2TodayScrollLeft,
   getTimelineV2VisibleWidth,
 } from "@/lib/timeline-v2/layout";
-import { TimelineToolbarV2 } from "@/components/timeline-v2/TimelineToolbarV2";
-import { TimelineDataStatusV2 } from "@/components/timeline-v2/TimelineDataStatusV2";
-import { TimelineHeaderV2 } from "@/components/timeline-v2/TimelineHeaderV2";
-import { TimelineBodyV2 } from "@/components/timeline-v2/TimelineBodyV2";
-import { TimelineInitialSkeletonV2, TimelineEmptyStateV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
+import { TimelineToolbar } from "@/components/timeline-v2/TimelineToolbar";
+import { DataStatus } from "@/components/timeline-v2/DataStatus";
+import { TimelineHeader } from "@/components/timeline-v2/TimelineHeader";
+import { TimelineBody } from "@/components/timeline-v2/TimelineBody";
+import { TimelineInitialSkeleton, TimelineEmptyState } from "@/components/timeline-v2/LoadingStates";
 import { useTimelineV2Controller } from "@/components/timeline-v2/useTimelineV2Controller";
-import dynamic from "next/dynamic";
-import { startOfDay } from "date-fns";
 import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
 // Editing surfaces are conditionally rendered and never needed for first paint —
@@ -48,7 +45,7 @@ const MonthlyAllocationConfirmation = dynamic(
   { ssr: false }
 );
 
-type TimelineV2Props = {
+type TimelineProps = {
   initialTimelineAnchor: string;
   initialBootstrap?: PlannerHomeBootstrapResponse | null;
   brandId: string | null;
@@ -111,22 +108,18 @@ function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][s
   };
 }
 
-export function TimelineV2({
+export function Timeline({
   initialTimelineAnchor,
   initialBootstrap,
   brandId,
   department,
   searchQuery,
   projectId,
-}: TimelineV2Props) {
+}: TimelineProps) {
   const { session } = useAuth();
   const timelineRootRef = useRef<HTMLDivElement>(null);
-  const headerScrollRef = useRef<HTMLDivElement>(null);
-  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
-  const scrollSyncSourceRef = useRef<"header" | "body" | null>(null);
-  const todayScrollTargetRef = useRef<Date | null>(null);
-  const todayScrollRafRef = useRef<number | null>(null);
   const hasLoggedTimelineFirstVisibleRef = useRef(false);
 
   // View state (mode, anchor, weekends, column width) lives in the view store;
@@ -136,11 +129,7 @@ export function TimelineV2({
   const showWeekends = useTimelineViewStore((state) => state.showWeekends);
   const hasHydratedWeekendPreference = useTimelineViewStore((state) => state.hasHydratedWeekendPreference);
   const resourceColumnWidth = useTimelineViewStore((state) => state.resourceColumnWidth);
-  const setViewMode = useTimelineViewStore((state) => state.setViewMode);
-  const setAnchorDate = useTimelineViewStore((state) => state.setAnchorDate);
-  const toggleWeekends = useTimelineViewStore((state) => state.toggleWeekends);
   const hydrateWeekendPreference = useTimelineViewStore((state) => state.hydrateWeekendPreference);
-  const setResourceColumnWidth = useTimelineViewStore((state) => state.setResourceColumnWidth);
 
   const currentDate = anchorDate ?? getInitialDate(initialTimelineAnchor);
 
@@ -200,6 +189,8 @@ export function TimelineV2({
     [currentDate, showWeekends, viewMode]
   );
 
+  // Interim px cell width for the legacy drag-create cells (Phase 5 removes
+  // their last consumer); all new components size themselves via CSS grid.
   const cellWidth = useMemo(() => {
     if (!containerWidth) return 100;
     return getTimelineV2CellWidth(containerWidth, columns.columns.length);
@@ -291,8 +282,7 @@ export function TimelineV2({
   const days = useMemo(() => columns.columns.map((column) => column.date), [columns.columns]);
 
   // Row models depend on data + days + viewMode ONLY. Expanding rows, typing in
-  // search, or switching filters never rebuilds them — that was the structural
-  // cause of the old timeline's sluggishness.
+  // search, or switching filters never rebuilds them.
   const rowModels = useMemo(
     () =>
       buildEmployeeRowModels({
@@ -335,17 +325,21 @@ export function TimelineV2({
 
   const rowVirtualizer = useVirtualizer({
     count: visibleIds.length,
-    getScrollElement: () => bodyScrollRef.current,
+    getScrollElement: () => scrollRef.current,
+    // Measurements follow the employee, not the list slot, across filter changes.
+    getItemKey: (index) => visibleIds[index] ?? index,
+    // The sticky header occupies the top of the scroll container.
+    scrollMargin: TIMELINE_DIMENSIONS.header,
     estimateSize: (index) => {
       const id = visibleIds[index];
       const model = id ? rowModels.get(id) : undefined;
-      if (!model) return TIMELINE_V2_ROW_ESTIMATE;
       // Expansion is read non-reactively; measureElement corrects real heights
       // and the expansion subscription below re-measures on toggle.
-      if (!useTimelineExpansionStore.getState().expandedIds.has(id)) {
-        return TIMELINE_V2_COLLAPSED_ROW_HEIGHT;
-      }
-      return TIMELINE_V2_COLLAPSED_ROW_HEIGHT + Math.max(model.projectLanes.length, 1) * TIMELINE_V2_CAMPAIGN_ROW_HEIGHT;
+      const isExpanded = !!id && useTimelineExpansionStore.getState().expandedIds.has(id);
+      return getTimelineEstimatedRowHeight({
+        isExpanded,
+        laneCount: model?.projectLanes.length ?? 0,
+      });
     },
     overscan: 10,
   });
@@ -366,48 +360,6 @@ export function TimelineV2({
     useTimelineExpansionStore.getState().collapseAll();
     rowVirtualizer.scrollToOffset(0);
   }, [rowStateResetKey, rowVirtualizer]);
-
-  useEffect(() => {
-    return () => {
-      if (todayScrollRafRef.current !== null) {
-        cancelAnimationFrame(todayScrollRafRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isLayoutReady || !todayScrollTargetRef.current) return;
-
-    const today = todayScrollTargetRef.current;
-    todayScrollTargetRef.current = null;
-
-    if (todayScrollRafRef.current !== null) {
-      cancelAnimationFrame(todayScrollRafRef.current);
-    }
-
-    todayScrollRafRef.current = requestAnimationFrame(() => {
-      const container = bodyScrollRef.current;
-      if (!container) {
-        todayScrollRafRef.current = null;
-        return;
-      }
-
-      const todayIndex = columns.columns.findIndex((column) => startOfDay(column.date).getTime() === startOfDay(today).getTime());
-      if (todayIndex < 0) {
-        todayScrollRafRef.current = null;
-        return;
-      }
-
-      const scrollLeft = getTimelineV2TodayScrollLeft({
-        todayIndex,
-        cellWidth,
-        viewportWidth: container.offsetWidth,
-      });
-
-      container.scrollTo({ left: scrollLeft, behavior: "smooth" });
-      todayScrollRafRef.current = null;
-    });
-  }, [cellWidth, columns.columns, isLayoutReady]);
 
   useEffect(() => {
     if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
@@ -487,113 +439,56 @@ export function TimelineV2({
     createdByUuid: session?.employee?.uuid ?? null,
   });
 
-  const handleBodyScroll = useCallback(() => {
-    if (!bodyScrollRef.current || !headerScrollRef.current) return;
-    if (scrollSyncSourceRef.current === "header") {
-      scrollSyncSourceRef.current = null;
-      return;
-    }
-
-    scrollSyncSourceRef.current = "body";
-    headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
-  }, []);
-
-  const handleHeaderScroll = useCallback(() => {
-    if (!headerScrollRef.current || !bodyScrollRef.current) return;
-    if (scrollSyncSourceRef.current === "body") {
-      scrollSyncSourceRef.current = null;
-      return;
-    }
-
-    scrollSyncSourceRef.current = "header";
-    bodyScrollRef.current.scrollLeft = headerScrollRef.current.scrollLeft;
-  }, []);
-
-  const handleToday = useCallback(() => {
-    todayScrollTargetRef.current = new Date();
-    setAnchorDate(todayScrollTargetRef.current);
-  }, [setAnchorDate]);
-
-  const handleDateChange = useCallback((date: Date) => {
-    setAnchorDate(date);
-  }, [setAnchorDate]);
-
-  const handleResourceColumnResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const startX = event.clientX;
-    const startWidth = resourceColumnWidth;
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      setResourceColumnWidth(startWidth + moveEvent.clientX - startX);
-    };
-
-    const handlePointerUp = () => {
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerUp);
-    };
-
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerUp);
-  }, [resourceColumnWidth, setResourceColumnWidth]);
-
   return (
-    <div ref={timelineRootRef} className="flex h-full flex-col" data-testid="timeline-v2-root">
-      <TimelineToolbarV2
-        currentDate={currentDate}
-        viewMode={viewMode}
-        showWeekends={showWeekends}
-        onViewModeChange={setViewMode}
-        onDateChange={handleDateChange}
-        onToggleWeekends={toggleWeekends}
-        onToday={handleToday}
-      />
+    <div
+      ref={timelineRootRef}
+      className="flex h-full flex-col"
+      style={{
+        "--timeline-cols": columns.columns.length,
+        "--timeline-resource-col": `${resourceColumnWidth}px`,
+      } as React.CSSProperties}
+      data-testid="timeline-v2-root"
+    >
+      <TimelineToolbar currentDate={currentDate} />
       {plannerFreshnessState ? (
-        <TimelineDataStatusV2 tone={plannerFreshnessState.tone} message={plannerFreshnessState.message} />
-      ) : null}
-
-      {isLayoutReady ? (
-        <TimelineHeaderV2
-          columns={columns.columns}
-          cellWidth={cellWidth}
-          resourceColumnWidth={resourceColumnWidth}
-          headerScrollRef={headerScrollRef}
-          onHeaderScroll={handleHeaderScroll}
-          onResourceColumnResizeStart={handleResourceColumnResizeStart}
-        />
+        <DataStatus tone={plannerFreshnessState.tone} message={plannerFreshnessState.message} />
       ) : null}
 
       {isInitialTimelineLoading ? (
         <div className="flex-1 overflow-auto">
-          <TimelineInitialSkeletonV2 />
+          {isLayoutReady ? <TimelineHeader columns={columns.columns} /> : null}
+          <TimelineInitialSkeleton />
         </div>
       ) : visibleIds.length === 0 ? (
         <div className="flex-1 overflow-auto">
-          <TimelineEmptyStateV2 />
+          <TimelineHeader columns={columns.columns} />
+          <TimelineEmptyState />
         </div>
       ) : (
-        <TimelineBodyV2
-          bodyScrollRef={bodyScrollRef}
-          onBodyScroll={handleBodyScroll}
-          rowVirtualizer={rowVirtualizer}
-          virtualRows={virtualRows}
-          visibleIds={visibleIds}
-          rowModels={rowModels}
-          columns={columns.columns}
-          cellWidth={cellWidth}
-          resourceColumnWidth={resourceColumnWidth}
-          viewMode={viewMode}
-          showTimelineLoading={rowLoadingState.showTimelineLoading}
-          showExpandedLoading={rowLoadingState.showExpandedLoading}
-          canEditAssignments={rowLoadingState.canEditAssignments && !!session?.access?.can_view_all}
-          brandId={brandId}
-          projectId={projectId}
-          onUpdatePlanned={controller.handleUpdatePlannedAssignment}
-          onDeletePlanned={controller.handleDeletePlannedAssignment}
-          onOpenPlannedCreate={controller.handleCreatePlannedAssignment}
-          onOpenMonthlyAllocation={controller.handleOpenMonthlyAllocation}
-          isFetchingNextEmployeePage={isFetchingNextEmployeePage}
-        />
+        // Single scroll container: sticky header + virtualized rows. No manual
+        // header/body scroll sync.
+        <div ref={scrollRef} className="flex-1 overflow-auto">
+          <TimelineHeader columns={columns.columns} />
+          <TimelineBody
+            rowVirtualizer={rowVirtualizer}
+            virtualRows={virtualRows}
+            visibleIds={visibleIds}
+            rowModels={rowModels}
+            columns={columns.columns}
+            cellWidth={cellWidth}
+            viewMode={viewMode}
+            showTimelineLoading={rowLoadingState.showTimelineLoading}
+            showExpandedLoading={rowLoadingState.showExpandedLoading}
+            canEditAssignments={rowLoadingState.canEditAssignments && !!session?.access?.can_view_all}
+            brandId={brandId}
+            projectId={projectId}
+            onUpdatePlanned={controller.handleUpdatePlannedAssignment}
+            onDeletePlanned={controller.handleDeletePlannedAssignment}
+            onOpenPlannedCreate={controller.handleCreatePlannedAssignment}
+            onOpenMonthlyAllocation={controller.handleOpenMonthlyAllocation}
+            isFetchingNextEmployeePage={isFetchingNextEmployeePage}
+          />
+        </div>
       )}
 
       {controller.plannedPopover ? (

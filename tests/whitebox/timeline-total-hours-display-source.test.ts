@@ -15,7 +15,7 @@ describe("timeline total-hours display source contract", () => {
   });
 
   it("uses hoursPerDay display helper for V2 monthly modal totals", () => {
-    const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+    const source = readFileSync("components/timeline-v2/ProjectLane.tsx", "utf8");
 
     expect(source).toContain("calculateAssignmentDisplayTotalHours");
     expect(source).toContain("const range = { startDate: monthStart, endDate: monthEnd };");

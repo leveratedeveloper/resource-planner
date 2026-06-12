@@ -44,6 +44,16 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  /* Timeline dimension tokens (DESIGN.md §2.2). Mirrored in px by
+     TIMELINE_DIMENSIONS in lib/timeline-v2/layout.ts for the virtualizer and
+     resize clamp; tests/whitebox/timeline-dimension-tokens.test.ts guards
+     against drift. */
+  --spacing-timeline-row: 3rem;              /* 48px summary/collapsed row */
+  --spacing-timeline-lane: 2rem;             /* 32px project lane */
+  --spacing-timeline-header: 3rem;           /* 48px date header strip */
+  --spacing-timeline-resource-col: 16rem;    /* 256px default resource column */
+  --spacing-timeline-resource-col-min: 14rem;/* 224px resize lower bound */
+  --spacing-timeline-resource-col-max: 26rem;/* 416px resize upper bound */
 }
 
 :root {
@@ -122,4 +132,13 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Shared timeline date-column template: header and every row consume the same
+   var(--timeline-cols), so they align by construction (DESIGN.md §2.1). The
+   var is set on the timeline root; the resource column width travels the same
+   way via --timeline-resource-col (resize handle writes it). */
+@utility timeline-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--timeline-cols, 1), minmax(0, 1fr));
 }

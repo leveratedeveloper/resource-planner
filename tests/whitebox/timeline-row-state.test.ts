@@ -47,7 +47,7 @@ describe("timeline row state helpers", () => {
   });
 
   it("resets expanded timeline row state from the global filter signature", () => {
-    const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(timelineSource).toContain("rowStateResetKey");
     expect(timelineSource).toContain("useTimelineExpansionStore.getState().collapseAll()");

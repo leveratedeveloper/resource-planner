@@ -1,14 +1,27 @@
-export const TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH = 250;
-export const TIMELINE_V2_MIN_RESOURCE_COLUMN_WIDTH = 220;
-export const TIMELINE_V2_MAX_RESOURCE_COLUMN_WIDTH = 420;
-export const TIMELINE_V2_ROW_ESTIMATE = 56;
-export const TIMELINE_V2_COLLAPSED_ROW_HEIGHT = 48;
-export const TIMELINE_V2_CAMPAIGN_ROW_HEIGHT = 34;
+// Pixel mirror of the CSS dimension tokens in app/globals.css (@theme
+// --spacing-timeline-*). Only the virtualizer estimates and the resource-column
+// resize clamp may consume these numbers; components style themselves with the
+// generated utilities (h-timeline-row, h-timeline-lane, ...). The drift guard
+// lives in tests/whitebox/timeline-dimension-tokens.test.ts.
+export const TIMELINE_DIMENSIONS = {
+  row: 48,
+  lane: 32,
+  header: 48,
+  resourceCol: { default: 256, min: 224, max: 416 },
+} as const;
+
+// Legacy aliases — removed in the final rename sweep.
+export const TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH = TIMELINE_DIMENSIONS.resourceCol.default;
+export const TIMELINE_V2_MIN_RESOURCE_COLUMN_WIDTH = TIMELINE_DIMENSIONS.resourceCol.min;
+export const TIMELINE_V2_MAX_RESOURCE_COLUMN_WIDTH = TIMELINE_DIMENSIONS.resourceCol.max;
+export const TIMELINE_V2_ROW_ESTIMATE = TIMELINE_DIMENSIONS.row;
+export const TIMELINE_V2_COLLAPSED_ROW_HEIGHT = TIMELINE_DIMENSIONS.row;
+export const TIMELINE_V2_CAMPAIGN_ROW_HEIGHT = TIMELINE_DIMENSIONS.lane;
 
 export function clampTimelineV2ResourceColumnWidth(width: number): number {
   return Math.min(
-    TIMELINE_V2_MAX_RESOURCE_COLUMN_WIDTH,
-    Math.max(TIMELINE_V2_MIN_RESOURCE_COLUMN_WIDTH, width)
+    TIMELINE_DIMENSIONS.resourceCol.max,
+    Math.max(TIMELINE_DIMENSIONS.resourceCol.min, width)
   );
 }
 
@@ -19,22 +32,6 @@ export function getTimelineV2VisibleWidth(rootWidth: number, resourceColumnWidth
 export function getTimelineV2CellWidth(availableWidth: number, columnCount: number): number {
   const safeColumnCount = Math.max(columnCount, 1);
   return availableWidth / safeColumnCount;
-}
-
-export function getTimelineV2Layout({
-  availableWidth,
-  columnCount,
-}: {
-  availableWidth: number;
-  columnCount: number;
-}) {
-  const safeColumnCount = Math.max(columnCount, 1);
-  const timelineWidth = Math.max(availableWidth, 100);
-
-  return {
-    columnWidth: getTimelineV2CellWidth(timelineWidth, safeColumnCount),
-    timelineWidth,
-  };
 }
 
 export function getTimelineV2RangePosition({
@@ -57,23 +54,13 @@ export function getTimelineV2RangePosition({
   };
 }
 
-export function getTimelineV2TodayScrollLeft({
-  todayIndex,
-  cellWidth,
-  viewportWidth,
+export function getTimelineEstimatedRowHeight({
+  isExpanded,
+  laneCount,
 }: {
-  todayIndex: number;
-  cellWidth: number;
-  viewportWidth: number;
-}) {
-  return Math.max(0, todayIndex * cellWidth - viewportWidth / 2 + cellWidth / 2);
-}
-
-export function getTimelineV2EstimatedRowHeight(row?: {
   isExpanded: boolean;
-  campaignGroups: Array<unknown>;
+  laneCount: number;
 }): number {
-  if (!row) return TIMELINE_V2_ROW_ESTIMATE;
-  if (!row.isExpanded) return TIMELINE_V2_COLLAPSED_ROW_HEIGHT;
-  return TIMELINE_V2_COLLAPSED_ROW_HEIGHT + Math.max(row.campaignGroups.length, 1) * TIMELINE_V2_CAMPAIGN_ROW_HEIGHT;
+  if (!isExpanded) return TIMELINE_DIMENSIONS.row;
+  return TIMELINE_DIMENSIONS.row + Math.max(laneCount, 1) * TIMELINE_DIMENSIONS.lane;
 }

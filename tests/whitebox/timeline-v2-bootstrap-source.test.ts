@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("TimelineV2 bootstrap integration", () => {
   it("uses the home bootstrap hook as the active timeline data source", () => {
-    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const source = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(source).toContain("usePlannerHomeBootstrap");
     expect(source).toContain("const plannerTimeline = bootstrapPlannerTimeline");
@@ -19,7 +19,7 @@ describe("TimelineV2 bootstrap integration", () => {
   });
 
   it("enables client bootstrap from a valid bootstrap request without requiring server initial data", () => {
-    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const source = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(source).toContain("enabled: !!bootstrapRequest");
     expect(source).not.toContain("enabled: shouldUseHomeBootstrap && !!bootstrapRequest");
@@ -27,7 +27,7 @@ describe("TimelineV2 bootstrap integration", () => {
   });
 
   it("keeps optional initial bootstrap support only as query seed data", () => {
-    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const source = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(source).toContain("initialBootstrap?: PlannerHomeBootstrapResponse | null");
     expect(source).toContain("initialData: initialBootstrap ?? undefined");

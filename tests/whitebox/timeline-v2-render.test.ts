@@ -110,20 +110,20 @@ vi.mock("@/components/timeline-v2/useTimelineV2Controller", () => ({
   }),
 }));
 
-vi.mock("@/components/timeline-v2/TimelineBodyV2", () => ({
-  TimelineBodyV2: () => React.createElement("div", { "data-testid": "timeline-v2-body" }),
+vi.mock("@/components/timeline-v2/TimelineBody", () => ({
+  TimelineBody: () => React.createElement("div", { "data-testid": "timeline-v2-body" }),
 }));
 
-vi.mock("@/components/timeline-v2/TimelineLoadingStatesV2", () => ({
-  TimelineInitialSkeletonV2: () => React.createElement("div", { "data-testid": "timeline-v2-initial-skeleton" }),
-  TimelineEmptyStateV2: () => React.createElement("div", { "data-testid": "timeline-v2-empty-state" }),
+vi.mock("@/components/timeline-v2/LoadingStates", () => ({
+  TimelineInitialSkeleton: () => React.createElement("div", { "data-testid": "timeline-v2-initial-skeleton" }),
+  TimelineEmptyState: () => React.createElement("div", { "data-testid": "timeline-v2-empty-state" }),
 }));
 
 describe("timeline-v2 render smoke test", () => {
   it("renders the planner shell without browser automation", async () => {
-    const { TimelineV2 } = await import("@/components/timeline-v2");
+    const { Timeline } = await import("@/components/timeline-v2");
     const html = renderToStaticMarkup(
-      React.createElement(TimelineV2, {
+      React.createElement(Timeline, {
         initialTimelineAnchor: "2026-06-04",
         brandId: null,
         department: null,

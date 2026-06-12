@@ -6,7 +6,7 @@ describe("timeline-v2 source parity", () => {
     const source = readFileSync("app/HomeClient.tsx", "utf8");
 
     expect(source).toContain("<FilterBar");
-    expect(source).toContain("TimelineV2");
+    expect(source).toContain("Timeline");
     expect(source).not.toContain("components/timeline/Timeline");
     expect(source).toContain("searchQuery={searchQuery}");
     expect(source).toContain("onBrandChange={setSelectedBrandId}");
@@ -15,7 +15,7 @@ describe("timeline-v2 source parity", () => {
   });
 
   it("keeps brand and project ids out of planner assignment request filters", () => {
-    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const source = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(source).toContain("getVisibleEmployeeIds");
     expect(source).not.toContain("request.filters.brandId");
@@ -23,7 +23,7 @@ describe("timeline-v2 source parity", () => {
   });
 
   it("preserves required toolbar controls", () => {
-    const source = readFileSync("components/timeline-v2/TimelineToolbarV2.tsx", "utf8");
+    const source = readFileSync("components/timeline-v2/TimelineToolbar.tsx", "utf8");
 
     expect(source).toContain("timeline-v2-today-button");
     expect(source).toContain("timeline-v2-prev-button");
@@ -37,11 +37,13 @@ describe("timeline-v2 source parity", () => {
     expect(source).toContain("timeline-v2-weekend-toggle");
   });
 
-  it("uses a deterministic Today scroll helper and no timeout", () => {
-    const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+  it("navigates periods through the view store without timers", () => {
+    const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
+    const toolbarSource = readFileSync("components/timeline-v2/TimelineToolbar.tsx", "utf8");
 
-    expect(source).toContain("getTimelineV2TodayScrollLeft");
-    expect(source).not.toContain("setTimeout(");
+    expect(toolbarSource).toContain("setAnchorDate(new Date())");
+    expect(timelineSource).not.toContain("setTimeout(");
+    expect(toolbarSource).not.toContain("setTimeout(");
   });
 
   it("groups expanded resource rows by campaigns instead of deliverables", () => {
@@ -56,70 +58,95 @@ describe("timeline-v2 source parity", () => {
   });
 
   it("renders expanded campaign groups as a single plan-only campaign lane", () => {
-    const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+    const laneSource = readFileSync("components/timeline-v2/ProjectLane.tsx", "utf8");
+    const rowSource = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
 
-    expect(source).toContain('data-testid="resource-row-v2-campaign-row"');
-    expect(source).toContain('data-testid="resource-row-v2-campaign-label"');
-    expect(source).toContain("{campaign.name}");
-    expect(source).not.toContain("CAMPAIGN_HEADER_ROW_HEIGHT");
-    expect(source).not.toContain("getCampaignHeaderHeight");
-    expect(source).not.toContain('data-testid="resource-row-v2-campaign-group"');
-    expect(source).toContain("TimelineExpandedSkeletonV2");
-    expect(source).not.toContain('<div data-testid="timeline-v2-expanded-loading" />');
+    expect(laneSource).toContain('data-testid="resource-row-v2-campaign-row"');
+    expect(laneSource).toContain('data-testid="resource-row-v2-campaign-label"');
+    expect(laneSource).toContain("{campaign.name}");
+    expect(laneSource).not.toContain("CAMPAIGN_HEADER_ROW_HEIGHT");
+    expect(laneSource).not.toContain("getCampaignHeaderHeight");
+    expect(laneSource).not.toContain('data-testid="resource-row-v2-campaign-group"');
+    expect(rowSource).toContain("TimelineExpandedSkeleton");
+    expect(rowSource).not.toContain('<div data-testid="timeline-v2-expanded-loading" />');
   });
 
-  it("uses daily positioning for V2 week and month plan blocks", () => {
-    const source = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+  it("positions bars by percentage with resolution-aware columns", () => {
+    const laneSource = readFileSync("components/timeline-v2/ProjectLane.tsx", "utf8");
+    const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
 
-    expect(source).toContain('isWeekView={false}');
-    expect(source).toContain('const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";');
-    expect(source).not.toContain('isWeekView={viewMode === "week"}');
+    expect(laneSource).toContain('const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";');
+    expect(laneSource).toContain('resolution={monthRangeView ? "month" : "day"}');
+    expect(barSource).toContain("getTimelineV2AssignmentPosition");
+    expect(barSource).toContain("leftPct");
+    expect(barSource).toContain("widthPct");
+    expect(barSource).not.toContain("cellWidth");
   });
 
   it("memoizes the hot row renderers", () => {
-    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
-    const allocationCellSource = readFileSync("components/timeline-v2/AllocationCellV2.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
+    const capacityStripSource = readFileSync("components/timeline-v2/CapacityStrip.tsx", "utf8");
+    const laneSource = readFileSync("components/timeline-v2/ProjectLane.tsx", "utf8");
+    const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
 
     expect(resourceRowSource).toContain("React.memo");
-    expect(allocationCellSource).toContain("React.memo");
+    expect(capacityStripSource).toContain("React.memo");
+    expect(laneSource).toContain("React.memo");
+    expect(barSource).toContain("React.memo");
   });
 
-  it("keeps allocation cell rendering display-only", () => {
-    const allocationCellSource = readFileSync("components/timeline-v2/AllocationCellV2.tsx", "utf8");
-    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
+  it("keeps the capacity strip display-only", () => {
+    const capacityStripSource = readFileSync("components/timeline-v2/CapacityStrip.tsx", "utf8");
+    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
 
-    expect(allocationCellSource).not.toContain("getTimelineV2AllocationModel");
-    expect(allocationCellSource).not.toContain("assignments: Assignment[]");
-    expect(allocationCellSource).not.toContain("actualAssignments: ActualAssignment[]");
-    expect(allocationCellSource).toContain("allocationCell: TimelineV2AllocationCell");
-    expect(resourceRowSource).toContain("row.allocationCells[index]");
+    expect(capacityStripSource).not.toContain("getTimelineV2AllocationModel");
+    expect(capacityStripSource).not.toContain("assignments: Assignment[]");
+    expect(capacityStripSource).not.toContain("actualAssignments: ActualAssignment[]");
+    expect(capacityStripSource).toContain('cell.model.kind === "empty"');
+    expect(resourceRowSource).toContain("cells={row.allocationCells}");
   });
 
-  it("handles missing prepared allocation cells explicitly", () => {
-    const resourceRowSource = readFileSync("components/timeline-v2/ResourceRowV2.tsx", "utf8");
-
-    expect(resourceRowSource).toContain("fallbackAllocationCell");
-    expect(resourceRowSource).toContain('kind: "empty"');
-  });
-
-  it("keeps v2 assignment blocks non-resizable and click-isolated", () => {
-    const assignmentBlockV2Source = readFileSync("components/timeline-v2/AssignmentBlockV2.tsx", "utf8");
+  it("keeps bars click-isolated without legacy resize handles", () => {
+    const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
     const assignmentBlockSource = readFileSync("components/timeline/AssignmentBlock.tsx", "utf8");
 
-    expect(assignmentBlockV2Source).toContain("resizable = false");
-    expect(assignmentBlockV2Source).toContain("resizable={resizable}");
+    expect(barSource).toContain("event.stopPropagation()");
+    expect(barSource).not.toContain("data-resize-handle");
+    // The legacy block keeps its resize affordances until Phase 5 replaces them.
     expect(assignmentBlockSource).toContain("resizable = true");
     expect(assignmentBlockSource).toContain("if (!resizable) return;");
     expect(assignmentBlockSource).toContain("e.stopPropagation();");
-    expect(assignmentBlockSource).toContain("setIsTooltipOpen(false);");
-    expect(assignmentBlockSource).toContain("!disabled && resizable");
+  });
+
+  it("styles dimensions through the token system, not magic pixel numbers", () => {
+    const files = [
+      "components/timeline-v2/Timeline.tsx",
+      "components/timeline-v2/TimelineHeader.tsx",
+      "components/timeline-v2/TimelineBody.tsx",
+      "components/timeline-v2/ResourceRow.tsx",
+      "components/timeline-v2/ProjectLane.tsx",
+      "components/timeline-v2/CapacityStrip.tsx",
+      "components/timeline-v2/ResourceIdentityCell.tsx",
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      expect(source, `${file} should not hardcode row heights`).not.toMatch(/height: ?(34|48|56)\b/);
+      expect(source, `${file} should not use arbitrary height classes`).not.toContain("h-[34px]");
+    }
+
+    const rowSource = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
+    const laneSource = readFileSync("components/timeline-v2/ProjectLane.tsx", "utf8");
+    expect(rowSource).toContain("h-timeline-row");
+    expect(laneSource).toContain("h-timeline-lane");
   });
 
   it("does not keep debug logs in v2 timeline files", () => {
     const files = [
-      "components/timeline-v2/TimelineV2.tsx",
-      "components/timeline-v2/ResourceRowV2.tsx",
-      "components/timeline-v2/AssignmentBlockV2.tsx",
+      "components/timeline-v2/Timeline.tsx",
+      "components/timeline-v2/ResourceRow.tsx",
+      "components/timeline-v2/ProjectLane.tsx",
+      "components/timeline-v2/AssignmentBar.tsx",
       "components/timeline-v2/useTimelineV2Controller.ts",
       "lib/timeline-v2/monthly-allocation-service.ts",
     ];

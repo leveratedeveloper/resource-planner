@@ -4,12 +4,10 @@ import React from "react";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 
-type ResourceIdentityCellV2Props = {
+type ResourceIdentityCellProps = {
   name: string;
   role: string;
   department: string;
-  resourceColumnWidth: number;
-  height: number;
   expanded: boolean;
   onToggleExpanded: () => void;
   testId?: string;
@@ -25,20 +23,17 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-export function ResourceIdentityCellV2({
+export const ResourceIdentityCell = React.memo(function ResourceIdentityCell({
   name,
   role,
   department,
-  resourceColumnWidth,
-  height,
   expanded,
   onToggleExpanded,
   testId = "resource-row-v2-identity",
-}: ResourceIdentityCellV2Props) {
+}: ResourceIdentityCellProps) {
   return (
     <div
-      className="sticky left-0 z-20 flex shrink-0 items-center gap-3 border-r bg-background p-2"
-      style={{ width: resourceColumnWidth, height }}
+      className="sticky left-0 z-20 flex h-full w-[var(--timeline-resource-col)] shrink-0 items-center gap-3 border-r bg-background p-2"
       data-testid={testId}
     >
       <button
@@ -60,4 +55,4 @@ export function ResourceIdentityCellV2({
       </div>
     </div>
   );
-}
+});
