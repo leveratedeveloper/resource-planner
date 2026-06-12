@@ -74,3 +74,12 @@ export type TimelineV2ResourceRow = {
   campaignGroups: TimelineV2CampaignGroup[];
   isExpanded: boolean;
 };
+
+// Clean aliases — new (post-rework) code uses these names; the V2-prefixed
+// originals are removed in the final rename sweep.
+export type TimelineViewMode = TimelineV2ViewMode;
+export type TimelineResolution = TimelineV2Resolution;
+export type TimelineColumn = TimelineV2Column;
+export type TimelineColumnSet = TimelineV2ColumnSet;
+export type TimelineFilters = TimelineV2Filters;
+export type TimelineResource = TimelineV2Resource;

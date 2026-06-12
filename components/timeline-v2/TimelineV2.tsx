@@ -3,28 +3,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuth } from "@/context/AuthContext";
-import {
-  useEmployees,
-  useInfiniteEmployees,
-  usePlannerHomeBootstrap,
-} from "@/lib/query/hooks";
+import { usePlannerHomeBootstrap } from "@/lib/query/hooks";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { filterTimelineEmployees, getLoadedTimelineEmployees, shouldUseCompleteEmployeeList } from "@/lib/timeline/employees";
 import { getResourceRowLoadingState } from "@/lib/timeline/resource-row-loading";
-import { getTimelineRowStateResetKey, hasEmployeeFlag, setEmployeeFlag } from "@/lib/timeline/row-state";
+import { getTimelineRowStateResetKey } from "@/lib/timeline/row-state";
 import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/timeline/initial-load";
 import { getTimelineV2Columns, getTimelineV2Resolution } from "@/lib/timeline-v2/date-range";
-import { buildTimelineV2Rows } from "@/lib/timeline-v2/row-model";
+import { buildEmployeeRowModels } from "@/lib/timeline-v2/row-model";
+import { getVisibleEmployeeIds } from "@/lib/timeline-v2/visible-rows";
+import { useTimelineEmployees } from "@/lib/timeline-v2/use-timeline-employees";
+import { useTimelineExpansionStore } from "@/lib/timeline-v2/expansion-store";
+import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
 import {
-  TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH,
-  clampTimelineV2ResourceColumnWidth,
+  TIMELINE_V2_CAMPAIGN_ROW_HEIGHT,
+  TIMELINE_V2_COLLAPSED_ROW_HEIGHT,
+  TIMELINE_V2_ROW_ESTIMATE,
   getTimelineV2CellWidth,
-  getTimelineV2EstimatedRowHeight,
   getTimelineV2TodayScrollLeft,
   getTimelineV2VisibleWidth,
 } from "@/lib/timeline-v2/layout";
-import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 import { TimelineToolbarV2 } from "@/components/timeline-v2/TimelineToolbarV2";
 import { TimelineDataStatusV2 } from "@/components/timeline-v2/TimelineDataStatusV2";
 import { TimelineHeaderV2 } from "@/components/timeline-v2/TimelineHeaderV2";
@@ -32,10 +30,8 @@ import { TimelineBodyV2 } from "@/components/timeline-v2/TimelineBodyV2";
 import { TimelineInitialSkeletonV2, TimelineEmptyStateV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 import { useTimelineV2Controller } from "@/components/timeline-v2/useTimelineV2Controller";
 import dynamic from "next/dynamic";
-import { startOfWeek, startOfDay } from "date-fns";
+import { startOfDay } from "date-fns";
 import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
-
-const DEFAULT_TIMELINE_VIEW: TimelineV2ViewMode = "quarter";
 
 // Editing surfaces are conditionally rendered and never needed for first paint —
 // load them on demand so they stay out of the initial bundle.
@@ -127,25 +123,30 @@ export function TimelineV2({
   const timelineRootRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
-  const [currentDate, setCurrentDate] = useState<Date>(() => getInitialDate(initialTimelineAnchor));
-  const [viewMode, setViewMode] = useState<TimelineV2ViewMode>(DEFAULT_TIMELINE_VIEW);
-  const [showWeekends, setShowWeekends] = useState(false);
-  const [hasLoadedWeekendPreference, setHasLoadedWeekendPreference] = useState(false);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
-  const [resourceColumnWidth, setResourceColumnWidth] = useState(TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH);
-  const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Set<string>>(new Set());
   const scrollSyncSourceRef = useRef<"header" | "body" | null>(null);
   const todayScrollTargetRef = useRef<Date | null>(null);
   const todayScrollRafRef = useRef<number | null>(null);
   const hasLoggedTimelineFirstVisibleRef = useRef(false);
 
+  // View state (mode, anchor, weekends, column width) lives in the view store;
+  // toggling any of it never rebuilds the row models below.
+  const viewMode = useTimelineViewStore((state) => state.viewMode);
+  const anchorDate = useTimelineViewStore((state) => state.anchorDate);
+  const showWeekends = useTimelineViewStore((state) => state.showWeekends);
+  const hasHydratedWeekendPreference = useTimelineViewStore((state) => state.hasHydratedWeekendPreference);
+  const resourceColumnWidth = useTimelineViewStore((state) => state.resourceColumnWidth);
+  const setViewMode = useTimelineViewStore((state) => state.setViewMode);
+  const setAnchorDate = useTimelineViewStore((state) => state.setAnchorDate);
+  const toggleWeekends = useTimelineViewStore((state) => state.toggleWeekends);
+  const hydrateWeekendPreference = useTimelineViewStore((state) => state.hydrateWeekendPreference);
+  const setResourceColumnWidth = useTimelineViewStore((state) => state.setResourceColumnWidth);
+
+  const currentDate = anchorDate ?? getInitialDate(initialTimelineAnchor);
+
   useEffect(() => {
-    const savedShowWeekends = localStorage.getItem("showWeekends");
-    if (savedShowWeekends !== null) {
-      setShowWeekends(savedShowWeekends === "true");
-    }
-    setHasLoadedWeekendPreference(true);
-  }, []);
+    hydrateWeekendPreference();
+  }, [hydrateWeekendPreference]);
 
   // Preload the lazy editor chunks once the browser is idle. Keeps them out of
   // the initial bundle but ensures the first click opens its dialog instantly —
@@ -203,7 +204,7 @@ export function TimelineV2({
     if (!containerWidth) return 100;
     return getTimelineV2CellWidth(containerWidth, columns.columns.length);
   }, [columns.columns.length, containerWidth]);
-  const isLayoutReady = hasLoadedWeekendPreference && containerWidth !== null;
+  const isLayoutReady = hasHydratedWeekendPreference && containerWidth !== null;
   const assignmentDateRange = useMemo<TimelineAssignmentDateRange | undefined>(() => {
     if (!columns.startDate || !columns.endDate) return undefined;
     return {
@@ -235,13 +236,6 @@ export function TimelineV2({
     };
   }, [assignmentDateRange, brandId, department, projectId, searchQuery, viewMode]);
 
-  const useCompleteEmployeeList = shouldUseCompleteEmployeeList({
-    brandId,
-    department,
-    projectId,
-    searchQuery,
-  });
-
   const {
     data: plannerHomeBootstrap,
     isLoading: isLoadingPlannerHomeBootstrap,
@@ -256,50 +250,21 @@ export function TimelineV2({
   });
 
   const bootstrapPlannerTimeline = plannerHomeBootstrap?.plannerTimeline;
-  const bootstrapEmployeePage = useMemo(
-    () =>
-      plannerHomeBootstrap
-        ? {
-            data: plannerHomeBootstrap.employees,
-            total: plannerHomeBootstrap.employeeTotal,
-            hasMore: plannerHomeBootstrap.employeeHasMore,
-          }
-        : null,
-    [plannerHomeBootstrap]
+  const timelineFilters = useMemo(
+    () => ({ brandId, department, projectId, searchQuery }),
+    [brandId, department, projectId, searchQuery]
   );
-  const { data: completeEmployees = [], isLoading: isLoadingCompleteEmployees } = useEmployees({
-    enabled: useCompleteEmployeeList,
-  });
   const {
-    data: incrementalEmployeePages,
-    isLoading: isLoadingIncrementalEmployees,
-    hasNextPage: hasNextEmployeePage,
-    isFetchingNextPage: isFetchingNextEmployeePage,
-    fetchNextPage: fetchNextEmployeePage,
-  } = useInfiniteEmployees(searchQuery, {
-    enabled: !useCompleteEmployeeList,
-    initialPage: bootstrapEmployeePage,
-    initialPageUpdatedAt: plannerHomeBootstrap
-      ? Date.parse(plannerHomeBootstrap.freshness.directoryFetchedAt)
-      : undefined,
+    employees,
+    isLoadingEmployees,
+    useCompleteEmployeeList,
+    hasNextEmployeePage,
+    isFetchingNextEmployeePage,
+    fetchNextEmployeePage,
+  } = useTimelineEmployees({
+    filters: timelineFilters,
+    bootstrap: plannerHomeBootstrap,
   });
-  const employees = useMemo(
-    () =>
-      useCompleteEmployeeList
-        ? completeEmployees.length > 0
-          ? completeEmployees
-          : plannerHomeBootstrap?.employees ?? []
-        : getLoadedTimelineEmployees(incrementalEmployeePages?.pages),
-    [
-      completeEmployees,
-      incrementalEmployeePages?.pages,
-      plannerHomeBootstrap?.employees,
-      useCompleteEmployeeList,
-    ]
-  );
-  const isLoadingEmployees = useCompleteEmployeeList
-    ? isLoadingCompleteEmployees
-    : isLoadingIncrementalEmployees;
   const timelineBrands = useMemo(
     () => Object.values(plannerHomeBootstrap?.brandsById ?? {}).map(toBrandOption),
     [plannerHomeBootstrap]
@@ -323,23 +288,37 @@ export function TimelineV2({
   const dateFilteredAssignments = useMemo(() => plannerTimeline?.assignments ?? [], [plannerTimeline]);
   const visibleActualAssignments = useMemo(() => plannerTimeline?.actualAssignments ?? [], [plannerTimeline]);
 
-  const filteredAssignments = dateFilteredAssignments;
-  const visibleEmployees = useMemo(
+  const days = useMemo(() => columns.columns.map((column) => column.date), [columns.columns]);
+
+  // Row models depend on data + days + viewMode ONLY. Expanding rows, typing in
+  // search, or switching filters never rebuilds them — that was the structural
+  // cause of the old timeline's sluggishness.
+  const rowModels = useMemo(
     () =>
-      filterTimelineEmployees({
+      buildEmployeeRowModels({
         employees,
-        dateFilteredAssignments,
-        visibleActualAssignments,
+        assignments: dateFilteredAssignments,
+        actualAssignments: visibleActualAssignments,
+        projects: timelineProjects,
+        brandById,
+        days,
+        viewMode,
+      }),
+    [brandById, dateFilteredAssignments, days, employees, timelineProjects, viewMode, visibleActualAssignments]
+  );
+
+  // Filters only decide WHICH rows are visible — an ordered id list, not a rebuild.
+  const visibleIds = useMemo(
+    () =>
+      getVisibleEmployeeIds({
+        employees,
+        assignments: dateFilteredAssignments,
+        actualAssignments: visibleActualAssignments,
         projectById,
         selectedBrandProjectIds,
-        filters: {
-          brandId,
-          department,
-          projectId,
-          searchQuery,
-        },
+        filters: timelineFilters,
       }),
-    [brandId, dateFilteredAssignments, department, employees, projectById, projectId, searchQuery, selectedBrandProjectIds, visibleActualAssignments]
+    [dateFilteredAssignments, employees, projectById, selectedBrandProjectIds, timelineFilters, visibleActualAssignments]
   );
 
   const rowStateResetKey = useMemo(
@@ -354,48 +333,37 @@ export function TimelineV2({
   );
   const previousRowStateResetKeyRef = useRef(rowStateResetKey);
 
-  const rows = useMemo(
-    () =>
-      buildTimelineV2Rows({
-        employees: visibleEmployees,
-        assignments: filteredAssignments,
-        actualAssignments: visibleActualAssignments,
-        projects: timelineProjects,
-        brandById,
-        expandedEmployeeIds,
-        filters: { brandId, department, projectId, searchQuery },
-        days: columns.columns.map((column) => column.date),
-        viewMode,
-      }),
-    [
-      brandById,
-      brandId,
-      columns.columns,
-      department,
-      expandedEmployeeIds,
-      filteredAssignments,
-      projectId,
-      searchQuery,
-      timelineProjects,
-      visibleActualAssignments,
-      visibleEmployees,
-      viewMode,
-    ]
-  );
-
-  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: visibleIds.length,
     getScrollElement: () => bodyScrollRef.current,
-    estimateSize: (index) => getTimelineV2EstimatedRowHeight(rows[index]),
+    estimateSize: (index) => {
+      const id = visibleIds[index];
+      const model = id ? rowModels.get(id) : undefined;
+      if (!model) return TIMELINE_V2_ROW_ESTIMATE;
+      // Expansion is read non-reactively; measureElement corrects real heights
+      // and the expansion subscription below re-measures on toggle.
+      if (!useTimelineExpansionStore.getState().expandedIds.has(id)) {
+        return TIMELINE_V2_COLLAPSED_ROW_HEIGHT;
+      }
+      return TIMELINE_V2_COLLAPSED_ROW_HEIGHT + Math.max(model.projectLanes.length, 1) * TIMELINE_V2_CAMPAIGN_ROW_HEIGHT;
+    },
     overscan: 10,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
 
+  // Safety valve for virtualizer height estimates when a row expands/collapses.
+  useEffect(
+    () =>
+      useTimelineExpansionStore.subscribe(() => {
+        rowVirtualizer.measure();
+      }),
+    [rowVirtualizer]
+  );
+
   useEffect(() => {
     if (previousRowStateResetKeyRef.current === rowStateResetKey) return;
     previousRowStateResetKeyRef.current = rowStateResetKey;
-    setExpandedEmployeeIds(new Set());
+    useTimelineExpansionStore.getState().collapseAll();
     rowVirtualizer.scrollToOffset(0);
   }, [rowStateResetKey, rowVirtualizer]);
 
@@ -444,8 +412,8 @@ export function TimelineV2({
   useEffect(() => {
     if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
     const lastVirtualRow = virtualRows[virtualRows.length - 1];
-    const shouldPrefetchInitialRows = !isLoadingEmployees && visibleEmployees.length < 20;
-    const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleEmployees.length - 10;
+    const shouldPrefetchInitialRows = !isLoadingEmployees && visibleIds.length < 20;
+    const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleIds.length - 10;
 
     if (shouldPrefetchInitialRows || shouldPrefetchNearEnd) {
       fetchNextEmployeePage();
@@ -457,7 +425,7 @@ export function TimelineV2({
     isLoadingEmployees,
     useCompleteEmployeeList,
     virtualRows,
-    visibleEmployees.length,
+    visibleIds.length,
   ]);
 
   const rowLoadingState = getResourceRowLoadingState({
@@ -479,10 +447,10 @@ export function TimelineV2({
       flow: "planner_startup",
       phase: "timeline_first_visible",
       durationMs: Math.round(performance.now()),
-      rowCount: rows.length,
+      rowCount: visibleIds.length,
       columnCount: columns.columns.length,
     });
-  }, [columns.columns.length, isInitialTimelineLoading, rows.length]);
+  }, [columns.columns.length, isInitialTimelineLoading, visibleIds.length]);
 
   const plannerFreshnessState = useMemo(() => {
     if (plannerHomeBootstrap?.metadataFreshness) {
@@ -543,20 +511,12 @@ export function TimelineV2({
 
   const handleToday = useCallback(() => {
     todayScrollTargetRef.current = new Date();
-    setCurrentDate(startOfWeek(todayScrollTargetRef.current, { weekStartsOn: 1 }));
-  }, []);
+    setAnchorDate(todayScrollTargetRef.current);
+  }, [setAnchorDate]);
 
   const handleDateChange = useCallback((date: Date) => {
-    setCurrentDate(startOfWeek(date, { weekStartsOn: 1 }));
-  }, []);
-
-  const handleToggleWeekends = useCallback(() => {
-    setShowWeekends((prev) => {
-      const next = !prev;
-      localStorage.setItem("showWeekends", String(next));
-      return next;
-    });
-  }, []);
+    setAnchorDate(date);
+  }, [setAnchorDate]);
 
   const handleResourceColumnResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -565,7 +525,7 @@ export function TimelineV2({
     const startWidth = resourceColumnWidth;
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      setResourceColumnWidth(clampTimelineV2ResourceColumnWidth(startWidth + moveEvent.clientX - startX));
+      setResourceColumnWidth(startWidth + moveEvent.clientX - startX);
     };
 
     const handlePointerUp = () => {
@@ -575,7 +535,7 @@ export function TimelineV2({
 
     document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", handlePointerUp);
-  }, [resourceColumnWidth]);
+  }, [resourceColumnWidth, setResourceColumnWidth]);
 
   return (
     <div ref={timelineRootRef} className="flex h-full flex-col" data-testid="timeline-v2-root">
@@ -585,7 +545,7 @@ export function TimelineV2({
         showWeekends={showWeekends}
         onViewModeChange={setViewMode}
         onDateChange={handleDateChange}
-        onToggleWeekends={handleToggleWeekends}
+        onToggleWeekends={toggleWeekends}
         onToday={handleToday}
       />
       {plannerFreshnessState ? (
@@ -607,7 +567,7 @@ export function TimelineV2({
         <div className="flex-1 overflow-auto">
           <TimelineInitialSkeletonV2 />
         </div>
-      ) : rows.length === 0 ? (
+      ) : visibleIds.length === 0 ? (
         <div className="flex-1 overflow-auto">
           <TimelineEmptyStateV2 />
         </div>
@@ -617,7 +577,8 @@ export function TimelineV2({
           onBodyScroll={handleBodyScroll}
           rowVirtualizer={rowVirtualizer}
           virtualRows={virtualRows}
-          rows={rows}
+          visibleIds={visibleIds}
+          rowModels={rowModels}
           columns={columns.columns}
           cellWidth={cellWidth}
           resourceColumnWidth={resourceColumnWidth}
@@ -625,9 +586,8 @@ export function TimelineV2({
           showTimelineLoading={rowLoadingState.showTimelineLoading}
           showExpandedLoading={rowLoadingState.showExpandedLoading}
           canEditAssignments={rowLoadingState.canEditAssignments && !!session?.access?.can_view_all}
-          onToggleExpanded={(resourceId) => {
-            setExpandedEmployeeIds((prev) => setEmployeeFlag(prev, resourceId, !hasEmployeeFlag(prev, resourceId)));
-          }}
+          brandId={brandId}
+          projectId={projectId}
           onUpdatePlanned={controller.handleUpdatePlannedAssignment}
           onDeletePlanned={controller.handleDeletePlannedAssignment}
           onOpenPlannedCreate={controller.handleCreatePlannedAssignment}

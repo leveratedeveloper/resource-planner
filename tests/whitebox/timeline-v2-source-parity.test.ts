@@ -17,7 +17,7 @@ describe("timeline-v2 source parity", () => {
   it("keeps brand and project ids out of planner assignment request filters", () => {
     const source = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
-    expect(source).toContain("filterTimelineEmployees");
+    expect(source).toContain("getVisibleEmployeeIds");
     expect(source).not.toContain("request.filters.brandId");
     expect(source).not.toContain("request.filters.projectId");
   });

@@ -10,13 +10,16 @@ import { ResourceIdentityCellV2 } from "@/components/timeline-v2/ResourceIdentit
 import { TimelineExpandedSkeletonV2, TimelineRowLoadingCellsV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 import { DraggableTimelineCell } from "@/components/timeline/DraggableTimelineCell";
 import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline/assignment-display-hours";
-import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import { useIsRowExpanded, useTimelineExpansionStore } from "@/lib/timeline-v2/expansion-store";
+import { orderProjectLanes } from "@/lib/timeline-v2/lane-order";
+import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
+import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
 const RESOURCE_SUMMARY_ROW_HEIGHT = 48;
 const CAMPAIGN_ROW_HEIGHT = 34;
 
 function buildSegmentAssignment(
-  segment: TimelineV2ResourceRow["campaignGroups"][number]["row"]["planDisplaySegments"][number]
+  segment: EmployeeRowModel["projectLanes"][number]["planDisplaySegments"][number]
 ) {
   return {
     ...segment.sourceAssignment,
@@ -26,7 +29,7 @@ function buildSegmentAssignment(
 }
 
 type ResourceRowV2Props = {
-  row: TimelineV2ResourceRow;
+  row: EmployeeRowModel;
   columns: TimelineV2Column[];
   resourceColumnWidth: number;
   cellWidth: number;
@@ -34,7 +37,8 @@ type ResourceRowV2Props = {
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
-  onToggleExpanded: (resourceId: string) => void;
+  brandId: string | null;
+  projectId: string | null;
   onUpdatePlanned: (id: string, updates: unknown) => void;
   onDeletePlanned: (id: string) => void;
   onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
@@ -42,16 +46,16 @@ type ResourceRowV2Props = {
     resourceId: string;
     monthStart: Date;
     monthEnd: Date;
-    project: TimelineV2ResourceRow["campaignGroups"][number]["row"]["project"];
-    resourceAssignments: TimelineV2ResourceRow["assignments"];
-    clickedAssignment?: TimelineV2ResourceRow["assignments"][number];
+    project: EmployeeRowModel["projectLanes"][number]["project"];
+    resourceAssignments: EmployeeRowModel["assignments"];
+    clickedAssignment?: EmployeeRowModel["assignments"][number];
     monthlyTotalHours?: number;
     planTotalHours?: number;
     adjustmentTotalHours?: number;
   }) => void;
 };
 
-function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"], monthStart: Date, monthEnd: Date) {
+function calculateMonthlyHours(assignments: EmployeeRowModel["assignments"], monthStart: Date, monthEnd: Date) {
   return assignments.reduce((sum, assignment) => {
     if (assignment.isTimeOff) return sum;
     const range = { startDate: monthStart, endDate: monthEnd };
@@ -59,7 +63,7 @@ function calculateMonthlyHours(assignments: TimelineV2ResourceRow["assignments"]
   }, 0);
 }
 
-function fallbackAllocationCell(row: TimelineV2ResourceRow, column: TimelineV2Column) {
+function fallbackAllocationCell(row: EmployeeRowModel, column: TimelineV2Column) {
   const date = format(column.date, "yyyy-MM-dd");
 
   return {
@@ -79,15 +83,33 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
-  onToggleExpanded,
+  brandId,
+  projectId,
   onUpdatePlanned,
   onDeletePlanned,
   onOpenPlannedCreate,
   onOpenMonthlyAllocation,
 }: ResourceRowV2Props) {
-  const isExpanded = row.isExpanded;
+  const isExpanded = useIsRowExpanded(row.id);
+  const toggleExpanded = useTimelineExpansionStore((state) => state.toggle);
   const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
   const projectDays = useMemo(() => columns.map((item) => item.date), [columns]);
+
+  // Lane sorting + highlight flags are filter-dependent and cheap, so they are
+  // derived per row — only when the row is actually expanded.
+  const orderedLanes = useMemo(
+    () =>
+      isExpanded
+        ? orderProjectLanes({
+            lanes: row.projectLanes,
+            resourceAssignments: row.assignments,
+            brandId,
+            projectId,
+            days: projectDays,
+          })
+        : [],
+    [brandId, isExpanded, projectDays, projectId, row.assignments, row.projectLanes]
+  );
 
   return (
     <div className="relative z-0 border-b" data-testid="resource-row-v2" data-resource-id={row.resource.id}>
@@ -99,7 +121,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
           resourceColumnWidth={resourceColumnWidth}
           height={RESOURCE_SUMMARY_ROW_HEIGHT}
           expanded={isExpanded}
-          onToggleExpanded={() => onToggleExpanded(row.resource.id)}
+          onToggleExpanded={() => toggleExpanded(row.id)}
         />
         {showTimelineLoading ? (
           <TimelineRowLoadingCellsV2 width={columns.length * cellWidth} height={RESOURCE_SUMMARY_ROW_HEIGHT} dayCount={columns.length} />
@@ -122,9 +144,9 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
           {showExpandedLoading ? (
             <TimelineExpandedSkeletonV2 width={resourceColumnWidth} />
           ) : (
-            row.campaignGroups.map((group) => {
-              const campaign = group.row.project;
-              const brand = group.row.brand;
+            orderedLanes.map((lane) => {
+              const campaign = lane.project;
+              const brand = lane.brand;
               const monthClickHandler = (event: React.MouseEvent<HTMLDivElement>) => {
                 if (!monthRangeView || !canEditAssignments) return;
                 const containerRect = event.currentTarget.getBoundingClientRect();
@@ -146,7 +168,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                   monthEnd,
                   project: campaign,
                   resourceAssignments: row.assignments,
-                  clickedAssignment: group.row.planAssignments[0],
+                  clickedAssignment: lane.planAssignments[0],
                   monthlyTotalHours,
                   planTotalHours: monthlyTotalHours - adjustmentTotalHours,
                   adjustmentTotalHours,
@@ -155,8 +177,8 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
 
               return (
                 <div
-                  key={group.id}
-                  className={cn("flex border-b bg-blue-50/10", group.isHighlighted && "bg-amber-50/70")}
+                  key={lane.projectId}
+                  className={cn("flex border-b bg-blue-50/10", lane.isHighlighted && "bg-amber-50/70")}
                   style={{ height: CAMPAIGN_ROW_HEIGHT }}
                   data-testid="resource-row-v2-campaign-row"
                   onClick={monthRangeView ? monthClickHandler : undefined}
@@ -164,18 +186,18 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                   <div
                     className={cn(
                       "sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r bg-background pl-12 pr-3",
-                      group.isHighlighted && "bg-amber-50/90"
+                      lane.isHighlighted && "bg-amber-50/90"
                     )}
                     style={{ width: resourceColumnWidth, height: CAMPAIGN_ROW_HEIGHT }}
                     data-testid="resource-row-v2-campaign-label"
                     onClick={(event) => event.stopPropagation()}
-                    title={brand?.name || group.brandName ? `${campaign.name} · ${brand?.name || group.brandName}` : campaign.name}
+                    title={brand?.name ? `${campaign.name} · ${brand.name}` : campaign.name}
                   >
-                    <Icon icon="lucide:package" className={cn("h-3.5 w-3.5 shrink-0", group.isHighlighted ? "text-amber-600" : "text-blue-600")} />
+                    <Icon icon="lucide:package" className={cn("h-3.5 w-3.5 shrink-0", lane.isHighlighted ? "text-amber-600" : "text-blue-600")} />
                     <div className="min-w-0">
-                      <div className={cn("truncate text-xs font-bold uppercase tracking-wider", group.isHighlighted ? "text-amber-800" : "text-blue-800")}>{campaign.name}</div>
-                      {brand?.name || group.brandName ? (
-                        <div className="truncate text-[10px] text-muted-foreground">{brand?.name || group.brandName}</div>
+                      <div className={cn("truncate text-xs font-bold uppercase tracking-wider", lane.isHighlighted ? "text-amber-800" : "text-blue-800")}>{campaign.name}</div>
+                      {brand?.name ? (
+                        <div className="truncate text-[10px] text-muted-foreground">{brand.name}</div>
                       ) : null}
                     </div>
                   </div>
@@ -183,7 +205,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                   <div className="relative flex" style={{ width: `${columns.length * cellWidth}px`, height: CAMPAIGN_ROW_HEIGHT }}>
                     {!monthRangeView ? columns.map((column) => (
                       <DraggableTimelineCell
-                        key={`${group.id}-${column.id}-plan-cell`}
+                        key={`${lane.projectId}-${column.id}-plan-cell`}
                         day={column.date}
                         projectId={campaign.id}
                         projectColor={campaign.color}
@@ -214,7 +236,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         }}
                       />
                     )) : null}
-                    {group.row.planDisplaySegments.map((segment) => (
+                    {lane.planDisplaySegments.map((segment) => (
                       <AssignmentBlockV2
                         key={segment.id}
                         assignment={buildSegmentAssignment(segment)}
@@ -227,7 +249,7 @@ export const ResourceRowV2 = React.memo(function ResourceRowV2({
                         onUpdate={onUpdatePlanned}
                         onDelete={onDeletePlanned}
                         disabled={!canEditAssignments}
-                        isHighlighted={group.isHighlighted}
+                        isHighlighted={lane.isHighlighted}
                         isUpdating={false}
                         isDeleting={false}
                       />

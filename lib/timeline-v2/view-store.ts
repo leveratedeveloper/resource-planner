@@ -1,0 +1,48 @@
+import { create } from "zustand";
+import { startOfWeek } from "date-fns";
+import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import {
+  TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH,
+  clampTimelineV2ResourceColumnWidth,
+} from "@/lib/timeline-v2/layout";
+
+type TimelineViewState = {
+  viewMode: TimelineV2ViewMode;
+  // null until the page seeds it from initialTimelineAnchor via setAnchorDate.
+  anchorDate: Date | null;
+  showWeekends: boolean;
+  hasHydratedWeekendPreference: boolean;
+  resourceColumnWidth: number;
+  setViewMode: (mode: TimelineV2ViewMode) => void;
+  setAnchorDate: (date: Date) => void;
+  toggleWeekends: () => void;
+  hydrateWeekendPreference: () => void;
+  setResourceColumnWidth: (width: number) => void;
+};
+
+export const useTimelineViewStore = create<TimelineViewState>((set) => ({
+  viewMode: "quarter",
+  anchorDate: null,
+  showWeekends: false,
+  hasHydratedWeekendPreference: false,
+  resourceColumnWidth: TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH,
+  setViewMode: (mode) => set({ viewMode: mode }),
+  // Timeline columns are Monday-aligned, so the anchor always snaps to week start.
+  setAnchorDate: (date) => set({ anchorDate: startOfWeek(date, { weekStartsOn: 1 }) }),
+  toggleWeekends: () =>
+    set((state) => {
+      const next = !state.showWeekends;
+      localStorage.setItem("showWeekends", String(next));
+      return { showWeekends: next };
+    }),
+  // Call-site runs this in a useEffect, so localStorage access is safe here.
+  hydrateWeekendPreference: () => {
+    const saved = localStorage.getItem("showWeekends");
+    set((state) => ({
+      showWeekends: saved === null ? state.showWeekends : saved === "true",
+      hasHydratedWeekendPreference: true,
+    }));
+  },
+  setResourceColumnWidth: (width) =>
+    set({ resourceColumnWidth: clampTimelineV2ResourceColumnWidth(width) }),
+}));

@@ -7,8 +7,15 @@ describe("TimelineV2 bootstrap integration", () => {
 
     expect(source).toContain("usePlannerHomeBootstrap");
     expect(source).toContain("const plannerTimeline = bootstrapPlannerTimeline");
-    expect(source).toContain("const bootstrapEmployeePage");
     expect(source).not.toContain("usePlannerTimeline(");
+  });
+
+  it("seeds the employee list from the bootstrap page inside the employees hook", () => {
+    const source = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
+
+    expect(source).toContain("const bootstrapEmployeePage");
+    expect(source).toContain("initialPage: bootstrapEmployeePage");
+    expect(source).toContain("initialPageUpdatedAt: bootstrap");
   });
 
   it("enables client bootstrap from a valid bootstrap request without requiring server initial data", () => {

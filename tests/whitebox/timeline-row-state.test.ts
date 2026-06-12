@@ -50,7 +50,7 @@ describe("timeline row state helpers", () => {
     const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
 
     expect(timelineSource).toContain("rowStateResetKey");
-    expect(timelineSource).toContain("setExpandedEmployeeIds(new Set())");
+    expect(timelineSource).toContain("useTimelineExpansionStore.getState().collapseAll()");
     expect(timelineSource).not.toContain("setSelectedProjectIdsByEmployee");
     expect(timelineSource).not.toContain("setInitializedProjectFiltersByEmployee");
     expect(timelineSource).not.toContain("setOpenProjectFilterEmployeeIds");

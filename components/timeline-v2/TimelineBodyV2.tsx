@@ -3,7 +3,8 @@
 import React from "react";
 import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { ResourceRowV2 } from "@/components/timeline-v2/ResourceRowV2";
-import type { TimelineV2Column, TimelineV2ResourceRow, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
+import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 import { TimelineLoadingMoreV2 } from "@/components/timeline-v2/TimelineLoadingStatesV2";
 
 type TimelineBodyV2Props = {
@@ -11,7 +12,8 @@ type TimelineBodyV2Props = {
   onBodyScroll: () => void;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
   virtualRows: VirtualItem[];
-  rows: TimelineV2ResourceRow[];
+  visibleIds: string[];
+  rowModels: Map<string, EmployeeRowModel>;
   columns: TimelineV2Column[];
   cellWidth: number;
   resourceColumnWidth: number;
@@ -19,7 +21,8 @@ type TimelineBodyV2Props = {
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
-  onToggleExpanded: (resourceId: string) => void;
+  brandId: string | null;
+  projectId: string | null;
   onUpdatePlanned: (id: string, updates: unknown) => void;
   onDeletePlanned: (id: string) => void;
   onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
@@ -27,9 +30,9 @@ type TimelineBodyV2Props = {
     resourceId: string;
     monthStart: Date;
     monthEnd: Date;
-    project: TimelineV2ResourceRow["campaignGroups"][number]["row"]["project"];
-    resourceAssignments: TimelineV2ResourceRow["assignments"];
-    clickedAssignment?: TimelineV2ResourceRow["assignments"][number];
+    project: EmployeeRowModel["projectLanes"][number]["project"];
+    resourceAssignments: EmployeeRowModel["assignments"];
+    clickedAssignment?: EmployeeRowModel["assignments"][number];
     monthlyTotalHours?: number;
     planTotalHours?: number;
     adjustmentTotalHours?: number;
@@ -42,7 +45,8 @@ export function TimelineBodyV2({
   onBodyScroll,
   rowVirtualizer,
   virtualRows,
-  rows,
+  visibleIds,
+  rowModels,
   columns,
   cellWidth,
   resourceColumnWidth,
@@ -50,7 +54,8 @@ export function TimelineBodyV2({
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
-  onToggleExpanded,
+  brandId,
+  projectId,
   onUpdatePlanned,
   onDeletePlanned,
   onOpenPlannedCreate,
@@ -62,7 +67,8 @@ export function TimelineBodyV2({
       <div className="flex w-full flex-col">
         <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
           {virtualRows.map((virtualRow) => {
-            const row = rows[virtualRow.index];
+            const rowId = visibleIds[virtualRow.index];
+            const row = rowId ? rowModels.get(rowId) : undefined;
             if (!row) return null;
 
             return (
@@ -82,7 +88,8 @@ export function TimelineBodyV2({
                   showTimelineLoading={showTimelineLoading}
                   showExpandedLoading={showExpandedLoading}
                   canEditAssignments={canEditAssignments}
-                  onToggleExpanded={onToggleExpanded}
+                  brandId={brandId}
+                  projectId={projectId}
                   onUpdatePlanned={onUpdatePlanned}
                   onDeletePlanned={onDeletePlanned}
                   onOpenPlannedCreate={onOpenPlannedCreate}

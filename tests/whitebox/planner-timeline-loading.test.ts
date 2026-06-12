@@ -115,7 +115,7 @@ describe("planner timeline loading contract", () => {
     expect(timelineSource).toContain("filters: {");
     expect(timelineSource).toContain("projectId,");
     expect(timelineSource).toContain("brandId,");
-    expect(timelineSource).toContain("filterTimelineEmployees");
+    expect(timelineSource).toContain("getVisibleEmployeeIds");
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("projectId")');
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("brandId")');
   });
@@ -126,15 +126,16 @@ describe("planner timeline loading contract", () => {
     expect(timelineSource).not.toContain("filters: {\n        brandId:");
     expect(timelineSource).not.toContain("request.filters.brandId");
     expect(timelineSource).toContain("brandId,");
-    expect(timelineSource).toContain("filterTimelineEmployees");
+    expect(timelineSource).toContain("getVisibleEmployeeIds");
   });
 
   it("loads selected brand projects before calculating brand-filtered resources", () => {
     const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const employeesHookSource = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
 
     expect(timelineSource).toContain("usePlannerHomeBootstrap");
     expect(timelineSource).toContain("bootstrapPlannerTimeline");
-    expect(timelineSource).toContain("bootstrapEmployeePage");
+    expect(employeesHookSource).toContain("bootstrapEmployeePage");
     expect(timelineSource).toContain("selectedBrandProjectIds");
     expect(timelineSource).not.toContain("useProjectsByBrand(brandId ?? \"\")");
     expect(timelineSource).not.toContain("isLoadingSelectedBrandProjects");
@@ -316,8 +317,9 @@ describe("planner timeline loading contract", () => {
 
   it("keeps infinite employee expansion active after bootstrap seeds the first page", () => {
     const timelineSource = readFileSync("components/timeline-v2/TimelineV2.tsx", "utf8");
+    const employeesHookSource = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
 
-    expect(timelineSource).toContain("initialPage: bootstrapEmployeePage");
+    expect(employeesHookSource).toContain("initialPage: bootstrapEmployeePage");
     expect(timelineSource).toContain("hasNextEmployeePage");
     expect(timelineSource).toContain("fetchNextEmployeePage()");
     expect(timelineSource).not.toContain("if (shouldUseHomeBootstrap || !!plannerHomeBootstrap");
