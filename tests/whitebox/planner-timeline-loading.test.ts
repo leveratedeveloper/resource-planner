@@ -280,8 +280,9 @@ describe("planner timeline loading contract", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const loadingStateSource = readFileSync("lib/timeline/resource-row-loading.ts", "utf8");
 
-    expect(timelineSource).toContain("isPlannerApplyingFilters: isFetchingPlannerHomeBootstrap");
-    expect(timelineSource).toContain("isPlannerRefreshing: !!plannerTimeline && isFetchingPlannerHomeBootstrap");
+    expect(timelineSource).toContain("isShowingPreviousBootstrap && isFetchingPlannerHomeBootstrap");
+    expect(timelineSource).toContain("isPlannerApplyingFilters: isApplyingNewRequest");
+    expect(timelineSource).toContain("isPlannerRefreshing: !!plannerTimeline && isApplyingNewRequest");
     expect(loadingStateSource).toContain("showInitialSkeleton");
     expect(loadingStateSource).toContain("showTimelineLoading: isRefreshInProgress");
     expect(timelineSource).toContain("<DataStatus");

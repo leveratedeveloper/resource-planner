@@ -4,7 +4,7 @@ import React from "react";
 import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { ResourceRow } from "@/components/timeline-v2/ResourceRow";
 import { TimelineLoadingMore } from "@/components/timeline-v2/LoadingStates";
-import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
+import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
 type TimelineBodyProps = {
@@ -13,28 +13,12 @@ type TimelineBodyProps = {
   visibleIds: string[];
   rowModels: Map<string, EmployeeRowModel>;
   columns: TimelineV2Column[];
-  // Interim px width for the legacy drag-create cells; dies with them in Phase 5.
-  cellWidth: number;
   viewMode: TimelineV2ViewMode;
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
   brandId: string | null;
   projectId: string | null;
-  onUpdatePlanned: (id: string, updates: unknown) => void;
-  onDeletePlanned: (id: string) => void;
-  onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenMonthlyAllocation: (args: {
-    resourceId: string;
-    monthStart: Date;
-    monthEnd: Date;
-    project: ProjectLaneModel["project"];
-    resourceAssignments: EmployeeRowModel["assignments"];
-    clickedAssignment?: EmployeeRowModel["assignments"][number];
-    monthlyTotalHours?: number;
-    planTotalHours?: number;
-    adjustmentTotalHours?: number;
-  }) => void;
   isFetchingNextEmployeePage?: boolean;
 };
 
@@ -47,17 +31,12 @@ export function TimelineBody({
   visibleIds,
   rowModels,
   columns,
-  cellWidth,
   viewMode,
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
   brandId,
   projectId,
-  onUpdatePlanned,
-  onDeletePlanned,
-  onOpenPlannedCreate,
-  onOpenMonthlyAllocation,
   isFetchingNextEmployeePage,
 }: TimelineBodyProps) {
   return (
@@ -78,17 +57,12 @@ export function TimelineBody({
             <ResourceRow
               row={row}
               columns={columns}
-              cellWidth={cellWidth}
               viewMode={viewMode}
               showTimelineLoading={showTimelineLoading}
               showExpandedLoading={showExpandedLoading}
               canEditAssignments={canEditAssignments}
               brandId={brandId}
               projectId={projectId}
-              onUpdatePlanned={onUpdatePlanned}
-              onDeletePlanned={onDeletePlanned}
-              onOpenPlannedCreate={onOpenPlannedCreate}
-              onOpenMonthlyAllocation={onOpenMonthlyAllocation}
             />
           </div>
         );

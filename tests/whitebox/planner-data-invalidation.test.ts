@@ -27,7 +27,7 @@ describe("planner data invalidation", () => {
   });
 
   it("Timeline V2 monthly flows refresh planner home bootstrap data", () => {
-    const source = readFileSync("components/timeline-v2/useTimelineV2Controller.ts", "utf8");
+    const source = readFileSync("components/timeline-v2/useTimelineEditor.ts", "utf8");
 
     expect(source).toContain("invalidatePlannerData");
     expect(source).not.toContain("queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline");

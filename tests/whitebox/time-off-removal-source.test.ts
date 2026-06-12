@@ -5,15 +5,15 @@ describe("time-off feature removal source guards", () => {
     const timeline = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const body = readFileSync("components/timeline-v2/TimelineBody.tsx", "utf8");
     const resourceRow = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
-    const controller = readFileSync("components/timeline-v2/useTimelineV2Controller.ts", "utf8");
+    const editorHook = readFileSync("components/timeline-v2/useTimelineEditor.ts", "utf8");
 
     expect(timeline).not.toContain("onOpenTimeOffCreate");
     expect(body).not.toContain("onOpenTimeOffCreate");
     expect(resourceRow).not.toContain("Time Off");
     expect(resourceRow).not.toContain("isTimeOffMode");
     expect(resourceRow).not.toContain("resource-row-v2-timeoff-row");
-    expect(controller).not.toContain("handleCreateTimeOff");
-    expect(controller).not.toContain("isTimeOff: true");
+    expect(editorHook).not.toContain("handleCreateTimeOff");
+    expect(editorHook).not.toContain("isTimeOff: true");
   });
 
   it("does not expose time-off blocking or allocation display logic", () => {

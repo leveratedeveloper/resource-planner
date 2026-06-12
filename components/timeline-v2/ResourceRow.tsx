@@ -7,50 +7,29 @@ import { ResourceIdentityCell } from "@/components/timeline-v2/ResourceIdentityC
 import { TimelineExpandedSkeleton, TimelineRowLoadingCells } from "@/components/timeline-v2/LoadingStates";
 import { useIsRowExpanded, useTimelineExpansionStore } from "@/lib/timeline-v2/expansion-store";
 import { orderProjectLanes } from "@/lib/timeline-v2/lane-order";
-import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
+import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
 
 type ResourceRowProps = {
   row: EmployeeRowModel;
   columns: TimelineV2Column[];
-  // Interim px width for the legacy drag-create cells; dies with them in Phase 5.
-  cellWidth: number;
   viewMode: TimelineV2ViewMode;
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
   brandId: string | null;
   projectId: string | null;
-  onUpdatePlanned: (id: string, updates: unknown) => void;
-  onDeletePlanned: (id: string) => void;
-  onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenMonthlyAllocation: (args: {
-    resourceId: string;
-    monthStart: Date;
-    monthEnd: Date;
-    project: ProjectLaneModel["project"];
-    resourceAssignments: EmployeeRowModel["assignments"];
-    clickedAssignment?: EmployeeRowModel["assignments"][number];
-    monthlyTotalHours?: number;
-    planTotalHours?: number;
-    adjustmentTotalHours?: number;
-  }) => void;
 };
 
 export const ResourceRow = React.memo(function ResourceRow({
   row,
   columns,
-  cellWidth,
   viewMode,
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
   brandId,
   projectId,
-  onUpdatePlanned,
-  onDeletePlanned,
-  onOpenPlannedCreate,
-  onOpenMonthlyAllocation,
 }: ResourceRowProps) {
   const isExpanded = useIsRowExpanded(row.id);
   const toggleExpanded = useTimelineExpansionStore((state) => state.toggle);
@@ -101,13 +80,8 @@ export const ResourceRow = React.memo(function ResourceRow({
                 resourceId={row.resource.id}
                 resourceAssignments={row.assignments}
                 columns={columns}
-                cellWidth={cellWidth}
                 viewMode={viewMode}
                 canEditAssignments={canEditAssignments}
-                onUpdatePlanned={onUpdatePlanned}
-                onDeletePlanned={onDeletePlanned}
-                onOpenPlannedCreate={onOpenPlannedCreate}
-                onOpenMonthlyAllocation={onOpenMonthlyAllocation}
               />
             ))
           )}

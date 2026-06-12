@@ -85,31 +85,6 @@ vi.mock("@tanstack/react-virtual", () => ({
   }),
 }));
 
-vi.mock("@/components/timeline-v2/useTimelineV2Controller", () => ({
-  useTimelineV2Controller: () => ({
-    plannedPopover: null,
-    actualPopover: null,
-    monthlyAllocationModal: null,
-    monthlyAllocationConfirm: null,
-    closePlannedPopover: vi.fn(),
-    handleSavePlannedPopover: vi.fn(),
-    closeActualPopover: vi.fn(),
-    handleSaveActualPopover: vi.fn(),
-    closeMonthlyAllocationModal: vi.fn(),
-    handleSaveMonthlyAllocation: vi.fn(),
-    handleDeleteMonthlyAllocation: vi.fn(),
-    closeMonthlyAllocationConfirm: vi.fn(),
-    handleConfirmMonthlyAllocation: vi.fn(),
-    handleCreatePlannedAssignment: vi.fn(),
-    handleCreateActualAssignment: vi.fn(),
-    handleOpenMonthlyAllocation: vi.fn(),
-    handleUpdatePlannedAssignment: vi.fn(),
-    handleDeletePlannedAssignment: vi.fn(),
-    handleUpdateActualAssignment: vi.fn(),
-    handleDeleteActualAssignment: vi.fn(),
-  }),
-}));
-
 vi.mock("@/components/timeline-v2/TimelineBody", () => ({
   TimelineBody: () => React.createElement("div", { "data-testid": "timeline-v2-body" }),
 }));

@@ -5,9 +5,10 @@ import { Icon } from "@iconify/react";
 import { endOfMonth, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBar } from "@/components/timeline-v2/AssignmentBar";
-import { DraggableTimelineCell } from "@/components/timeline/DraggableTimelineCell";
+import { useDragToCreate } from "@/components/timeline-v2/interactions/useDragToCreate";
 import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline/assignment-display-hours";
-import { TIMELINE_DIMENSIONS } from "@/lib/timeline-v2/layout";
+import { getTimelineV2RangePosition } from "@/lib/timeline-v2/layout";
+import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import type { OrderedProjectLane } from "@/lib/timeline-v2/lane-order";
 import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
@@ -20,6 +21,26 @@ function buildSegmentAssignment(
     startDate: segment.startDate,
     endDate: segment.endDate,
   };
+}
+
+function parseLocalDate(value: string): Date {
+  return new Date(`${value}T00:00:00`);
+}
+
+// A merged segment is move-draggable only when every member row is fully
+// visible — shifting just the visible slice would tear a distribution apart.
+function areAllMembersVisible(
+  assignments: EmployeeRowModel["assignments"],
+  columns: TimelineV2Column[]
+): boolean {
+  if (columns.length === 0) return false;
+  const rangeStart = columns[0].date;
+  const rangeEnd = columns[columns.length - 1].date;
+  return assignments.every(
+    (assignment) =>
+      parseLocalDate(assignment.startDate) >= rangeStart &&
+      parseLocalDate(assignment.endDate) <= rangeEnd
+  );
 }
 
 function calculateMonthlyHours(assignments: EmployeeRowModel["assignments"], monthStart: Date, monthEnd: Date) {
@@ -35,24 +56,8 @@ type ProjectLaneProps = {
   resourceId: string;
   resourceAssignments: EmployeeRowModel["assignments"];
   columns: TimelineV2Column[];
-  // Interim px width for the legacy drag-create cells; dies with them in Phase 5.
-  cellWidth: number;
   viewMode: TimelineV2ViewMode;
   canEditAssignments: boolean;
-  onUpdatePlanned: (id: string, updates: unknown) => void;
-  onDeletePlanned: (id: string) => void;
-  onOpenPlannedCreate: (args: { resourceId: string; projectId: string; startDate: Date; endDate: Date }) => void;
-  onOpenMonthlyAllocation: (args: {
-    resourceId: string;
-    monthStart: Date;
-    monthEnd: Date;
-    project: ProjectLaneModel["project"];
-    resourceAssignments: EmployeeRowModel["assignments"];
-    clickedAssignment?: EmployeeRowModel["assignments"][number];
-    monthlyTotalHours?: number;
-    planTotalHours?: number;
-    adjustmentTotalHours?: number;
-  }) => void;
 };
 
 export const ProjectLane = React.memo(function ProjectLane({
@@ -60,23 +65,34 @@ export const ProjectLane = React.memo(function ProjectLane({
   resourceId,
   resourceAssignments,
   columns,
-  cellWidth,
   viewMode,
   canEditAssignments,
-  onUpdatePlanned,
-  onDeletePlanned,
-  onOpenPlannedCreate,
-  onOpenMonthlyAllocation,
 }: ProjectLaneProps) {
+  const openEditor = useAssignmentEditorStore((state) => state.open);
   const campaign = lane.project;
   const brand = lane.brand;
   const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
-  const projectDays = columns.map((item) => item.date);
+
+  // Day-resolution lanes: one pointer-handler set on the canvas replaces the
+  // legacy per-cell listener fleet. Drag (or click) opens the create editor.
+  const dragToCreate = useDragToCreate({
+    enabled: !monthRangeView && canEditAssignments,
+    columns,
+    onCreate: ({ startDate, endDate }) => {
+      openEditor({
+        mode: "create",
+        resourceId,
+        project: campaign,
+        startDate,
+        endDate,
+      });
+    },
+  });
 
   const monthClickHandler = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!monthRangeView || !canEditAssignments) return;
-    // Pointer math measures the lane rect (DESIGN.md §2.1) instead of consuming
-    // a pixel constant.
+    // Pointer math measures the lane canvas rect (DESIGN.md §2.1) instead of
+    // consuming a pixel constant.
     const containerRect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - containerRect.left;
     const columnWidth = containerRect.width / Math.max(columns.length, 1);
@@ -91,11 +107,12 @@ export const ProjectLane = React.memo(function ProjectLane({
       monthStart,
       monthEnd
     );
-    onOpenMonthlyAllocation({
+    openEditor({
+      mode: "month",
       resourceId,
+      project: campaign,
       monthStart,
       monthEnd,
-      project: campaign,
       resourceAssignments,
       clickedAssignment: lane.planAssignments[0],
       monthlyTotalHours,
@@ -129,44 +146,50 @@ export const ProjectLane = React.memo(function ProjectLane({
 
       {/* Click handler lives on the canvas (not the row) so the rect math sees
           only the column area — the resource label must not shift the index. */}
-      <div className="relative h-full flex-1" onClick={monthRangeView ? monthClickHandler : undefined}>
-        {!monthRangeView ? (
-          <div className="flex h-full">
-            {columns.map((column, dayIndex) => (
-              <DraggableTimelineCell
-                key={`${lane.projectId}-${column.id}-plan-cell`}
-                day={column.date}
-                projectId={campaign.id}
-                projectColor={campaign.color}
-                days={projectDays}
-                cellWidth={cellWidth}
-                cellHeight={TIMELINE_DIMENSIONS.lane}
-                disabled={!canEditAssignments}
-                isDragging={false}
-                isInDragRange={false}
-                onDragComplete={(startDay, endDay) => {
-                  if (!canEditAssignments) return;
-                  onOpenPlannedCreate({
-                    resourceId,
-                    projectId: campaign.id,
-                    startDate: startDay,
-                    endDate: endDay,
-                  });
-                }}
-                onMouseDown={() => {
-                  if (!canEditAssignments) return;
-                  const date = columns[Math.max(0, Math.min(dayIndex, columns.length - 1))].date;
-                  onOpenPlannedCreate({
-                    resourceId,
-                    projectId: campaign.id,
-                    startDate: date,
-                    endDate: date,
-                  });
-                }}
-              />
-            ))}
-          </div>
+      <div
+        className={cn("relative h-full flex-1", !monthRangeView && canEditAssignments && "touch-none")}
+        onClick={monthRangeView ? monthClickHandler : undefined}
+        onPointerDown={dragToCreate.handlers.onPointerDown}
+        onPointerMove={dragToCreate.handlers.onPointerMove}
+        onPointerUp={dragToCreate.handlers.onPointerUp}
+        onPointerCancel={dragToCreate.handlers.onPointerCancel}
+        style={{ "--lane-hover": `${campaign.color || "#64748b"}1f` } as React.CSSProperties}
+      >
+        {/* Presentational column grid: gridlines plus a per-cell hover tint so
+            empty days/months read as schedulable before any click. Cells stay
+            event-transparent for logic — pointer events bubble to the canvas. */}
+        <div className="timeline-grid absolute inset-0" aria-hidden>
+          {columns.map((column) => (
+            <div
+              key={column.id}
+              className={cn(
+                "border-r",
+                !monthRangeView && column.isWeekend && "bg-muted/30",
+                canEditAssignments && "hover:bg-[var(--lane-hover)]",
+                canEditAssignments && (monthRangeView ? "cursor-pointer" : "cursor-cell")
+              )}
+            />
+          ))}
+        </div>
+
+        {dragToCreate.preview ? (
+          <div
+            className="absolute inset-y-0.5 z-30 rounded-md border-2 border-dashed pointer-events-none"
+            style={{
+              ...(() => {
+                const pct = getTimelineV2RangePosition({
+                  ...dragToCreate.preview,
+                  columnCount: columns.length,
+                });
+                return { left: `${pct.leftPct}%`, width: `${pct.widthPct}%` };
+              })(),
+              borderColor: campaign.color || "#64748b",
+              backgroundColor: `${campaign.color || "#64748b"}33`,
+            }}
+            data-testid="assignment-drag-preview"
+          />
         ) : null}
+
         {lane.planDisplaySegments.map((segment) => (
           <AssignmentBar
             key={segment.id}
@@ -175,10 +198,13 @@ export const ProjectLane = React.memo(function ProjectLane({
             columns={columns}
             resolution={monthRangeView ? "month" : "day"}
             interactive={!monthRangeView}
+            memberAssignments={segment.assignments}
+            draggable={
+              !monthRangeView &&
+              (segment.assignments.length === 1 || areAllMembersVisible(segment.assignments, columns))
+            }
             isHighlighted={lane.isHighlighted}
             disabled={!canEditAssignments}
-            onUpdate={onUpdatePlanned}
-            onDelete={onDeletePlanned}
           />
         ))}
       </div>

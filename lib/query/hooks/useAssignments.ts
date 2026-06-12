@@ -189,6 +189,47 @@ export function useAssignmentsByProject(projectId: string) {
   });
 }
 
+// The timeline renders from the planner home bootstrap cache, so optimistic
+// mutations must patch it too — otherwise edits visually revert until the
+// post-mutation invalidation refetch lands.
+type BootstrapWithTimeline = {
+  plannerTimeline?: { assignments: Assignment[]; actualAssignments: unknown[] };
+};
+
+function patchBootstrapAssignments(
+  queryClient: ReturnType<typeof useQueryClient>,
+  patch: (assignments: Assignment[]) => Assignment[]
+) {
+  queryClient.setQueriesData<BootstrapWithTimeline>(
+    { queryKey: queryKeys.plannerHomeBootstrap },
+    (old) => {
+      if (!old?.plannerTimeline) return old;
+      return {
+        ...old,
+        plannerTimeline: {
+          ...old.plannerTimeline,
+          assignments: patch(old.plannerTimeline.assignments),
+        },
+      };
+    }
+  );
+}
+
+function snapshotBootstrapQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.getQueriesData<BootstrapWithTimeline>({
+    queryKey: queryKeys.plannerHomeBootstrap,
+  });
+}
+
+function restoreBootstrapQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  snapshot: ReturnType<typeof snapshotBootstrapQueries> | undefined
+) {
+  snapshot?.forEach(([queryKey, data]) => {
+    queryClient.setQueryData(queryKey, data);
+  });
+}
+
 export function useCreateAssignment() {
   const queryClient = useQueryClient();
 
@@ -234,7 +275,11 @@ export function useCreateAssignment() {
         return [...old, optimisticAssignment];
       });
 
-      return { previousAssignments, previousEmployees, optimisticId: optimisticAssignment.id };
+      // Mirror into the planner bootstrap cache the timeline renders from
+      const previousBootstrap = snapshotBootstrapQueries(queryClient);
+      patchBootstrapAssignments(queryClient, (assignments) => [...assignments, optimisticAssignment]);
+
+      return { previousAssignments, previousEmployees, previousBootstrap, optimisticId: optimisticAssignment.id };
     },
 
     // Rollback on error
@@ -248,6 +293,7 @@ export function useCreateAssignment() {
       if (context?.previousEmployees) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
       }
+      restoreBootstrapQueries(queryClient, context?.previousBootstrap);
     },
 
     // Replace temp ID with real data (no refetch needed)
@@ -257,6 +303,9 @@ export function useCreateAssignment() {
         if (!old) return [data];
         return old.map((a) => (a.id === context?.optimisticId ? data : a));
       });
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.map((a) => (a.id === context?.optimisticId ? data : a))
+      );
     },
 
     // Invalidate related queries so brand-filtered views stay in sync
@@ -339,7 +388,15 @@ export function useUpdateAssignment() {
         }
       });
 
-      return { previousAssignments, previousEmployees };
+      // Mirror into the planner bootstrap cache the timeline renders from
+      const previousBootstrap = snapshotBootstrapQueries(queryClient);
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.map((assignment) =>
+          assignment.id === id ? { ...assignment, ...updates } : assignment
+        )
+      );
+
+      return { previousAssignments, previousEmployees, previousBootstrap };
     },
 
     // Rollback on error
@@ -351,6 +408,9 @@ export function useUpdateAssignment() {
       }
       if (context?.previousEmployees && !context?.skipOptimistic) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
+      }
+      if (!context?.skipOptimistic) {
+        restoreBootstrapQueries(queryClient, context?.previousBootstrap);
       }
     },
 
@@ -373,6 +433,10 @@ export function useUpdateAssignment() {
           ),
         }));
       });
+
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.map((a) => (a.id === data.id ? data : a))
+      );
     },
 
     onSettled: () => {
@@ -444,12 +508,18 @@ export function useDeleteAssignment() {
         }));
       });
 
+      // Mirror into the planner bootstrap cache the timeline renders from
+      const previousBootstrap = snapshotBootstrapQueries(queryClient);
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.filter((assignment) => assignment.id !== id)
+      );
+
       // Force immediate UI update by invalidating queries without refetch
       queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'none' });
       invalidatePlannerData(queryClient, { refetchType: 'none' });
       queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'none' });
 
-      return { previousAssignments, previousEmployees };
+      return { previousAssignments, previousEmployees, previousBootstrap };
     },
 
     // Rollback on error (but not if assignment is already deleted - 404)
@@ -474,6 +544,7 @@ export function useDeleteAssignment() {
       if (context?.previousEmployees) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
       }
+      restoreBootstrapQueries(queryClient, context?.previousBootstrap);
     },
 
     onSuccess: () => {

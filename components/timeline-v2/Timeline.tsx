@@ -19,29 +19,20 @@ import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
 import {
   TIMELINE_DIMENSIONS,
   getTimelineEstimatedRowHeight,
-  getTimelineV2CellWidth,
   getTimelineV2VisibleWidth,
 } from "@/lib/timeline-v2/layout";
+import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import { TimelineToolbar } from "@/components/timeline-v2/TimelineToolbar";
 import { DataStatus } from "@/components/timeline-v2/DataStatus";
 import { TimelineHeader } from "@/components/timeline-v2/TimelineHeader";
 import { TimelineBody } from "@/components/timeline-v2/TimelineBody";
 import { TimelineInitialSkeleton, TimelineEmptyState } from "@/components/timeline-v2/LoadingStates";
-import { useTimelineV2Controller } from "@/components/timeline-v2/useTimelineV2Controller";
 import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
 
-// Editing surfaces are conditionally rendered and never needed for first paint —
-// load them on demand so they stay out of the initial bundle.
-const AssignmentPopover = dynamic(
-  () => import("@/components/timeline/AssignmentPopover").then((mod) => mod.AssignmentPopover),
-  { ssr: false }
-);
-const MonthlyAllocationModal = dynamic(
-  () => import("@/components/timeline/MonthlyAllocationModal").then((mod) => mod.MonthlyAllocationModal),
-  { ssr: false }
-);
-const MonthlyAllocationConfirmation = dynamic(
-  () => import("@/components/timeline/MonthlyAllocationConfirmation").then((mod) => mod.MonthlyAllocationConfirmation),
+// The single editing surface is never needed for first paint — load it on
+// demand so it stays out of the initial bundle.
+const AssignmentEditor = dynamic(
+  () => import("@/components/timeline-v2/editor/AssignmentEditor").then((mod) => mod.AssignmentEditor),
   { ssr: false }
 );
 
@@ -137,16 +128,11 @@ export function Timeline({
     hydrateWeekendPreference();
   }, [hydrateWeekendPreference]);
 
-  // Preload the lazy editor chunks once the browser is idle. Keeps them out of
-  // the initial bundle but ensures the first click opens its dialog instantly —
-  // without this, clicks during the chunk-load gap fall through to the lane
-  // underneath and stack a second modal.
+  // Preload the lazy editor chunk once the browser is idle. Keeps it out of
+  // the initial bundle but ensures the first click opens the editor instantly.
   useEffect(() => {
     const preloadEditors = () => {
-      void import("@/components/timeline/AssignmentPopover");
-      void import("@/components/timeline/MonthlyAllocationModal");
-      void import("@/components/timeline/MonthlyAllocationConfirmation");
-      void import("@/components/timeline/EditAssignmentDialog");
+      void import("@/components/timeline-v2/editor/AssignmentEditor");
     };
 
     if (typeof window.requestIdleCallback === "function") {
@@ -189,12 +175,6 @@ export function Timeline({
     [currentDate, showWeekends, viewMode]
   );
 
-  // Interim px cell width for the legacy drag-create cells (Phase 5 removes
-  // their last consumer); all new components size themselves via CSS grid.
-  const cellWidth = useMemo(() => {
-    if (!containerWidth) return 100;
-    return getTimelineV2CellWidth(containerWidth, columns.columns.length);
-  }, [columns.columns.length, containerWidth]);
   const isLayoutReady = hasHydratedWeekendPreference && containerWidth !== null;
   const assignmentDateRange = useMemo<TimelineAssignmentDateRange | undefined>(() => {
     if (!columns.startDate || !columns.endDate) return undefined;
@@ -231,6 +211,7 @@ export function Timeline({
     data: plannerHomeBootstrap,
     isLoading: isLoadingPlannerHomeBootstrap,
     isFetching: isFetchingPlannerHomeBootstrap,
+    isPlaceholderData: isShowingPreviousBootstrap,
     isRefetchError: isPlannerHomeBootstrapRefetchError,
   } = usePlannerHomeBootstrap(bootstrapRequest, {
     enabled: !!bootstrapRequest,
@@ -380,10 +361,15 @@ export function Timeline({
     visibleIds.length,
   ]);
 
+  // Skeletons (and the edit lock) engage only while OLD-request data is shown
+  // for a NEW request (filter/date change). Same-key background refetches —
+  // e.g. the invalidation after every save/drag — keep rendering current data,
+  // otherwise each edit flashes the whole timeline into loading states.
+  const isApplyingNewRequest = isShowingPreviousBootstrap && isFetchingPlannerHomeBootstrap;
   const rowLoadingState = getResourceRowLoadingState({
     hasPlannerData: !!plannerTimeline,
-    isPlannerApplyingFilters: isFetchingPlannerHomeBootstrap,
-    isPlannerRefreshing: !!plannerTimeline && isFetchingPlannerHomeBootstrap,
+    isPlannerApplyingFilters: isApplyingNewRequest,
+    isPlannerRefreshing: !!plannerTimeline && isApplyingNewRequest,
     hasPlannerRefreshError: !!plannerTimeline && isPlannerHomeBootstrapRefetchError,
   });
   const isInitialTimelineLoading =
@@ -434,10 +420,8 @@ export function Timeline({
     plannerTimeline,
   ]);
 
-  const controller = useTimelineV2Controller({
-    canEditAssignments: rowLoadingState.canEditAssignments && !!session?.access?.can_view_all,
-    createdByUuid: session?.employee?.uuid ?? null,
-  });
+  const canEditAssignments = rowLoadingState.canEditAssignments && !!session?.access?.can_view_all;
+  const hasEditorTarget = useAssignmentEditorStore((state) => state.target !== null);
 
   return (
     <div
@@ -475,63 +459,22 @@ export function Timeline({
             visibleIds={visibleIds}
             rowModels={rowModels}
             columns={columns.columns}
-            cellWidth={cellWidth}
             viewMode={viewMode}
             showTimelineLoading={rowLoadingState.showTimelineLoading}
             showExpandedLoading={rowLoadingState.showExpandedLoading}
-            canEditAssignments={rowLoadingState.canEditAssignments && !!session?.access?.can_view_all}
+            canEditAssignments={canEditAssignments}
             brandId={brandId}
             projectId={projectId}
-            onUpdatePlanned={controller.handleUpdatePlannedAssignment}
-            onDeletePlanned={controller.handleDeletePlannedAssignment}
-            onOpenPlannedCreate={controller.handleCreatePlannedAssignment}
-            onOpenMonthlyAllocation={controller.handleOpenMonthlyAllocation}
             isFetchingNextEmployeePage={isFetchingNextEmployeePage}
           />
         </div>
       )}
 
-      {controller.plannedPopover ? (
-        <AssignmentPopover
-          resourceId={controller.plannedPopover.resourceId}
-          projectId={controller.plannedPopover.projectId}
-          startDate={controller.plannedPopover.startDate}
-          endDate={controller.plannedPopover.endDate}
-          onClose={controller.closePlannedPopover}
-          onSave={controller.handleSavePlannedPopover}
-          isCreating={false}
-        />
-      ) : null}
-
-      {controller.monthlyAllocationModal ? (
-        <MonthlyAllocationModal
-          key={controller.monthlyAllocationModal.existingAssignment?.id ?? "create"}
-          monthStart={controller.monthlyAllocationModal.monthStart}
-          monthEnd={controller.monthlyAllocationModal.monthEnd}
-          resource={{
-            id: controller.monthlyAllocationModal.resourceId,
-            name: "",
-            role: "",
-          }}
-          project={controller.monthlyAllocationModal.project}
-          existingAssignment={controller.monthlyAllocationModal.existingAssignment}
-          adjustmentAssignments={controller.monthlyAllocationModal.adjustmentAssignments}
-          isFullAccess={session?.access?.can_view_all}
-          monthlyTotalHours={controller.monthlyAllocationModal.monthlyTotalHours}
-          planTotalHours={controller.monthlyAllocationModal.planTotalHours}
-          adjustmentTotalHours={controller.monthlyAllocationModal.adjustmentTotalHours}
-          onClose={controller.closeMonthlyAllocationModal}
-          onSave={(data) => controller.handleSaveMonthlyAllocation(data, controller.monthlyAllocationModal?.existingAssignment)}
-          onDelete={controller.handleDeleteMonthlyAllocation}
-        />
-      ) : null}
-
-      {controller.monthlyAllocationConfirm ? (
-        <MonthlyAllocationConfirmation
-          data={controller.monthlyAllocationConfirm.data}
-          isEditMode={controller.monthlyAllocationConfirm.isEditMode}
-          onConfirm={controller.handleConfirmMonthlyAllocation}
-          onCancel={controller.closeMonthlyAllocationConfirm}
+      {hasEditorTarget ? (
+        <AssignmentEditor
+          canEditAssignments={canEditAssignments}
+          createdByUuid={session?.employee?.uuid ?? null}
+          isFullAccess={!!session?.access?.can_view_all}
         />
       ) : null}
     </div>
