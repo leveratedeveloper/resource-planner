@@ -13,7 +13,7 @@ import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type {
   PlannerTimelineRequest,
   PlannerTimelineResponse,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 
 export type MinimalTimelineEmployee = Pick<
   Employee,

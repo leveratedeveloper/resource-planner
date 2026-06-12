@@ -7,10 +7,10 @@ import { useAuth } from "@/context/AuthContext";
 import { usePlannerHomeBootstrap } from "@/lib/query/hooks";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { getResourceRowLoadingState } from "@/lib/timeline/resource-row-loading";
-import { getTimelineRowStateResetKey } from "@/lib/timeline/row-state";
-import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/timeline/initial-load";
-import { getTimelineV2Columns, getTimelineV2Resolution } from "@/lib/timeline-v2/date-range";
+import { getResourceRowLoadingState } from "@/lib/timeline-v2/resource-row-loading";
+import { getTimelineRowStateResetKey } from "@/lib/timeline-v2/row-state";
+import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/planner/initial-load";
+import { getTimelineColumns, getTimelineResolution } from "@/lib/timeline-v2/date-range";
 import { buildEmployeeRowModels } from "@/lib/timeline-v2/row-model";
 import { getVisibleEmployeeIds } from "@/lib/timeline-v2/visible-rows";
 import { useTimelineEmployees } from "@/lib/timeline-v2/use-timeline-employees";
@@ -19,7 +19,7 @@ import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
 import {
   TIMELINE_DIMENSIONS,
   getTimelineEstimatedRowHeight,
-  getTimelineV2VisibleWidth,
+  getTimelineVisibleWidth,
 } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import { TimelineToolbar } from "@/components/timeline-v2/TimelineToolbar";
@@ -153,7 +153,7 @@ export function Timeline({
       frame = requestAnimationFrame(() => {
         if (!rootContainer) return;
         const rootWidth = rootContainer.clientWidth;
-        setContainerWidth(getTimelineV2VisibleWidth(rootWidth, resourceColumnWidth));
+        setContainerWidth(getTimelineVisibleWidth(rootWidth, resourceColumnWidth));
       });
     };
 
@@ -167,7 +167,7 @@ export function Timeline({
   }, [resourceColumnWidth]);
 
   const columns = useMemo(
-    () => getTimelineV2Columns({
+    () => getTimelineColumns({
       anchorDate: currentDate,
       viewMode,
       showWeekends,
@@ -191,14 +191,17 @@ export function Timeline({
 
     return {
       viewMode,
-      resolution: getTimelineV2Resolution(viewMode),
+      resolution: getTimelineResolution(viewMode),
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
       filters: {
         category: null,
         status: null,
       },
-      employeeLimit: 24,
+      // One bootstrap page fills the viewport with headroom; the route clamps
+      // to 100. Small pages made first load crawl the directory request by
+      // request, rebuilding row models on every arrival.
+      employeeLimit: 60,
       employeeOffset: 0,
       brandId,
       department,

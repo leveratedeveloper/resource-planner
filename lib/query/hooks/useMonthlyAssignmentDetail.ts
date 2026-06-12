@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import { fetchTimelineV2MonthlyAssignmentDetail } from "@/lib/timeline-v2/assignment-write-service";
+import { fetchMonthlyAssignmentDetail } from "@/lib/timeline-v2/assignment-write-service";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { toLocalDateString } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export function useMonthlyAssignmentDetail(
     queryKey: request
       ? getMonthlyAssignmentDetailQueryKey(request)
       : [...queryKeys.plannerTimeline, "monthly-assignment-detail", "disabled"],
-    queryFn: ({ signal }) => fetchTimelineV2MonthlyAssignmentDetail({ ...request!, signal }),
+    queryFn: ({ signal }) => fetchMonthlyAssignmentDetail({ ...request!, signal }),
     enabled: request != null,
     staleTime: 30_000,
   });

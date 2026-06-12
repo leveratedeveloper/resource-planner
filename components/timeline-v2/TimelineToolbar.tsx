@@ -6,7 +6,7 @@ import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
-import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 
 type TimelineToolbarProps = {
   currentDate: Date;
@@ -117,7 +117,7 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate
               key={mode}
               variant={viewMode === mode ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setViewMode(mode as TimelineV2ViewMode)}
+              onClick={() => setViewMode(mode as TimelineViewMode)}
               className={cn("h-7 px-3 text-xs", viewMode === mode && "bg-background shadow-sm")}
               data-testid={`timeline-v2-view-${mode === "halfYear" ? "half-year" : mode}`}
             >

@@ -8,12 +8,12 @@ import { TimelineExpandedSkeleton, TimelineRowLoadingCells } from "@/components/
 import { useIsRowExpanded, useTimelineExpansionStore } from "@/lib/timeline-v2/expansion-store";
 import { orderProjectLanes } from "@/lib/timeline-v2/lane-order";
 import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
-import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
 
 type ResourceRowProps = {
   row: EmployeeRowModel;
-  columns: TimelineV2Column[];
-  viewMode: TimelineV2ViewMode;
+  columns: TimelineColumn[];
+  viewMode: TimelineViewMode;
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;

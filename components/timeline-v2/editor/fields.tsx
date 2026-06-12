@@ -52,7 +52,7 @@ export function CategorySelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as AssignmentCategory)}
-        className="flex-1 rounded border bg-background px-2 py-1.5 text-sm"
+        className="flex-1 rounded-md border bg-background px-2 py-1.5 text-sm"
       >
         {ASSIGNMENT_CATEGORIES.map((category) => (
           <option key={category} value={category}>
@@ -73,7 +73,7 @@ export function NoteField({ value, onChange }: { value: string; onChange: (value
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full resize-none rounded border p-2 text-sm"
+        className="mt-2 w-full resize-none rounded-md border p-2 text-sm"
         rows={2}
         placeholder="Add a note..."
       />

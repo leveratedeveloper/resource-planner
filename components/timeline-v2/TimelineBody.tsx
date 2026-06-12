@@ -5,15 +5,15 @@ import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { ResourceRow } from "@/components/timeline-v2/ResourceRow";
 import { TimelineLoadingMore } from "@/components/timeline-v2/LoadingStates";
 import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
-import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
 
 type TimelineBodyProps = {
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
   virtualRows: VirtualItem[];
   visibleIds: string[];
   rowModels: Map<string, EmployeeRowModel>;
-  columns: TimelineV2Column[];
-  viewMode: TimelineV2ViewMode;
+  columns: TimelineColumn[];
+  viewMode: TimelineViewMode;
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;

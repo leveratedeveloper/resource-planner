@@ -1,11 +1,11 @@
 import {
   DEFAULT_TIMELINE_VIEW,
   getInitialTimelineDateRange,
-} from "@/lib/timeline/initial-load";
+} from "@/lib/planner/initial-load";
 import {
   getTimelineResolution,
   type PlannerTimelineRequest,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 
 export function getInitialPlannerRequest(initialTimelineAnchor: string): PlannerTimelineRequest {
   const initialDateRange = getInitialTimelineDateRange(

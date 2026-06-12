@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import { buildTimelineV2PlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
+import { buildTimelinePlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
 
 const assignment = (overrides: Partial<Assignment>): Assignment => ({
   id: overrides.id ?? "assignment-1",
@@ -56,7 +56,7 @@ function visibleWeekdays(startDay: number, endDay: number) {
 
 describe("timeline-v2 plan display segments", () => {
   it("merges full-month daily planned records into one segment", () => {
-    const segments = buildTimelineV2PlanDisplaySegments(dailyAssignments(1, 30));
+    const segments = buildTimelinePlanDisplaySegments(dailyAssignments(1, 30));
 
     expect(segments).toHaveLength(1);
     expect(segments[0]).toMatchObject({
@@ -70,7 +70,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("merges daily records into one segment ending on June 18", () => {
-    const segments = buildTimelineV2PlanDisplaySegments(dailyAssignments(1, 18));
+    const segments = buildTimelinePlanDisplaySegments(dailyAssignments(1, 18));
 
     expect(segments).toHaveLength(1);
     expect(segments[0].startDate).toBe("2026-06-01");
@@ -78,11 +78,11 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("keeps directly adjacent ranges merged and date gaps split", () => {
-    const adjacentSegments = buildTimelineV2PlanDisplaySegments([
+    const adjacentSegments = buildTimelinePlanDisplaySegments([
       assignment({ id: "a", startDate: "2026-06-01", endDate: "2026-06-10" }),
       assignment({ id: "b", startDate: "2026-06-11", endDate: "2026-06-18" }),
     ]);
-    const gappedSegments = buildTimelineV2PlanDisplaySegments([
+    const gappedSegments = buildTimelinePlanDisplaySegments([
       assignment({ id: "a", startDate: "2026-06-01", endDate: "2026-06-10" }),
       assignment({ id: "b", startDate: "2026-06-12", endDate: "2026-06-18" }),
     ]);
@@ -97,7 +97,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("keeps different projects in separate segments", () => {
-    const segments = buildTimelineV2PlanDisplaySegments([
+    const segments = buildTimelinePlanDisplaySegments([
       assignment({ id: "a", projectId: "project-1", startDate: "2026-06-01", endDate: "2026-06-10" }),
       assignment({ id: "b", projectId: "project-2", startDate: "2026-06-11", endDate: "2026-06-18" }),
     ]);
@@ -106,7 +106,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("keeps adjustment and non-adjustment assignments in separate segments", () => {
-    const segments = buildTimelineV2PlanDisplaySegments([
+    const segments = buildTimelinePlanDisplaySegments([
       assignment({ id: "a", isAdjustment: false, startDate: "2026-06-01", endDate: "2026-06-10" }),
       assignment({ id: "b", isAdjustment: true, startDate: "2026-06-11", endDate: "2026-06-18" }),
     ]);
@@ -115,7 +115,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("merges workweek chunks into one visible segment when weekends are hidden", () => {
-    const segments = buildTimelineV2PlanDisplaySegments({
+    const segments = buildTimelinePlanDisplaySegments({
       assignments: [
         assignment({ id: "week-1", startDate: "2026-06-01", endDate: "2026-06-05" }),
         assignment({ id: "week-2", startDate: "2026-06-08", endDate: "2026-06-12" }),
@@ -141,7 +141,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("splits segments when a visible weekday is missing", () => {
-    const segments = buildTimelineV2PlanDisplaySegments({
+    const segments = buildTimelinePlanDisplaySegments({
       assignments: [
         assignment({ id: "before-gap", startDate: "2026-06-01", endDate: "2026-06-10" }),
         assignment({ id: "after-gap", startDate: "2026-06-12", endDate: "2026-06-18" }),
@@ -156,7 +156,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("clips visible display coverage to campaign dates", () => {
-    const segments = buildTimelineV2PlanDisplaySegments({
+    const segments = buildTimelinePlanDisplaySegments({
       assignments: [
         assignment({ id: "june", startDate: "2026-06-01", endDate: "2026-06-30" }),
       ],
@@ -173,7 +173,7 @@ describe("timeline-v2 plan display segments", () => {
   });
 
   it("does not build a display segment outside the visible range", () => {
-    const segments = buildTimelineV2PlanDisplaySegments({
+    const segments = buildTimelinePlanDisplaySegments({
       assignments: [assignment({ id: "july", startDate: "2026-07-01", endDate: "2026-07-31" })],
       visibleDates: visibleWeekdays(1, 30),
     });

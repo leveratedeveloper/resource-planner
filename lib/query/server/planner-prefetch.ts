@@ -11,7 +11,7 @@ import {
   summarizeMonthlyAssignments,
   type PlannerTimelineRequest,
   type PlannerTimelineResponse,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 
 type PlannerTiming = {
   phase: (phase: string, context?: Record<string, unknown>) => void;

@@ -7,7 +7,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { toLocalDateString } from "@/lib/utils";
-import type { TimelineViewMode } from "@/lib/timeline/planner-loading";
+import type { TimelineViewMode } from "@/lib/planner/planner-loading";
 
 export type TimelineAssignmentDateRange = {
   startDate: string;

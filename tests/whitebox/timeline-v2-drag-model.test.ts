@@ -6,10 +6,10 @@ import {
   moveDatesPreservingSpan,
   rangeToDates,
 } from "@/lib/timeline-v2/drag-model";
-import type { TimelineV2Column } from "@/lib/timeline-v2/types";
+import type { TimelineColumn } from "@/lib/timeline-v2/types";
 import { toLocalDateString } from "@/lib/utils";
 
-function dayColumn(year: number, month: number, day: number): TimelineV2Column {
+function dayColumn(year: number, month: number, day: number): TimelineColumn {
   const date = new Date(year, month - 1, day);
   return {
     id: toLocalDateString(date),
@@ -25,8 +25,8 @@ function dayColumn(year: number, month: number, day: number): TimelineV2Column {
 
 // June 2026: Jun 1 is a Monday. Two work weeks with weekends HIDDEN —
 // the columns array itself contains no Sat/Sun, exactly like
-// getTimelineV2Columns with showWeekends=false.
-const weekendsHiddenColumns: TimelineV2Column[] = [
+// getTimelineColumns with showWeekends=false.
+const weekendsHiddenColumns: TimelineColumn[] = [
   dayColumn(2026, 6, 1), // 0: Mon
   dayColumn(2026, 6, 2), // 1: Tue
   dayColumn(2026, 6, 3), // 2: Wed
@@ -40,7 +40,7 @@ const weekendsHiddenColumns: TimelineV2Column[] = [
 ];
 
 // Same week with weekends VISIBLE.
-const weekendsVisibleColumns: TimelineV2Column[] = [
+const weekendsVisibleColumns: TimelineColumn[] = [
   dayColumn(2026, 6, 4), // 0: Thu
   dayColumn(2026, 6, 5), // 1: Fri
   dayColumn(2026, 6, 6), // 2: Sat

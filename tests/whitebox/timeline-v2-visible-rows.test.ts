@@ -3,7 +3,7 @@ import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { filterTimelineEmployees } from "@/lib/timeline/employees";
+import { filterTimelineEmployees } from "@/lib/timeline-v2/employees";
 import { getVisibleEmployeeIds } from "@/lib/timeline-v2/visible-rows";
 
 const makeEmployee = (id: string, overrides: Partial<Employee> = {}): Employee => ({

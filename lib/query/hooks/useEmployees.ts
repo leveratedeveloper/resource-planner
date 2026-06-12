@@ -96,7 +96,10 @@ export function useEmployees(options?: { enabled?: boolean }) {
   });
 }
 
-const PAGE_SIZE = 12;
+// Page size for the timeline's infinite employee list. 12 made the initial
+// load crawl the directory a dozen rows per request, and every arriving page
+// rebuilds the row models — fewer, larger pages beat many small ones here.
+const PAGE_SIZE = 60;
 
 interface PaginatedResponse<T> {
   data: T[];

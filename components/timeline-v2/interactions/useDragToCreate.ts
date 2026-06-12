@@ -7,7 +7,7 @@ import {
   rangeToDates,
   type DragRange,
 } from "@/lib/timeline-v2/drag-model";
-import type { TimelineV2Column } from "@/lib/timeline-v2/types";
+import type { TimelineColumn } from "@/lib/timeline-v2/types";
 
 // One pointer-handler set per lane canvas (replaces the per-cell listeners of
 // the legacy DraggableTimelineCell fleet). Down anchors a column, move extends
@@ -18,7 +18,7 @@ export function useDragToCreate({
   onCreate,
 }: {
   enabled: boolean;
-  columns: TimelineV2Column[];
+  columns: TimelineColumn[];
   onCreate: (range: { startDate: Date; endDate: Date }) => void;
 }) {
   const [preview, setPreview] = useState<DragRange | null>(null);

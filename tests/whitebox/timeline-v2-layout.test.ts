@@ -1,34 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
   TIMELINE_DIMENSIONS,
-  clampTimelineV2ResourceColumnWidth,
+  clampTimelineResourceColumnWidth,
   getTimelineEstimatedRowHeight,
-  getTimelineV2CellWidth,
-  getTimelineV2RangePosition,
-  getTimelineV2VisibleWidth,
+  getTimelineRangePosition,
+  getTimelineVisibleWidth,
 } from "@/lib/timeline-v2/layout";
 
 describe("timeline-v2 layout", () => {
   it("clamps the resource column width to the token bounds", () => {
-    expect(clampTimelineV2ResourceColumnWidth(100)).toBe(TIMELINE_DIMENSIONS.resourceCol.min);
-    expect(clampTimelineV2ResourceColumnWidth(1000)).toBe(TIMELINE_DIMENSIONS.resourceCol.max);
-    expect(clampTimelineV2ResourceColumnWidth(300)).toBe(300);
+    expect(clampTimelineResourceColumnWidth(100)).toBe(TIMELINE_DIMENSIONS.resourceCol.min);
+    expect(clampTimelineResourceColumnWidth(1000)).toBe(TIMELINE_DIMENSIONS.resourceCol.max);
+    expect(clampTimelineResourceColumnWidth(300)).toBe(300);
   });
 
-  it("derives the visible width and cell width from the container", () => {
-    expect(getTimelineV2VisibleWidth(1256, 256)).toBe(1000);
-    expect(getTimelineV2VisibleWidth(50, 256)).toBe(100);
-    expect(getTimelineV2CellWidth(1000, 5)).toBe(200);
-    expect(getTimelineV2CellWidth(1000, 0)).toBe(1000);
+  it("derives the visible width from the container", () => {
+    expect(getTimelineVisibleWidth(1256, 256)).toBe(1000);
+    expect(getTimelineVisibleWidth(50, 256)).toBe(100);
   });
 
   it("positions ranges as percentages of the column count", () => {
-    expect(getTimelineV2RangePosition({ startIndex: 1, endIndex: 2, columnCount: 4 })).toEqual({
+    expect(getTimelineRangePosition({ startIndex: 1, endIndex: 2, columnCount: 4 })).toEqual({
       leftPct: 25,
       widthPct: 50,
     });
     // Out-of-bounds indices clamp into the visible range.
-    expect(getTimelineV2RangePosition({ startIndex: -3, endIndex: 99, columnCount: 4 })).toEqual({
+    expect(getTimelineRangePosition({ startIndex: -3, endIndex: 99, columnCount: 4 })).toEqual({
       leftPct: 0,
       widthPct: 100,
     });

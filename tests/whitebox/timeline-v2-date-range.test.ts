@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { format } from "date-fns";
-import { getTimelineV2Columns } from "@/lib/timeline-v2/date-range";
+import { getTimelineColumns } from "@/lib/timeline-v2/date-range";
 
 const labels = (dates: Date[]) => dates.map((date) => format(date, "yyyy-MM-dd"));
 
 describe("timeline-v2 date range", () => {
   it("builds a Monday-start week and hides weekends by default", () => {
-    const result = getTimelineV2Columns({
+    const result = getTimelineColumns({
       anchorDate: new Date("2026-06-04T00:00:00"),
       viewMode: "week",
       showWeekends: false,
@@ -25,7 +25,7 @@ describe("timeline-v2 date range", () => {
   });
 
   it("builds daily month columns with optional weekends", () => {
-    const result = getTimelineV2Columns({
+    const result = getTimelineColumns({
       anchorDate: new Date("2026-02-10T00:00:00"),
       viewMode: "month",
       showWeekends: true,
@@ -42,7 +42,7 @@ describe("timeline-v2 date range", () => {
   it("builds monthly columns for quarter, half-year, and year views", () => {
     expect(
       labels(
-        getTimelineV2Columns({
+        getTimelineColumns({
           anchorDate: new Date("2026-06-04T00:00:00"),
           viewMode: "quarter",
           showWeekends: false,
@@ -51,7 +51,7 @@ describe("timeline-v2 date range", () => {
     ).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
 
     expect(
-      getTimelineV2Columns({
+      getTimelineColumns({
         anchorDate: new Date("2026-09-04T00:00:00"),
         viewMode: "halfYear",
         showWeekends: false,
@@ -59,7 +59,7 @@ describe("timeline-v2 date range", () => {
     ).toHaveLength(6);
 
     expect(
-      getTimelineV2Columns({
+      getTimelineColumns({
         anchorDate: new Date("2026-09-04T00:00:00"),
         viewMode: "year",
         showWeekends: false,

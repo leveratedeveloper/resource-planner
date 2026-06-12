@@ -168,7 +168,7 @@ function EditFields({
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as Assignment["status"])}
-            className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
           >
             <option value="draft">Draft</option>
             <option value="confirmed">Confirmed</option>

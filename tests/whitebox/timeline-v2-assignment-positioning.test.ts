@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getTimelineV2AssignmentPosition } from "@/lib/timeline-v2/assignment-positioning";
-import type { TimelineV2Column } from "@/lib/timeline-v2/types";
+import { getTimelineAssignmentPosition } from "@/lib/timeline-v2/assignment-positioning";
+import type { TimelineColumn } from "@/lib/timeline-v2/types";
 
-function column(date: string, kind: "day" | "month" = "day"): TimelineV2Column {
+function column(date: string, kind: "day" | "month" = "day"): TimelineColumn {
   return {
     id: date,
     date: new Date(`${date}T00:00:00`),
@@ -17,7 +17,7 @@ function column(date: string, kind: "day" | "month" = "day"): TimelineV2Column {
 
 describe("timeline-v2 assignment positioning", () => {
   it("clips daily assignments to the visible day range", () => {
-    const position = getTimelineV2AssignmentPosition({
+    const position = getTimelineAssignmentPosition({
       startDate: "2026-06-02",
       endDate: "2026-06-04",
       columns: [
@@ -34,7 +34,7 @@ describe("timeline-v2 assignment positioning", () => {
   });
 
   it("positions V2 week-view columns at daily resolution", () => {
-    const position = getTimelineV2AssignmentPosition({
+    const position = getTimelineAssignmentPosition({
       startDate: "2026-06-03",
       endDate: "2026-06-04",
       columns: [
@@ -52,7 +52,7 @@ describe("timeline-v2 assignment positioning", () => {
 
   it("returns null when the assignment is outside the visible range", () => {
     expect(
-      getTimelineV2AssignmentPosition({
+      getTimelineAssignmentPosition({
         startDate: "2026-07-01",
         endDate: "2026-07-05",
         columns: [column("2026-06-01"), column("2026-06-02")],
@@ -63,7 +63,7 @@ describe("timeline-v2 assignment positioning", () => {
 
   it("positions monthly summaries by month column", () => {
     expect(
-      getTimelineV2AssignmentPosition({
+      getTimelineAssignmentPosition({
         startDate: "2026-05-01",
         endDate: "2026-05-31",
         columns: [

@@ -1,7 +1,7 @@
 import { addDays, endOfMonth, format, isAfter, isBefore, startOfDay, startOfMonth } from "date-fns";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 
-export type TimelineV2PlanDisplaySegment = {
+export type TimelinePlanDisplaySegment = {
   id: string;
   sourceAssignment: Assignment;
   assignments: Assignment[];
@@ -14,7 +14,7 @@ export type TimelineV2PlanDisplaySegment = {
   status: Assignment["status"];
 };
 
-type TimelineV2DisplayResolution = "day" | "month";
+type TimelineDisplayResolution = "day" | "month";
 
 function parseDate(value: string) {
   return startOfDay(new Date(`${value}T00:00:00`));
@@ -34,17 +34,17 @@ function getMergeKey(assignment: Assignment) {
   ].join("|");
 }
 
-type BuildTimelineV2PlanDisplaySegmentsInput =
+type BuildTimelinePlanDisplaySegmentsInput =
   | Assignment[]
   | {
       assignments: Assignment[];
       visibleDates?: Date[];
-      resolution?: TimelineV2DisplayResolution;
+      resolution?: TimelineDisplayResolution;
       projectStartDate?: string | null;
       projectEndDate?: string | null;
     };
 
-function normalizeInput(input: BuildTimelineV2PlanDisplaySegmentsInput) {
+function normalizeInput(input: BuildTimelinePlanDisplaySegmentsInput) {
   if (Array.isArray(input)) {
     return {
       assignments: input,
@@ -78,7 +78,7 @@ function buildDefaultVisibleDates(assignments: Assignment[]) {
   return dates;
 }
 
-function getColumnRange(date: Date, resolution: TimelineV2DisplayResolution) {
+function getColumnRange(date: Date, resolution: TimelineDisplayResolution) {
   if (resolution === "month") {
     return {
       start: startOfMonth(date),
@@ -105,7 +105,7 @@ function getVisibleCoverage({
 }: {
   assignment: Assignment;
   visibleDates: Date[];
-  resolution: TimelineV2DisplayResolution;
+  resolution: TimelineDisplayResolution;
   projectStartDate?: string | null;
   projectEndDate?: string | null;
 }) {
@@ -144,7 +144,7 @@ function getVisibleCoverage({
   };
 }
 
-export function buildTimelineV2PlanDisplaySegments(input: BuildTimelineV2PlanDisplaySegmentsInput): TimelineV2PlanDisplaySegment[] {
+export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplaySegmentsInput): TimelinePlanDisplaySegment[] {
   const { assignments, visibleDates: inputVisibleDates, resolution, projectStartDate, projectEndDate } = normalizeInput(input);
   const plannedAssignments = assignments
     .filter((assignment) => !assignment.isTimeOff && assignment.projectId)
@@ -156,12 +156,12 @@ export function buildTimelineV2PlanDisplaySegments(input: BuildTimelineV2PlanDis
       return a.id.localeCompare(b.id);
     });
 
-  const segments: TimelineV2PlanDisplaySegment[] = [];
+  const segments: TimelinePlanDisplaySegment[] = [];
   const visibleDates = inputVisibleDates ?? buildDefaultVisibleDates(plannedAssignments);
   const lastSegmentByKey = new Map<
     string,
     {
-      segment: TimelineV2PlanDisplaySegment;
+      segment: TimelinePlanDisplaySegment;
       endIndex: number;
     }
   >();
@@ -188,7 +188,7 @@ export function buildTimelineV2PlanDisplaySegments(input: BuildTimelineV2PlanDis
       continue;
     }
 
-    const segment: TimelineV2PlanDisplaySegment = {
+    const segment: TimelinePlanDisplaySegment = {
       id: assignment.id,
       sourceAssignment: assignment,
       assignments: [assignment],

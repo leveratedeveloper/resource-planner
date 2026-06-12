@@ -12,13 +12,13 @@ import {
 } from "date-fns";
 import { toLocalDateString } from "@/lib/utils";
 import type {
-  TimelineV2Column,
-  TimelineV2ColumnSet,
-  TimelineV2Resolution,
-  TimelineV2ViewMode,
+  TimelineColumn,
+  TimelineColumnSet,
+  TimelineResolution,
+  TimelineViewMode,
 } from "@/lib/timeline-v2/types";
 
-function getAllColumns(anchorDate: Date, viewMode: TimelineV2ViewMode): Date[] {
+function getAllColumns(anchorDate: Date, viewMode: TimelineViewMode): Date[] {
   switch (viewMode) {
     case "week": {
       const start = startOfWeek(anchorDate, { weekStartsOn: 1 });
@@ -53,20 +53,20 @@ function getAllColumns(anchorDate: Date, viewMode: TimelineV2ViewMode): Date[] {
   }
 }
 
-export function getTimelineV2Resolution(viewMode: TimelineV2ViewMode): TimelineV2Resolution {
+export function getTimelineResolution(viewMode: TimelineViewMode): TimelineResolution {
   return viewMode === "week" || viewMode === "month" ? "day" : "month";
 }
 
-export function getTimelineV2Columns({
+export function getTimelineColumns({
   anchorDate,
   viewMode,
   showWeekends,
 }: {
   anchorDate: Date;
-  viewMode: TimelineV2ViewMode;
+  viewMode: TimelineViewMode;
   showWeekends: boolean;
-}): TimelineV2ColumnSet {
-  const resolution = getTimelineV2Resolution(viewMode);
+}): TimelineColumnSet {
+  const resolution = getTimelineResolution(viewMode);
   const allColumns = getAllColumns(anchorDate, viewMode);
   const visibleDates = resolution === "month" || showWeekends
     ? allColumns
@@ -75,7 +75,7 @@ export function getTimelineV2Columns({
   const rangeStart = allColumns[0];
   const rangeEnd = allColumns[allColumns.length - 1];
 
-  const columns: TimelineV2Column[] = visibleDates.map((date) => ({
+  const columns: TimelineColumn[] = visibleDates.map((date) => ({
     id: toLocalDateString(date),
     date,
     label: resolution === "month" ? format(date, "MMMM") : format(date, "EEE"),

@@ -2,11 +2,11 @@ import { useMemo } from "react";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import { useEmployees, useInfiniteEmployees } from "@/lib/query/hooks";
 import type { PlannerHomeBootstrapResponse } from "@/lib/query/server/planner-home-bootstrap";
-import { getLoadedTimelineEmployees, shouldUseCompleteEmployeeList } from "@/lib/timeline/employees";
-import type { TimelineV2Filters } from "@/lib/timeline-v2/types";
+import { getLoadedTimelineEmployees, shouldUseCompleteEmployeeList } from "@/lib/timeline-v2/employees";
+import type { TimelineFilters } from "@/lib/timeline-v2/types";
 
 type UseTimelineEmployeesInput = {
-  filters: TimelineV2Filters;
+  filters: TimelineFilters;
   bootstrap: PlannerHomeBootstrapResponse | undefined;
 };
 
@@ -35,7 +35,7 @@ export function useTimelineEmployees({
       bootstrap
         ? {
             // Bootstrap rows are MinimalTimelineEmployee; the timeline only reads the
-            // shared subset, so the cast mirrors TimelineV2's existing looseness.
+            // shared subset, so the cast mirrors Timeline's existing looseness.
             data: bootstrap.employees as Employee[],
             total: bootstrap.employeeTotal,
             hasMore: bootstrap.employeeHasMore,

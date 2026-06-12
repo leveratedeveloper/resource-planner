@@ -1,14 +1,8 @@
 import { startOfDay, startOfMonth } from "date-fns";
 import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
 import type { EmployeeDayMap } from "@/lib/timeline-v2/allocation-day-map";
-import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 import { toLocalDateString } from "@/lib/utils";
-
-// Legacy per-cell model, kept until the timeline rework removes its callers.
-export {
-  getAllocationCellModel as getTimelineV2AllocationModel,
-  type AllocationCellModel as TimelineV2AllocationModel,
-} from "@/lib/timeline/allocation-cell-model";
 
 export type AllocationCellModel =
   | { kind: "empty" }
@@ -23,7 +17,7 @@ export type AllocationCellModel =
 export type AllocationCellModelInput = {
   dayMap: EmployeeDayMap | undefined;
   day: Date;
-  viewMode: TimelineV2ViewMode;
+  viewMode: TimelineViewMode;
   capacity: number;
 };
 

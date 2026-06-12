@@ -17,13 +17,15 @@ describe("time-off feature removal source guards", () => {
   });
 
   it("does not expose time-off blocking or allocation display logic", () => {
-    const draggableCell = readFileSync("components/timeline/DraggableTimelineCell.tsx", "utf8");
-    const allocationCell = readFileSync("lib/timeline/allocation-cell-model.ts", "utf8");
+    const dragToCreate = readFileSync("components/timeline-v2/interactions/useDragToCreate.ts", "utf8");
+    const allocationModel = readFileSync("lib/timeline-v2/allocation-model.ts", "utf8");
+    const dayMap = readFileSync("lib/timeline-v2/allocation-day-map.ts", "utf8");
     const distributor = readFileSync("lib/utils/allocation-distributor.ts", "utf8");
 
-    expect(draggableCell).not.toContain("timeOffAssignments");
-    expect(draggableCell).not.toContain("Cannot schedule - Time Off");
-    expect(allocationCell).not.toContain("kind: \"time-off\"");
+    expect(dragToCreate).not.toContain("timeOffAssignments");
+    expect(dragToCreate).not.toContain("Cannot schedule - Time Off");
+    expect(allocationModel).not.toContain("kind: \"time-off\"");
+    expect(dayMap).not.toContain("timeOffAssignments");
     expect(distributor).not.toContain("timeOffAssignments");
     expect(distributor).not.toContain("blockedDays.timeOff");
   });

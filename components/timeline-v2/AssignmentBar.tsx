@@ -7,20 +7,32 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import {
   calculateAssignmentDisplayTotalHours,
   formatAssignmentDisplayHours,
-} from "@/lib/timeline/assignment-display-hours";
-import { getTimelineV2AssignmentPosition } from "@/lib/timeline-v2/assignment-positioning";
-import { getTimelineV2RangePosition } from "@/lib/timeline-v2/layout";
+} from "@/lib/timeline-v2/assignment-display-hours";
+import { getTimelineAssignmentPosition } from "@/lib/timeline-v2/assignment-positioning";
+import { getTimelineRangePosition } from "@/lib/timeline-v2/layout";
 import { moveDatesPreservingSpan, rangeToDates } from "@/lib/timeline-v2/drag-model";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import { useBarDrag } from "@/components/timeline-v2/interactions/useBarDrag";
 import { toLocalDateString } from "@/lib/utils";
-import type { TimelineV2Column, TimelineV2Resolution } from "@/lib/timeline-v2/types";
+import type { TimelineColumn, TimelineResolution } from "@/lib/timeline-v2/types";
+
+// Relative luminance of the project color decides label color — white text on
+// light brand colors fails contrast.
+function getReadableTextClass(hexColor: string): string {
+  const hex = hexColor.replace("#", "");
+  if (hex.length < 6) return "text-white";
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.6 ? "text-slate-900" : "text-white";
+}
 
 type AssignmentBarProps = {
   assignment: Assignment;
   project: ProjectOption;
-  columns: TimelineV2Column[];
-  resolution: TimelineV2Resolution;
+  columns: TimelineColumn[];
+  resolution: TimelineResolution;
   // Day-resolution bars are editable in place (click-to-edit, drag-to-move,
   // edge-resize); month-resolution bars are display-only and let clicks bubble
   // to the lane's month handler.
@@ -57,14 +69,27 @@ export const AssignmentBar = React.memo(function AssignmentBar({
     enabled: canDrag,
     assignment,
     columns,
-    onCommit: ({ edge, deltaColumns, range }) => {
+    onCommit: ({ edge, range }) => {
       if (edge === "move") {
+        // Commit the PREVIEW's wall-clamped shift, not the raw pointer delta —
+        // per-member clamping would compress rows unevenly at the visible
+        // edges and desync the save from what the user saw.
+        const segmentPosition = getTimelineAssignmentPosition({
+          startDate: assignment.startDate,
+          endDate: assignment.endDate,
+          columns,
+          resolution: "day",
+        });
+        if (!segmentPosition) return;
+        const effectiveDelta = range.startIndex - segmentPosition.startIndex;
+        if (effectiveDelta === 0) return;
+
         // Shift every member of the segment by the same column delta; each row
         // keeps its own span. Optimistic patches make this instant; the final
         // invalidation settles server truth.
         for (const member of memberAssignments) {
           const dates = moveDatesPreservingSpan({
-            deltaColumns,
+            deltaColumns: effectiveDelta,
             startDate: member.startDate,
             endDate: member.endDate,
             columns,
@@ -90,7 +115,7 @@ export const AssignmentBar = React.memo(function AssignmentBar({
 
   const position = useMemo(
     () =>
-      getTimelineV2AssignmentPosition({
+      getTimelineAssignmentPosition({
         startDate: assignment.startDate,
         endDate: assignment.endDate,
         columns,
@@ -112,18 +137,36 @@ export const AssignmentBar = React.memo(function AssignmentBar({
 
   // While dragging, the bar renders at the snapped preview range.
   const renderedPosition = previewRange
-    ? getTimelineV2RangePosition({ ...previewRange, columnCount: columns.length })
+    ? getTimelineRangePosition({ ...previewRange, columnCount: columns.length })
     : position;
+  const textClass = getReadableTextClass(project.color || "#64748b");
+
+  const openEdit = () => openEditor({ mode: "edit", assignment, project });
 
   return (
     <div
       className={cn(
-        "absolute inset-y-0.5 flex items-center overflow-hidden rounded-md border border-black/10 text-xs text-white shadow-sm",
+        "absolute inset-y-0.5 flex items-center overflow-hidden rounded-md border border-black/10 text-xs shadow-sm",
+        textClass,
+        canEdit && "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         canDrag && (isDragging ? "cursor-grabbing opacity-80 ring-2 ring-blue-400" : "cursor-grab"),
         canEdit && !canDrag && "cursor-pointer",
         isHighlighted && "ring-2 ring-amber-400 border-amber-200 shadow-md",
         disabled && "pointer-events-none"
       )}
+      role={canEdit ? "button" : undefined}
+      tabIndex={canEdit ? 0 : undefined}
+      aria-label={canEdit ? `Edit ${project.name} assignment` : undefined}
+      onKeyDown={
+        canEdit
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openEdit();
+              }
+            }
+          : undefined
+      }
       style={{
         left: `${renderedPosition.leftPct}%`,
         width: `${renderedPosition.widthPct}%`,
@@ -142,7 +185,7 @@ export const AssignmentBar = React.memo(function AssignmentBar({
                 didDragRef.current = false;
                 return;
               }
-              openEditor({ mode: "edit", assignment, project });
+              openEdit();
             }
           : undefined
       }

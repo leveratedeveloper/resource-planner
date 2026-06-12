@@ -3,7 +3,7 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import {
   isProjectHighlighted,
   sortResourceProjects,
-} from "@/lib/timeline/resource-project-model";
+} from "@/lib/timeline-v2/resource-project-model";
 
 export type OrderedProjectLane<L> = L & { isHighlighted: boolean };
 

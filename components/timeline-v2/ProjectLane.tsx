@@ -6,12 +6,12 @@ import { endOfMonth, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBar } from "@/components/timeline-v2/AssignmentBar";
 import { useDragToCreate } from "@/components/timeline-v2/interactions/useDragToCreate";
-import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline/assignment-display-hours";
-import { getTimelineV2RangePosition } from "@/lib/timeline-v2/layout";
+import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline-v2/assignment-display-hours";
+import { getTimelineRangePosition } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import type { OrderedProjectLane } from "@/lib/timeline-v2/lane-order";
 import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
-import type { TimelineV2Column, TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
 
 function buildSegmentAssignment(
   segment: ProjectLaneModel["planDisplaySegments"][number]
@@ -31,7 +31,7 @@ function parseLocalDate(value: string): Date {
 // visible — shifting just the visible slice would tear a distribution apart.
 function areAllMembersVisible(
   assignments: EmployeeRowModel["assignments"],
-  columns: TimelineV2Column[]
+  columns: TimelineColumn[]
 ): boolean {
   if (columns.length === 0) return false;
   const rangeStart = columns[0].date;
@@ -55,8 +55,8 @@ type ProjectLaneProps = {
   lane: OrderedProjectLane<ProjectLaneModel>;
   resourceId: string;
   resourceAssignments: EmployeeRowModel["assignments"];
-  columns: TimelineV2Column[];
-  viewMode: TimelineV2ViewMode;
+  columns: TimelineColumn[];
+  viewMode: TimelineViewMode;
   canEditAssignments: boolean;
 };
 
@@ -177,7 +177,7 @@ export const ProjectLane = React.memo(function ProjectLane({
             className="absolute inset-y-0.5 z-30 rounded-md border-2 border-dashed pointer-events-none"
             style={{
               ...(() => {
-                const pct = getTimelineV2RangePosition({
+                const pct = getTimelineRangePosition({
                   ...dragToCreate.preview,
                   columnCount: columns.length,
                 });

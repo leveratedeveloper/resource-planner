@@ -1,85 +1,43 @@
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
-import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
-import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import type { TimelineV2AllocationModel } from "@/lib/timeline-v2/allocation-model";
-import type { TimelineV2PlanDisplaySegment } from "@/lib/timeline-v2/plan-display-segments";
+import type { AllocationCellModel } from "@/lib/timeline-v2/allocation-model";
 import type { Resource } from "@/types";
 
-export type TimelineV2ViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
-export type TimelineV2Resolution = "day" | "month";
-export type TimelineV2LaneKind = "allocation" | "plan" | "actual";
+export type TimelineViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
+export type TimelineResolution = "day" | "month";
 
-export type TimelineV2Column = {
+export type TimelineColumn = {
   id: string;
   date: Date;
   label: string;
   subLabel: string | null;
-  kind: TimelineV2Resolution;
+  kind: TimelineResolution;
   isWeekend: boolean;
   isToday: boolean;
   isCurrentMonth: boolean;
 };
 
-export type TimelineV2ColumnSet = {
-  viewMode: TimelineV2ViewMode;
-  resolution: TimelineV2Resolution;
+export type TimelineColumnSet = {
+  viewMode: TimelineViewMode;
+  resolution: TimelineResolution;
   startDate: string;
   endDate: string;
-  columns: TimelineV2Column[];
+  columns: TimelineColumn[];
 };
 
-export type TimelineV2Filters = {
+export type TimelineFilters = {
   brandId: string | null;
   department: string | null;
   searchQuery?: string;
   projectId: string | null;
 };
 
-export type TimelineV2Resource = Resource & {
+export type TimelineResource = Resource & {
   employee: Employee;
 };
 
-export type TimelineV2AllocationCell = {
+export type TimelineAllocationCell = {
   id: string;
   employeeId: string;
   date: string;
-  model: TimelineV2AllocationModel;
+  model: AllocationCellModel;
 };
-
-export type TimelineV2CampaignRow = {
-  id: string;
-  project: ProjectOption;
-  brand?: Brand;
-  planAssignments: Assignment[];
-  planDisplaySegments: TimelineV2PlanDisplaySegment[];
-  isHighlighted: boolean;
-};
-
-export type TimelineV2CampaignGroup = {
-  id: string;
-  name: string;
-  brandName?: string;
-  isHighlighted: boolean;
-  row: TimelineV2CampaignRow;
-};
-
-export type TimelineV2ResourceRow = {
-  id: string;
-  resource: TimelineV2Resource;
-  assignments: Assignment[];
-  actualAssignments: ActualAssignment[];
-  allocationCells: TimelineV2AllocationCell[];
-  campaignGroups: TimelineV2CampaignGroup[];
-  isExpanded: boolean;
-};
-
-// Clean aliases — new (post-rework) code uses these names; the V2-prefixed
-// originals are removed in the final rename sweep.
-export type TimelineViewMode = TimelineV2ViewMode;
-export type TimelineResolution = TimelineV2Resolution;
-export type TimelineColumn = TimelineV2Column;
-export type TimelineColumnSet = TimelineV2ColumnSet;
-export type TimelineFilters = TimelineV2Filters;
-export type TimelineResource = TimelineV2Resource;

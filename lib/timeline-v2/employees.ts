@@ -5,7 +5,7 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import {
   getMatchingTimelineEmployeeIds,
   hasActiveTimelineScopeFilter,
-} from "@/lib/timeline/timeline-filters";
+} from "@/lib/timeline-v2/timeline-filters";
 
 type EmployeePage = {
   data: Employee[];

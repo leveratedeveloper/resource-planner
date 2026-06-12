@@ -1,4 +1,4 @@
-import type { TimelineV2Column } from "@/lib/timeline-v2/types";
+import type { TimelineColumn } from "@/lib/timeline-v2/types";
 import { toLocalDateString } from "@/lib/utils";
 
 export type DragRange = { startIndex: number; endIndex: number };
@@ -66,7 +66,7 @@ export function getResizePreview({
 
 export function rangeToDates(
   range: DragRange,
-  columns: TimelineV2Column[]
+  columns: TimelineColumn[]
 ): { startDate: Date; endDate: Date } {
   return {
     startDate: columns[range.startIndex].date,
@@ -102,7 +102,7 @@ export function moveDatesPreservingSpan({
   deltaColumns: number;
   startDate: string; // yyyy-MM-dd
   endDate: string; // yyyy-MM-dd
-  columns: TimelineV2Column[];
+  columns: TimelineColumn[];
 }): { startDate: Date; endDate: Date } | null {
   if (columns.length === 0) return null;
 

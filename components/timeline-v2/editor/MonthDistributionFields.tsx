@@ -363,7 +363,7 @@ export function MonthDistributionFields({
                 {monthContext.adjustmentAssignments.length > 0 ? (
                   <button
                     type="button"
-                    className={`w-full rounded border px-3 py-1.5 text-xs ${
+                    className={`w-full rounded-md border px-3 py-1.5 text-xs ${
                       removeAdjustment
                         ? "border-red-300 bg-red-100 text-red-700"
                         : "border-input bg-background text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-600"

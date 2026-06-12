@@ -4,7 +4,7 @@ import {
   getPlannerTimelineQueryKey,
   type PlannerTimelineRequest,
   type PlannerTimelineResponse,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 
 async function fetchPlannerTimeline(request: PlannerTimelineRequest): Promise<PlannerTimelineResponse> {
   const url = new URL("/api/planner/timeline", window.location.origin);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getResourceRowLoadingState } from "@/lib/timeline/resource-row-loading";
+import { getResourceRowLoadingState } from "@/lib/timeline-v2/resource-row-loading";
 
 describe("resource row loading state", () => {
   it("uses a full row skeleton only during the initial planner load", () => {

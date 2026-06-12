@@ -4,7 +4,7 @@ import {
   getInitialTimelineAnchor,
   getInitialTimelineDateRange,
   shouldEnableTimelineAssignments,
-} from "@/lib/timeline/initial-load";
+} from "@/lib/planner/initial-load";
 
 describe("timeline initial loading helpers", () => {
   it("defaults fresh planner loads to the current calendar quarter", () => {

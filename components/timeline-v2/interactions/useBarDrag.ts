@@ -2,9 +2,9 @@
 
 import { useRef, useState } from "react";
 import { getResizePreview, type DragRange } from "@/lib/timeline-v2/drag-model";
-import { getTimelineV2AssignmentPosition } from "@/lib/timeline-v2/assignment-positioning";
+import { getTimelineAssignmentPosition } from "@/lib/timeline-v2/assignment-positioning";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import type { TimelineV2Column } from "@/lib/timeline-v2/types";
+import type { TimelineColumn } from "@/lib/timeline-v2/types";
 
 export type BarDragEdge = "start" | "end" | "move";
 
@@ -34,7 +34,7 @@ export function useBarDrag({
 }: {
   enabled: boolean;
   assignment: Pick<Assignment, "startDate" | "endDate">;
-  columns: TimelineV2Column[];
+  columns: TimelineColumn[];
   onCommit: (commit: BarDragCommit) => void;
 }) {
   const [previewRange, setPreviewRange] = useState<DragRange | null>(null);
@@ -44,7 +44,7 @@ export function useBarDrag({
 
   const begin = (edge: BarDragEdge) => (event: React.PointerEvent<HTMLElement>) => {
     if (!enabled || event.button !== 0 || columns.length === 0) return;
-    const position = getTimelineV2AssignmentPosition({
+    const position = getTimelineAssignmentPosition({
       startDate: assignment.startDate,
       endDate: assignment.endDate,
       columns,

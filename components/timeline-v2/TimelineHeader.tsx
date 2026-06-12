@@ -4,10 +4,10 @@ import React, { useCallback } from "react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
-import type { TimelineV2Column } from "@/lib/timeline-v2/types";
+import type { TimelineColumn } from "@/lib/timeline-v2/types";
 
 type TimelineHeaderProps = {
-  columns: TimelineV2Column[];
+  columns: TimelineColumn[];
 };
 
 // Sticky date strip inside the single scroll container — it shares the

@@ -4,7 +4,7 @@ import { fetchPlannerHomeBootstrap } from "@/lib/query/server/planner-home-boots
 import {
   getTimelineResolution,
   type TimelineViewMode,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 import { createRequestTiming } from "@/lib/observability/request-timing";
 
 const VIEW_MODES = new Set<TimelineViewMode>([

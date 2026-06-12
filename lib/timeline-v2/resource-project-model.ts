@@ -2,7 +2,13 @@ import { isWithinInterval, startOfDay } from "date-fns";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import { extractDeliverables } from "@/lib/timeline/resource-row-model";
+// Inlined from the retired lib/timeline/resource-row-model.
+function extractDeliverables(note: string | null): string[] {
+  if (!note) return [];
+  const match = note.match(/Deliverable[s]?:\s*([^.\n]+)/);
+  if (!match) return [];
+  return match[1].split(",").map((value) => value.trim()).filter(Boolean);
+}
 
 export type DeliverableProjectRow = {
   id: string;

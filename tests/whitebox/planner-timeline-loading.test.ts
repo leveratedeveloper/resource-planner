@@ -8,7 +8,7 @@ import {
   getTimelineResolution,
   shouldLoadPlannerAssignmentDetail,
   summarizeMonthlyAssignments,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 
 const makeAssignment = (overrides: Partial<Assignment>): Assignment => ({
   id: "assignment-1",
@@ -278,7 +278,7 @@ describe("planner timeline loading contract", () => {
 
   it("shows filter application state instead of calculating from stale planner data", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
-    const loadingStateSource = readFileSync("lib/timeline/resource-row-loading.ts", "utf8");
+    const loadingStateSource = readFileSync("lib/timeline-v2/resource-row-loading.ts", "utf8");
 
     expect(timelineSource).toContain("isShowingPreviousBootstrap && isFetchingPlannerHomeBootstrap");
     expect(timelineSource).toContain("isPlannerApplyingFilters: isApplyingNewRequest");

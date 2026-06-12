@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { orderProjectLanes } from "@/lib/timeline-v2/lane-order";
-import { sortResourceProjects } from "@/lib/timeline/resource-project-model";
+import { sortResourceProjects } from "@/lib/timeline-v2/resource-project-model";
 
 const project = (id: string, brandId: string | null = null): ProjectOption => ({
   id,

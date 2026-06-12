@@ -2,7 +2,7 @@ import { startOfDay } from "date-fns";
 import type { NewAssignment, Assignment } from "@/lib/query/hooks/useAssignments";
 import { toLocalDateString } from "@/lib/utils";
 
-export function getTimelineV2MonthlyDetailKey(
+export function getMonthlyDetailKey(
   resourceId: string,
   projectId: string,
   monthStart: Date,
@@ -11,7 +11,7 @@ export function getTimelineV2MonthlyDetailKey(
   return [resourceId, projectId, toLocalDateString(monthStart), toLocalDateString(monthEnd)].join(":");
 }
 
-export async function fetchTimelineV2MonthlyAssignmentDetail({
+export async function fetchMonthlyAssignmentDetail({
   resourceId,
   projectId,
   monthStart,
@@ -39,7 +39,7 @@ export async function fetchTimelineV2MonthlyAssignmentDetail({
   return data.data ?? [];
 }
 
-export async function deleteTimelineV2AssignmentsById(ids: string[]) {
+export async function deleteAssignmentsById(ids: string[]) {
   await Promise.all(
     ids.map(async (id) => {
       const response = await fetch(`/api/assignments/${id}`, {
@@ -58,7 +58,7 @@ export async function deleteTimelineV2AssignmentsById(ids: string[]) {
   );
 }
 
-export async function saveTimelineV2MonthlyAllocation({
+export async function saveMonthlyAllocation({
   resourceId,
   projectId,
   distributions,
@@ -100,7 +100,7 @@ export async function saveTimelineV2MonthlyAllocation({
   return { createdCount: created.length };
 }
 
-export async function saveTimelineV2MonthlyAdjustment({
+export async function saveMonthlyAdjustment({
   resourceId,
   projectId,
   adjustmentDistributions,

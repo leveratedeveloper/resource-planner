@@ -2,14 +2,15 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import type { TimelineV2AllocationCell } from "@/lib/timeline-v2/types";
+import type { TimelineAllocationCell } from "@/lib/timeline-v2/types";
 
 type CapacityStripProps = {
-  cells: TimelineV2AllocationCell[];
+  cells: TimelineAllocationCell[];
 };
 
 // Utilization ramp (DESIGN.md §3.2): blue intensity scales with plan load,
-// opacity fades below 100%, red top border marks overbooked days.
+// opacity fades below 100%, red top border marks overbooked days. Light cells
+// (low opacity over white) switch to dark text — white fails contrast there.
 function getAllocationStyle(pct: number): { text: string; border: string; bgColor: string } {
   if (pct <= 0) return { text: "text-transparent", border: "", bgColor: "" };
 
@@ -19,7 +20,11 @@ function getAllocationStyle(pct: number): { text: string; border: string; bgColo
   if (pct > 1.25) return { text: "text-white", border, bgColor: "rgba(30, 58, 138, 1)" };
   if (pct > 1.1) return { text: "text-white", border, bgColor: "rgba(30, 64, 175, 1)" };
   if (pct >= 1) return { text: "text-white", border, bgColor: "rgba(37, 99, 235, 1)" };
-  return { text: "text-white", border, bgColor: `rgba(37, 99, 235, ${opacity})` };
+  return {
+    text: opacity >= 0.55 ? "text-white" : "text-blue-900",
+    border,
+    bgColor: `rgba(37, 99, 235, ${opacity})`,
+  };
 }
 
 // One memoized strip per row replaces the old per-cell component fleet: a

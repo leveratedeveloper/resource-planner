@@ -10,7 +10,7 @@ import {
   sortEmployeeRecordsByName,
   sortTimelineEmployees,
   shouldUseCompleteEmployeeList,
-} from "@/lib/timeline/employees";
+} from "@/lib/timeline-v2/employees";
 
 const makeEmployee = (id: string, overrides: Partial<Employee> = {}): Employee => ({
   id,
@@ -423,7 +423,7 @@ describe("timeline employee loading helpers", () => {
   });
 
   it("delegates brand and project resource matching to the unified timeline scope filter module", () => {
-    const source = readFileSync("lib/timeline/employees.ts", "utf8");
+    const source = readFileSync("lib/timeline-v2/employees.ts", "utf8");
 
     expect(source).toContain("getMatchingTimelineEmployeeIds");
     expect(source).not.toContain("function getBrandEmployeeIds");

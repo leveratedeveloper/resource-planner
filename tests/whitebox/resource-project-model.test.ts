@@ -8,7 +8,7 @@ import {
   isDeliverableGroupHighlighted,
   isProjectHighlighted,
   sortResourceProjects,
-} from "@/lib/timeline/resource-project-model";
+} from "@/lib/timeline-v2/resource-project-model";
 
 function project(overrides: Partial<ProjectOption>): ProjectOption {
   return {

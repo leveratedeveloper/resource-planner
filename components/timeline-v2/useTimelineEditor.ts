@@ -12,11 +12,11 @@ import {
   type Assignment,
 } from "@/lib/query/hooks/useAssignments";
 import { useMonthlyAssignmentDetail } from "@/lib/query/hooks/useMonthlyAssignmentDetail";
-import { shouldLoadPlannerAssignmentDetail } from "@/lib/timeline/planner-loading";
+import { shouldLoadPlannerAssignmentDetail } from "@/lib/planner/planner-loading";
 import {
-  deleteTimelineV2AssignmentsById,
-  saveTimelineV2MonthlyAllocation,
-  saveTimelineV2MonthlyAdjustment,
+  deleteAssignmentsById,
+  saveMonthlyAllocation,
+  saveMonthlyAdjustment,
 } from "@/lib/timeline-v2/assignment-write-service";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import { toLocalDateString } from "@/lib/utils";
@@ -174,7 +174,7 @@ export function useTimelineEditor({
           });
 
           if (overlappingAssignments.length > 0) {
-            await deleteTimelineV2AssignmentsById(overlappingAssignments.map((assignment) => assignment.id));
+            await deleteAssignmentsById(overlappingAssignments.map((assignment) => assignment.id));
             queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
               if (!old) return old;
               const deletedIds = new Set(overlappingAssignments.map((assignment) => assignment.id));
@@ -182,7 +182,7 @@ export function useTimelineEditor({
             });
           }
 
-          await saveTimelineV2MonthlyAllocation({
+          await saveMonthlyAllocation({
             resourceId: target.resourceId,
             projectId: target.project.id,
             distributions: data.distributions,
@@ -206,12 +206,12 @@ export function useTimelineEditor({
           });
 
           if (adjustmentAssignmentsToDelete.length > 0) {
-            await deleteTimelineV2AssignmentsById(adjustmentAssignmentsToDelete.map((assignment) => assignment.id));
+            await deleteAssignmentsById(adjustmentAssignmentsToDelete.map((assignment) => assignment.id));
           }
         }
 
         if (!removeAdjustment && adjustmentDistributions && adjustmentDistributions.length > 0) {
-          await saveTimelineV2MonthlyAdjustment({
+          await saveMonthlyAdjustment({
             resourceId: target.resourceId,
             projectId: target.project.id,
             adjustmentDistributions,
@@ -252,7 +252,7 @@ export function useTimelineEditor({
 
     setIsSavingMonth(true);
     try {
-      await deleteTimelineV2AssignmentsById(assignmentsInMonth.map((assignment) => assignment.id));
+      await deleteAssignmentsById(assignmentsInMonth.map((assignment) => assignment.id));
       queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
       invalidatePlannerData(queryClient);
       close();

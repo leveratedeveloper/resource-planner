@@ -4,43 +4,21 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
-import {
-  isProjectHighlighted,
-  sortResourceProjects,
-} from "@/lib/timeline/resource-project-model";
 import { buildAllocationDayMaps } from "@/lib/timeline-v2/allocation-day-map";
-import {
-  getAllocationCellModel,
-  getTimelineV2AllocationModel,
-} from "@/lib/timeline-v2/allocation-model";
-import { buildTimelineV2PlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
+import { getAllocationCellModel } from "@/lib/timeline-v2/allocation-model";
+import { buildTimelinePlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
 import type {
-  TimelineV2AllocationCell,
-  TimelineV2CampaignGroup,
-  TimelineV2Filters,
-  TimelineV2Resource,
-  TimelineV2ResourceRow,
-  TimelineV2ViewMode,
+  TimelineAllocationCell,
+  TimelineResource,
+  TimelineViewMode,
 } from "@/lib/timeline-v2/types";
 
-export function groupTimelineV2AssignmentsByEmployee(assignments: Assignment[]) {
+export function groupTimelineAssignmentsByEmployee(assignments: Assignment[]) {
   const grouped = new Map<string, Assignment[]>();
 
   assignments.forEach((assignment) => {
     if (!grouped.has(assignment.employeeId)) grouped.set(assignment.employeeId, []);
     grouped.get(assignment.employeeId)!.push(assignment);
-  });
-
-  return grouped;
-}
-
-export function groupTimelineV2ActualAssignmentsByEmployee(actualAssignments: ActualAssignment[]) {
-  const grouped = new Map<string, ActualAssignment[]>();
-
-  actualAssignments.forEach((assignment) => {
-    if (!assignment.employeeUuid) return;
-    if (!grouped.has(assignment.employeeUuid)) grouped.set(assignment.employeeUuid, []);
-    grouped.get(assignment.employeeUuid)!.push(assignment);
   });
 
   return grouped;
@@ -67,172 +45,27 @@ function getPlanCampaignProjects(
   return campaignProjects;
 }
 
-function isTimelineV2MonthRangeView(viewMode: TimelineV2ViewMode) {
+function isTimelineMonthRangeView(viewMode: TimelineViewMode) {
   return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
 }
 
-function isTimelineV2WeekView(viewMode: TimelineV2ViewMode) {
-  return viewMode === "week";
-}
-
-export function buildTimelineV2AllocationCells({
-  resource,
-  assignments,
-  actualAssignments,
-  days,
-  viewMode,
-}: {
-  resource: TimelineV2Resource;
-  assignments: Assignment[];
-  actualAssignments: ActualAssignment[];
-  days: Date[];
-  viewMode: TimelineV2ViewMode;
-}): TimelineV2AllocationCell[] {
-  const isWeekView = isTimelineV2WeekView(viewMode);
-  const isMonthRangeView = isTimelineV2MonthRangeView(viewMode);
-
-  return days.map((day) => {
-    const date = format(day, "yyyy-MM-dd");
-
-    return {
-      id: `${resource.id}-${date}`,
-      employeeId: resource.id,
-      date,
-      model: getTimelineV2AllocationModel({
-        day,
-        resource,
-        assignments,
-        actualAssignments,
-        isWeekView,
-        isMonthRangeView,
-      }),
-    };
-  });
-}
-
-export function buildTimelineV2Rows({
-  employees,
-  assignments,
-  actualAssignments,
-  projects,
-  brandById,
-  expandedEmployeeIds,
-  filters,
-  days,
-  viewMode,
-}: {
-  employees: Employee[];
-  assignments: Assignment[];
-  actualAssignments: ActualAssignment[];
-  projects: ProjectOption[];
-  brandById: Map<string, Brand>;
-  expandedEmployeeIds: Set<string>;
-  filters: TimelineV2Filters;
-  days: Date[];
-  viewMode: TimelineV2ViewMode;
-}): TimelineV2ResourceRow[] {
-  const projectById = new Map(projects.map((project) => [project.id, project]));
-  const assignmentsByEmployee = groupTimelineV2AssignmentsByEmployee(assignments);
-  const actualsByEmployee = groupTimelineV2ActualAssignmentsByEmployee(actualAssignments);
-
-  return employees.map((employee) => {
-    const resourceAssignments = (assignmentsByEmployee.get(employee.id) ?? []).filter(
-      (assignment) => !assignment.isTimeOff
-    );
-    const employeeActuals = actualsByEmployee.get(employee.id) ?? [];
-    const resourceProjects = getPlanCampaignProjects(resourceAssignments, projectById);
-    const resource: TimelineV2Resource = {
-      id: employee.id,
-      name: employee.fullName,
-      role: employee.position,
-      department: employee.department?.name || "",
-      capacity: employee.weeklyCapacity,
-      employee,
-    };
-    const sortedProjects = sortResourceProjects({
-      projects: resourceProjects,
-      resourceAssignments,
-      brandId: filters.brandId,
-      selectedProjectId: filters.projectId,
-      days,
-    });
-    const highlightFilters = {
-      selectedBrandId: filters.brandId,
-      selectedProjectId: filters.projectId,
-    };
-
-    const campaignGroups: TimelineV2CampaignGroup[] = sortedProjects.flatMap((project) => {
-      const brand = project.brandId ? brandById.get(project.brandId) : undefined;
-      const planAssignments = resourceAssignments.filter(
-        (assignment) => assignment.projectId === project.id && !assignment.isTimeOff
-      );
-      const planDisplaySegments = buildTimelineV2PlanDisplaySegments({
-        assignments: planAssignments,
-        visibleDates: days,
-        resolution: isTimelineV2MonthRangeView(viewMode) ? "month" : "day",
-        projectStartDate: project.startDate,
-        projectEndDate: project.endDate,
-      });
-
-      if (planDisplaySegments.length === 0) return [];
-
-      const isHighlighted = isProjectHighlighted(project, highlightFilters);
-
-      return [
-        {
-          id: project.id,
-          name: project.name,
-          brandName: brand?.name,
-          isHighlighted,
-          row: {
-            id: project.id,
-            project,
-            brand,
-            planAssignments,
-            planDisplaySegments,
-            isHighlighted,
-          },
-        },
-      ];
-    });
-
-    return {
-      id: employee.id,
-      resource,
-      assignments: resourceAssignments,
-      actualAssignments: employeeActuals,
-      allocationCells: buildTimelineV2AllocationCells({
-        resource,
-        assignments: resourceAssignments,
-        actualAssignments: employeeActuals,
-        days,
-        viewMode,
-      }),
-      campaignGroups,
-      isExpanded: expandedEmployeeIds.has(employee.id),
-    };
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Rework row model: depends ONLY on data + days + viewMode. Filters, lane
-// ordering, highlights, and expansion are derived elsewhere (visible-rows,
-// lane-order, expansion-store) so changing them never rebuilds these models.
-// ---------------------------------------------------------------------------
+// Row models depend ONLY on data + days + viewMode. Filters, lane ordering,
+// highlights, and expansion are derived elsewhere (visible-rows, lane-order,
+// expansion-store) so changing them never rebuilds these models.
 
 export type ProjectLaneModel = {
   projectId: string;
   project: ProjectOption;
   brand?: Brand;
   planAssignments: Assignment[];
-  planDisplaySegments: ReturnType<typeof buildTimelineV2PlanDisplaySegments>;
+  planDisplaySegments: ReturnType<typeof buildTimelinePlanDisplaySegments>;
 };
 
 export type EmployeeRowModel = {
   id: string;
-  resource: TimelineV2Resource;
+  resource: TimelineResource;
   assignments: Assignment[];
-  allocationCells: TimelineV2AllocationCell[];
+  allocationCells: TimelineAllocationCell[];
   projectLanes: ProjectLaneModel[];
 };
 
@@ -251,14 +84,14 @@ export function buildEmployeeRowModels({
   projects: ProjectOption[];
   brandById: Map<string, Brand>;
   days: Date[];
-  viewMode: TimelineV2ViewMode;
+  viewMode: TimelineViewMode;
 }): Map<string, EmployeeRowModel> {
   const models = new Map<string, EmployeeRowModel>();
   if (days.length === 0) return models;
 
-  const isMonthRangeView = isTimelineV2MonthRangeView(viewMode);
+  const isMonthRangeView = isTimelineMonthRangeView(viewMode);
   const projectById = new Map(projects.map((project) => [project.id, project]));
-  const assignmentsByEmployee = groupTimelineV2AssignmentsByEmployee(assignments);
+  const assignmentsByEmployee = groupTimelineAssignmentsByEmployee(assignments);
   // Month-resolution cells aggregate full calendar months, so the day map must
   // cover the month bounds, not just the visible column dates.
   const dayMaps = buildAllocationDayMaps({
@@ -272,7 +105,7 @@ export function buildEmployeeRowModels({
     const resourceAssignments = (assignmentsByEmployee.get(employee.id) ?? []).filter(
       (assignment) => !assignment.isTimeOff
     );
-    const resource: TimelineV2Resource = {
+    const resource: TimelineResource = {
       id: employee.id,
       name: employee.fullName,
       role: employee.position,
@@ -287,7 +120,7 @@ export function buildEmployeeRowModels({
       const planAssignments = resourceAssignments.filter(
         (assignment) => assignment.projectId === project.id && !assignment.isTimeOff
       );
-      const planDisplaySegments = buildTimelineV2PlanDisplaySegments({
+      const planDisplaySegments = buildTimelinePlanDisplaySegments({
         assignments: planAssignments,
         visibleDates: days,
         resolution: isMonthRangeView ? "month" : "day",

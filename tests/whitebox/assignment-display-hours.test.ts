@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateAssignmentDisplayTotalHours,
   formatAssignmentDisplayHours,
-} from "@/lib/timeline/assignment-display-hours";
+} from "@/lib/timeline-v2/assignment-display-hours";
 
 describe("assignment display hours", () => {
   it("calculates full assignment totals from hoursPerDay and weekdays", () => {

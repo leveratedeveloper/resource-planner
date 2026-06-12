@@ -4,7 +4,7 @@ import {
   getTimelineRowStateResetKey,
   hasEmployeeFlag,
   setEmployeeFlag,
-} from "@/lib/timeline/row-state";
+} from "@/lib/timeline-v2/row-state";
 
 describe("timeline row state helpers", () => {
   it("persists expanded flags by employee id", () => {

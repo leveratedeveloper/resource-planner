@@ -1,19 +1,19 @@
 import { create } from "zustand";
 import { startOfWeek } from "date-fns";
-import type { TimelineV2ViewMode } from "@/lib/timeline-v2/types";
+import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 import {
-  TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH,
-  clampTimelineV2ResourceColumnWidth,
+  TIMELINE_DIMENSIONS,
+  clampTimelineResourceColumnWidth,
 } from "@/lib/timeline-v2/layout";
 
 type TimelineViewState = {
-  viewMode: TimelineV2ViewMode;
+  viewMode: TimelineViewMode;
   // null until the page seeds it from initialTimelineAnchor via setAnchorDate.
   anchorDate: Date | null;
   showWeekends: boolean;
   hasHydratedWeekendPreference: boolean;
   resourceColumnWidth: number;
-  setViewMode: (mode: TimelineV2ViewMode) => void;
+  setViewMode: (mode: TimelineViewMode) => void;
   setAnchorDate: (date: Date) => void;
   toggleWeekends: () => void;
   hydrateWeekendPreference: () => void;
@@ -25,7 +25,7 @@ export const useTimelineViewStore = create<TimelineViewState>((set) => ({
   anchorDate: null,
   showWeekends: false,
   hasHydratedWeekendPreference: false,
-  resourceColumnWidth: TIMELINE_V2_DEFAULT_RESOURCE_COLUMN_WIDTH,
+  resourceColumnWidth: TIMELINE_DIMENSIONS.resourceCol.default,
   setViewMode: (mode) => set({ viewMode: mode }),
   // Timeline columns are Monday-aligned, so the anchor always snaps to week start.
   setAnchorDate: (date) => set({ anchorDate: startOfWeek(date, { weekStartsOn: 1 }) }),
@@ -44,5 +44,5 @@ export const useTimelineViewStore = create<TimelineViewState>((set) => ({
     }));
   },
   setResourceColumnWidth: (width) =>
-    set({ resourceColumnWidth: clampTimelineV2ResourceColumnWidth(width) }),
+    set({ resourceColumnWidth: clampTimelineResourceColumnWidth(width) }),
 }));

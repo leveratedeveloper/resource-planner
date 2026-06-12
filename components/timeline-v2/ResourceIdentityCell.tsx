@@ -38,7 +38,10 @@ export const ResourceIdentityCell = React.memo(function ResourceIdentityCell({
     >
       <button
         onClick={onToggleExpanded}
-        className={cn("text-muted-foreground transition-colors hover:text-foreground")}
+        className={cn(
+          "rounded-sm text-muted-foreground transition-colors hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        )}
         aria-label={expanded ? "Collapse resource row" : "Expand resource row"}
         data-testid={expanded ? "resource-row-v2-collapse" : "resource-row-v2-expand"}
       >

@@ -87,11 +87,11 @@ Legacy values (v1, for reference only): resource column 250px (clamp 220–420),
 
    | Dimension | Class | Resolved |
    |---|---|---|
-   | Summary row | `h-14` | 56px |
-   | Collapsed row | `h-12` | 48px |
-   | Project lane | `h-8` | 32px (replaces 34px; bump to `h-9` only if bars feel cramped) |
-   | Resource column default | `w-64` | 256px |
-   | Resource column clamp | `w-56`…`w-104` | 224–416px (resize handle writes a CSS var, bounds on-scale) |
+   | Summary/collapsed row | `h-timeline-row` | 48px (the old "56px summary row" was only a virtualizer estimate) |
+   | Project lane | `h-timeline-lane` | 32px (replaces 34px) |
+   | Header strip | `h-timeline-header` | 48px |
+   | Resource column default | token | 256px |
+   | Resource column clamp | tokens | 224–416px (resize handle writes a CSS var, bounds on-scale) |
    | Bar vertical inset | `inset-y-0.5` | 2px each side |
 
 2. **Columns are distributed by the browser, not by JS:** the date grid uses CSS Grid
@@ -311,3 +311,10 @@ no longer prints a per-route size table). Same machine, same command, each phase
 |---|---|---|---|
 | Phase 2.1 baseline (pre-teardown, commit 7fc9ba9) | 2.4 MB | 20 | 1,203 KB |
 | Phase 2.6 (dead code deleted, editors lazy-loaded) | 2.4 MB | 29 | 1,141 KB (−62 KB eager; 4 editor surfaces moved to on-demand chunks) |
+| Phase 6 final (rebuild complete) | 2.43 MB | 25 | **1,127 KB eager (−76 KB / −6.3% vs baseline)**; single lazy editor chunk |
+
+Structural wins not visible in bundle bytes (verify in Profiler): expanding a row commits
+1 row instead of rebuilding every cell; search keystrokes no longer rebuild row models;
+allocation math is one O(A+D) pass per data change; saves/drags no longer flash the
+timeline into skeletons. Side effects of the teardown: repo tsc errors 92 → 85, repo
+lint errors 103 → 91, whitebox tests 402 → 449 (only the 9 pre-existing failures remain).

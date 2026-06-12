@@ -49,8 +49,7 @@ describe("timeline-v2 source parity", () => {
   it("groups expanded resource rows by campaigns instead of deliverables", () => {
     const source = readFileSync("lib/timeline-v2/row-model.ts", "utf8");
 
-    expect(source).toContain("campaignGroups");
-    expect(source).toContain("project.name");
+    expect(source).toContain("projectLanes");
     expect(source).toContain("getPlanCampaignProjects");
     expect(source).not.toContain("filterTimelineEmployees");
     expect(source).not.toContain("groupProjectsByDeliverable");
@@ -77,7 +76,7 @@ describe("timeline-v2 source parity", () => {
 
     expect(laneSource).toContain('const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";');
     expect(laneSource).toContain('resolution={monthRangeView ? "month" : "day"}');
-    expect(barSource).toContain("getTimelineV2AssignmentPosition");
+    expect(barSource).toContain("getTimelineAssignmentPosition");
     expect(barSource).toContain("leftPct");
     expect(barSource).toContain("widthPct");
     expect(barSource).not.toContain("cellWidth");
@@ -99,23 +98,20 @@ describe("timeline-v2 source parity", () => {
     const capacityStripSource = readFileSync("components/timeline-v2/CapacityStrip.tsx", "utf8");
     const resourceRowSource = readFileSync("components/timeline-v2/ResourceRow.tsx", "utf8");
 
-    expect(capacityStripSource).not.toContain("getTimelineV2AllocationModel");
+    expect(capacityStripSource).not.toContain("getAllocationCellModel");
     expect(capacityStripSource).not.toContain("assignments: Assignment[]");
     expect(capacityStripSource).not.toContain("actualAssignments: ActualAssignment[]");
     expect(capacityStripSource).toContain('cell.model.kind === "empty"');
     expect(resourceRowSource).toContain("cells={row.allocationCells}");
   });
 
-  it("keeps bars click-isolated without legacy resize handles", () => {
+  it("keeps bars click-isolated with single-row-only resize handles", () => {
     const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
-    const assignmentBlockSource = readFileSync("components/timeline/AssignmentBlock.tsx", "utf8");
 
     expect(barSource).toContain("event.stopPropagation()");
     expect(barSource).not.toContain("data-resize-handle");
-    // The legacy block keeps its resize affordances until Phase 5 replaces them.
-    expect(assignmentBlockSource).toContain("resizable = true");
-    expect(assignmentBlockSource).toContain("if (!resizable) return;");
-    expect(assignmentBlockSource).toContain("e.stopPropagation();");
+    expect(barSource).toContain("const canResize = canDrag && memberAssignments.length === 1;");
+    expect(barSource).toContain("canResize ?");
   });
 
   it("styles dimensions through the token system, not magic pixel numbers", () => {

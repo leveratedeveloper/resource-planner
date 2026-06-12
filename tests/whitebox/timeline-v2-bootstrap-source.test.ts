@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("TimelineV2 bootstrap integration", () => {
+describe("Timeline bootstrap integration", () => {
   it("uses the home bootstrap hook as the active timeline data source", () => {
     const source = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 

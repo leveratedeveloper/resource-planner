@@ -5,7 +5,7 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import {
   getMatchingTimelineEmployeeIds,
   hasActiveTimelineScopeFilter,
-} from "@/lib/timeline/timeline-filters";
+} from "@/lib/timeline-v2/timeline-filters";
 
 const makeAssignment = (overrides: Partial<Assignment>): Assignment => ({
   id: "assignment-1",
