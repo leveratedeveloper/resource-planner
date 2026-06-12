@@ -191,32 +191,49 @@ export function useAssignmentsByProject(projectId: string) {
 
 // The timeline renders from the planner home bootstrap cache, so optimistic
 // mutations must patch it too — otherwise edits visually revert until the
-// post-mutation invalidation refetch lands.
+// post-mutation invalidation refetch lands. The cache holds infinite-query
+// entries ({ pages: [...] }); patch every page — the timeline's page merge
+// dedupes by assignment id, so an optimistic create still renders once.
 type BootstrapWithTimeline = {
   plannerTimeline?: { assignments: Assignment[]; actualAssignments: unknown[] };
 };
+
+type BootstrapCacheEntry =
+  | BootstrapWithTimeline
+  | { pages: BootstrapWithTimeline[]; pageParams: unknown[] };
+
+function patchBootstrapPage(
+  page: BootstrapWithTimeline,
+  patch: (assignments: Assignment[]) => Assignment[]
+): BootstrapWithTimeline {
+  if (!page?.plannerTimeline) return page;
+  return {
+    ...page,
+    plannerTimeline: {
+      ...page.plannerTimeline,
+      assignments: patch(page.plannerTimeline.assignments),
+    },
+  };
+}
 
 function patchBootstrapAssignments(
   queryClient: ReturnType<typeof useQueryClient>,
   patch: (assignments: Assignment[]) => Assignment[]
 ) {
-  queryClient.setQueriesData<BootstrapWithTimeline>(
+  queryClient.setQueriesData<BootstrapCacheEntry>(
     { queryKey: queryKeys.plannerHomeBootstrap },
     (old) => {
-      if (!old?.plannerTimeline) return old;
-      return {
-        ...old,
-        plannerTimeline: {
-          ...old.plannerTimeline,
-          assignments: patch(old.plannerTimeline.assignments),
-        },
-      };
+      if (!old) return old;
+      if ("pages" in old) {
+        return { ...old, pages: old.pages.map((page) => patchBootstrapPage(page, patch)) };
+      }
+      return patchBootstrapPage(old, patch);
     }
   );
 }
 
 function snapshotBootstrapQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  return queryClient.getQueriesData<BootstrapWithTimeline>({
+  return queryClient.getQueriesData<BootstrapCacheEntry>({
     queryKey: queryKeys.plannerHomeBootstrap,
   });
 }
@@ -241,6 +258,9 @@ export function useCreateAssignment() {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+      // A bootstrap refetch in flight from a previous edit would land AFTER
+      // this optimistic patch and briefly snap it back — cancel it first.
+      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
@@ -350,6 +370,9 @@ export function useUpdateAssignment() {
       // Cancel outgoing refetches to prevent overwriting
       await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+      // A bootstrap refetch in flight from a previous edit would land AFTER
+      // this optimistic patch and briefly snap it back — cancel it first.
+      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
@@ -458,6 +481,7 @@ export function useDeleteAssignment() {
       // Cancel outgoing refetches for ALL assignment queries
       await queryClient.cancelQueries({ queryKey: ["assignments"] });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);

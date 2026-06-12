@@ -747,6 +747,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     offset: number;
     limit: number;
     search?: string | null;
+    department?: string | null;
     employeeUuid?: string | null;
   }): Promise<{
     data: PlannerDirectoryEmployeeRow[];
@@ -759,6 +760,14 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     if (args.employeeUuid) {
       params.push(args.employeeUuid);
       whereClauses.push(`e.employee_uuid = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    // Department filters the page server-side: bootstrap pages are the
+    // timeline's only employee source, so a client-only filter would reveal a
+    // department's members progressively as pages load instead of completely.
+    if (args.department) {
+      params.push(args.department);
+      whereClauses.push(`e.department_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
     }
 
     const searchClause = buildLikeSearchClause(

@@ -69,6 +69,7 @@ const TIMELINE_ACTUAL_COLUMNS = [
 
 type TimelineAssignmentFilters = {
   employee_uuid?: string;
+  employee_uuids?: string[];
   project_uuid?: string;
   project_uuids?: string[];
   start_date: string;
@@ -76,6 +77,22 @@ type TimelineAssignmentFilters = {
   status?: string | null;
   category?: string | null;
 };
+
+// Employee scoping for timeline queries. A uuid list (the bootstrap's employee
+// page) supersedes the single-uuid restricted-user filter; empty inputs add no
+// clause. Pure so the SQL/params contract is unit-testable.
+export function buildEmployeeScopeClause(
+  filters: Pick<TimelineAssignmentFilters, "employee_uuid" | "employee_uuids">
+): { sql: string; params: string[] } {
+  if (filters.employee_uuids && filters.employee_uuids.length > 0) {
+    const placeholders = filters.employee_uuids.map(() => "?").join(",");
+    return { sql: ` AND employee_uuid IN (${placeholders})`, params: [...filters.employee_uuids] };
+  }
+  if (filters.employee_uuid) {
+    return { sql: " AND employee_uuid = ?", params: [filters.employee_uuid] };
+  }
+  return { sql: "", params: [] };
+}
 
 /**
  * Get assignments with optional filters
@@ -128,10 +145,9 @@ export async function getTimelineAssignments(filters: TimelineAssignmentFilters)
   let query = `SELECT ${TIMELINE_ASSIGNMENT_COLUMNS} FROM assignments WHERE end_date >= ? AND start_date <= ? AND COALESCE(is_time_off, 0) = 0`;
   const params: any[] = [filters.start_date, filters.end_date];
 
-  if (filters.employee_uuid) {
-    query += ' AND employee_uuid = ?';
-    params.push(filters.employee_uuid);
-  }
+  const employeeScope = buildEmployeeScopeClause(filters);
+  query += employeeScope.sql;
+  params.push(...employeeScope.params);
   if (filters.project_uuid) {
     query += ' AND project_uuid = ?';
     params.push(filters.project_uuid);
@@ -413,10 +429,9 @@ export async function getTimelineActualAssignments(filters: TimelineAssignmentFi
   let query = `SELECT ${TIMELINE_ACTUAL_COLUMNS} FROM actual WHERE end_date >= ? AND start_date <= ? AND COALESCE(is_time_off, 0) = 0`;
   const params: any[] = [filters.start_date, filters.end_date];
 
-  if (filters.employee_uuid) {
-    query += ' AND employee_uuid = ?';
-    params.push(filters.employee_uuid);
-  }
+  const employeeScope = buildEmployeeScopeClause(filters);
+  query += employeeScope.sql;
+  params.push(...employeeScope.params);
   if (filters.project_uuid) {
     query += ' AND project_uuid = ?';
     params.push(filters.project_uuid);

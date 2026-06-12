@@ -133,9 +133,9 @@ describe("planner timeline loading contract", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const employeesHookSource = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
 
-    expect(timelineSource).toContain("usePlannerHomeBootstrap");
-    expect(timelineSource).toContain("bootstrapPlannerTimeline");
-    expect(employeesHookSource).toContain("bootstrapEmployeePage");
+    expect(timelineSource).toContain("Object.values(projectsById).map(toProjectOption)");
+    expect(timelineSource).toContain("request: bootstrapRequest");
+    expect(employeesHookSource).toContain("mergeBootstrapPages");
     expect(timelineSource).toContain("selectedBrandProjectIds");
     expect(timelineSource).not.toContain("useProjectsByBrand(brandId ?? \"\")");
     expect(timelineSource).not.toContain("isLoadingSelectedBrandProjects");
@@ -151,17 +151,17 @@ describe("planner timeline loading contract", () => {
     expect(blocks.map((block) => ({
       month: block.startDate,
       totalHours: block.totalHours,
-      detailIds: block.detailIds,
+      detailCount: block.detailCount,
     }))).toEqual([
       {
         month: "2026-01-01",
         totalHours: 16,
-        detailIds: ["assignment-1"],
+        detailCount: 1,
       },
       {
         month: "2026-02-01",
         totalHours: 16,
-        detailIds: ["assignment-1"],
+        detailCount: 1,
       },
     ]);
   });
@@ -280,9 +280,9 @@ describe("planner timeline loading contract", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const loadingStateSource = readFileSync("lib/timeline-v2/resource-row-loading.ts", "utf8");
 
-    expect(timelineSource).toContain("isShowingPreviousBootstrap && isFetchingPlannerHomeBootstrap");
+    expect(timelineSource).toContain("isShowingPreviousBootstrap && isFetchingBootstrap");
     expect(timelineSource).toContain("isPlannerApplyingFilters: isApplyingNewRequest");
-    expect(timelineSource).toContain("isPlannerRefreshing: !!plannerTimeline && isApplyingNewRequest");
+    expect(timelineSource).toContain("isPlannerRefreshing: hasBootstrapData && isApplyingNewRequest");
     expect(loadingStateSource).toContain("showInitialSkeleton");
     expect(loadingStateSource).toContain("showTimelineLoading: isRefreshInProgress");
     expect(timelineSource).toContain("<DataStatus");
@@ -320,9 +320,9 @@ describe("planner timeline loading contract", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const employeesHookSource = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
 
-    expect(employeesHookSource).toContain("initialPage: bootstrapEmployeePage");
+    expect(employeesHookSource).toContain("initialData: initialBootstrap ?? undefined");
     expect(timelineSource).toContain("hasNextEmployeePage");
-    expect(timelineSource).toContain("fetchNextEmployeePage()");
+    expect(timelineSource).toContain("fetchNextEmployeePage({ cancelRefetch: false })");
     expect(timelineSource).not.toContain("if (shouldUseHomeBootstrap || !!plannerHomeBootstrap");
   });
 });

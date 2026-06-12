@@ -6,10 +6,8 @@ import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import {
   filterTimelineEmployees,
-  getLoadedTimelineEmployees,
   sortEmployeeRecordsByName,
   sortTimelineEmployees,
-  shouldUseCompleteEmployeeList,
 } from "@/lib/timeline-v2/employees";
 
 const makeEmployee = (id: string, overrides: Partial<Employee> = {}): Employee => ({
@@ -91,26 +89,39 @@ const makeProject = (overrides: Partial<ProjectOption>): ProjectOption => ({
 });
 
 describe("timeline employee loading helpers", () => {
-  it("flattens loaded employee pages without resetting previous pages", () => {
-    const pages = [
-      { data: [makeEmployee("employee-1"), makeEmployee("employee-2")], total: 4, hasMore: true },
-      { data: [makeEmployee("employee-3"), makeEmployee("employee-4")], total: 4, hasMore: false },
-    ];
+  // The rows here mirror MinimalTimelineEmployee EXACTLY (the bootstrap wire
+  // shape — the timeline's only employee rows). If the filter starts reading a
+  // field the wire doesn't carry, this fails; the broad `as Employee[]` cast
+  // in the hook would not.
+  it("matches the department filter on bootstrap-minimal employee rows", () => {
+    const minimalRows = [
+      {
+        id: "employee-1",
+        fullName: "Alpha Person",
+        position: "Designer",
+        weeklyCapacity: 40,
+        departmentId: "department-1",
+        department: { id: "department-1", name: "Creative", color: "#000037" },
+      },
+      {
+        id: "employee-2",
+        fullName: "Beta Person",
+        position: "Analyst",
+        weeklyCapacity: 40,
+        departmentId: "department-2",
+        department: { id: "department-2", name: "Finance", color: "#000037" },
+      },
+    ] as unknown as Employee[];
 
-    expect(getLoadedTimelineEmployees(pages).map((employee) => employee.id)).toEqual([
-      "employee-1",
-      "employee-2",
-      "employee-3",
-      "employee-4",
-    ]);
-  });
+    const visible = filterTimelineEmployees({
+      employees: minimalRows,
+      dateFilteredAssignments: [],
+      visibleActualAssignments: [],
+      projectById: new Map(),
+      filters: { brandId: null, department: "department-1", projectId: null },
+    });
 
-  it("uses the complete employee list when filters require full client-side relationship checks", () => {
-    expect(shouldUseCompleteEmployeeList({ brandId: "brand-1", department: null })).toBe(true);
-    expect(shouldUseCompleteEmployeeList({ brandId: null, department: "department-1" })).toBe(true);
-    expect(shouldUseCompleteEmployeeList({ brandId: null, department: null, projectId: "project-1" })).toBe(true);
-    expect(shouldUseCompleteEmployeeList({ brandId: null, department: null, searchQuery: "project" })).toBe(true);
-    expect(shouldUseCompleteEmployeeList({ brandId: null, department: null, searchQuery: "" })).toBe(false);
+    expect(visible.map((employee) => employee.id)).toEqual(["employee-1"]);
   });
 
   it("filters resources by selected project using planned and actual assignments", () => {

@@ -15,10 +15,60 @@ import type {
   PlannerTimelineResponse,
 } from "@/lib/planner/planner-loading";
 
+// departmentId must ride along: the client department filter compares
+// employee.departmentId (lib/timeline-v2/employees.ts), and bootstrap rows are
+// the timeline's ONLY employee rows since the complete-list path was retired.
 export type MinimalTimelineEmployee = Pick<
   Employee,
-  "id" | "fullName" | "position" | "weeklyCapacity" | "department"
+  "id" | "fullName" | "position" | "weeklyCapacity" | "department" | "departmentId"
 >;
+
+// Wire-shapes for the reference maps: exactly the fields the client mappers
+// read (toProjectOption / toBrandOption / department badge). The raw directory
+// rows carry sync plumbing (source_hash, last_seen_at, ...) that only bloats
+// the payload (payload-diet spec 2026-06-12).
+export type BootstrapProject = Pick<
+  PlannerDirectoryProjectRow,
+  "sourceProjectId" | "name" | "color" | "status" | "sourceType" | "brandId" | "startDate" | "endDate"
+>;
+export type BootstrapBrand = Pick<
+  PlannerDirectoryBrandRow,
+  "brandId" | "name" | "companyName" | "color" | "status" | "sourceUpdatedAt" | "syncedAt"
+>;
+export type BootstrapDepartment = Pick<PlannerDirectoryDepartmentRow, "departmentId" | "name" | "color">;
+
+export function toBootstrapProject(row: PlannerDirectoryProjectRow): BootstrapProject {
+  return {
+    sourceProjectId: row.sourceProjectId,
+    name: row.name,
+    color: row.color,
+    status: row.status,
+    sourceType: row.sourceType,
+    brandId: row.brandId,
+    startDate: row.startDate,
+    endDate: row.endDate,
+  };
+}
+
+export function toBootstrapBrand(row: PlannerDirectoryBrandRow): BootstrapBrand {
+  return {
+    brandId: row.brandId,
+    name: row.name,
+    companyName: row.companyName,
+    color: row.color,
+    status: row.status,
+    sourceUpdatedAt: row.sourceUpdatedAt,
+    syncedAt: row.syncedAt,
+  };
+}
+
+export function toBootstrapDepartment(row: PlannerDirectoryDepartmentRow): BootstrapDepartment {
+  return {
+    departmentId: row.departmentId,
+    name: row.name,
+    color: row.color,
+  };
+}
 
 export type PlannerHomeBootstrapRequest = PlannerTimelineRequest & {
   employeeLimit: number;
@@ -34,9 +84,9 @@ export type PlannerHomeBootstrapResponse = {
   employees: MinimalTimelineEmployee[];
   employeeTotal: number;
   employeeHasMore: boolean;
-  departmentsById: Record<string, PlannerDirectoryDepartmentRow>;
-  brandsById: Record<string, PlannerDirectoryBrandRow>;
-  projectsById: Record<string, PlannerDirectoryProjectRow>;
+  departmentsById: Record<string, BootstrapDepartment>;
+  brandsById: Record<string, BootstrapBrand>;
+  projectsById: Record<string, BootstrapProject>;
   plannerTimeline: PlannerTimelineResponse;
   metadataPartial: boolean;
   metadataFreshness: {
@@ -61,9 +111,9 @@ function randomColor(seed: string): string {
   return `#${hash.toString(16).padStart(6, "0")}`;
 }
 
-function toMinimalEmployee(
+export function toMinimalEmployee(
   employee: PlannerDirectoryEmployeeRow,
-  departmentsById: Record<string, PlannerDirectoryDepartmentRow>
+  departmentsById: Record<string, BootstrapDepartment>
 ): MinimalTimelineEmployee {
   const department = employee.departmentId ? departmentsById[employee.departmentId] : undefined;
 
@@ -72,6 +122,7 @@ function toMinimalEmployee(
     fullName: employee.fullName,
     position: employee.position ?? "",
     weeklyCapacity: employee.weeklyCapacity,
+    departmentId: employee.departmentId,
     department: department
       ? {
           id: department.departmentId,
@@ -142,17 +193,28 @@ export async function fetchPlannerHomeBootstrap(
 ): Promise<PlannerHomeBootstrapResponse> {
   const directoryFetchedAt = new Date().toISOString();
 
-  const [latestSuccessfulSync, latestInFlightSync, employeeSliceResult, departments, plannerTimeline] = await Promise.all([
+  // The employee page resolves FIRST so the timeline query is scoped to the
+  // employees this response actually renders — unscoped, a quarter view shipped
+  // every assignment in the company (measured: 4,908 blocks / 7.9 MB / 4.5 s
+  // for 60 rendered employees). One serial hop buys a bounded payload.
+  const employeeSliceResult = await plannerDirectoryRepository.listEmployeesForBootstrap({
+    offset: session.access.can_view_all ? request.employeeOffset : 0,
+    limit: session.access.can_view_all ? request.employeeLimit : 1,
+    search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
+    department: session.access.can_view_all ? request.department?.trim() || undefined : undefined,
+    employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
+  });
+  const pageEmployeeUuids = employeeSliceResult.data.map((employee) => employee.employeeUuid);
+
+  const [latestSuccessfulSync, latestInFlightSync, departments, plannerTimeline] = await Promise.all([
     plannerDirectoryRepository.getLatestSuccessfulSync(),
     plannerDirectoryRepository.getLatestInFlightSync(),
-    plannerDirectoryRepository.listEmployeesForBootstrap({
-      offset: session.access.can_view_all ? request.employeeOffset : 0,
-      limit: session.access.can_view_all ? request.employeeLimit : 1,
-      search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
-      employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
-    }),
     plannerDirectoryRepository.listDepartments(),
-    fetchPlannerTimeline(session, request),
+    pageEmployeeUuids.length > 0
+      ? fetchPlannerTimeline(session, request, { employeeUuids: pageEmployeeUuids })
+      : // An empty employee page must mean an empty timeline — without the
+        // guard, an empty IN-list would fall through to a company-wide query.
+        Promise.resolve({ request, assignments: [], actualAssignments: [] } satisfies PlannerTimelineResponse),
   ]);
 
   const metadataFreshness = classifyPlannerDirectoryFreshness({
@@ -164,7 +226,7 @@ export async function fetchPlannerHomeBootstrap(
     now: directoryFetchedAt,
   });
 
-  const departmentsById = indexById(departments, (department) => department.departmentId);
+  const departmentsById = indexById(departments.map(toBootstrapDepartment), (department) => department.departmentId);
 
   const referencedProjectIds = getReferencedProjectIds(plannerTimeline, request);
   const projects = await plannerDirectoryRepository.listProjectsForBootstrap({
@@ -172,12 +234,12 @@ export async function fetchPlannerHomeBootstrap(
     search: request.search?.trim() || undefined,
     referencedProjectIds: Array.from(referencedProjectIds),
   });
-  const projectsById = indexById(projects, (project) => project.sourceProjectId);
+  const projectsById = indexById(projects.map(toBootstrapProject), (project) => project.sourceProjectId);
   const missingReferencedProjectIds = getMissingIds(referencedProjectIds, projectsById);
 
   const brandIds = getBrandIdsFromProjects(projects);
   const brands = await plannerDirectoryRepository.listBrandsByIds(brandIds);
-  const brandsById = indexById(brands, (brand) => brand.brandId);
+  const brandsById = indexById(brands.map(toBootstrapBrand), (brand) => brand.brandId);
   const missingReferencedBrandIds = getMissingIds(new Set(brandIds), brandsById);
 
   const missingDepartmentIds = getMissingIds(

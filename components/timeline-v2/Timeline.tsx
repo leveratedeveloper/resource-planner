@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/context/AuthContext";
-import { usePlannerHomeBootstrap } from "@/lib/query/hooks";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { getResourceRowLoadingState } from "@/lib/timeline-v2/resource-row-loading";
@@ -200,9 +199,9 @@ export function Timeline({
       },
       // One bootstrap page fills the viewport with headroom; the route clamps
       // to 100. Small pages made first load crawl the directory request by
-      // request, rebuilding row models on every arrival.
+      // request, rebuilding row models on every arrival. The offset is the
+      // infinite-query page param, not part of the request.
       employeeLimit: 60,
-      employeeOffset: 0,
       brandId,
       department,
       projectId,
@@ -210,44 +209,33 @@ export function Timeline({
     };
   }, [assignmentDateRange, brandId, department, projectId, searchQuery, viewMode]);
 
-  const {
-    data: plannerHomeBootstrap,
-    isLoading: isLoadingPlannerHomeBootstrap,
-    isFetching: isFetchingPlannerHomeBootstrap,
-    isPlaceholderData: isShowingPreviousBootstrap,
-    isRefetchError: isPlannerHomeBootstrapRefetchError,
-  } = usePlannerHomeBootstrap(bootstrapRequest, {
-    enabled: !!bootstrapRequest,
-    initialData: initialBootstrap ?? undefined,
-    initialDataUpdatedAt: initialBootstrap
-      ? Date.parse(initialBootstrap.freshness.directoryFetchedAt)
-      : undefined,
-  });
-
-  const bootstrapPlannerTimeline = plannerHomeBootstrap?.plannerTimeline;
   const timelineFilters = useMemo(
     () => ({ brandId, department, projectId, searchQuery }),
     [brandId, department, projectId, searchQuery]
   );
+  // ONE data source: infinite bootstrap pages. Each page carries an employee
+  // slice with its own assignments; the hook returns the merged unions.
   const {
     employees,
-    isLoadingEmployees,
-    useCompleteEmployeeList,
+    assignments: dateFilteredAssignments,
+    actualAssignments: visibleActualAssignments,
+    brandsById,
+    projectsById,
+    metadataFreshness,
+    hasBootstrapData,
+    isLoadingBootstrap,
+    isFetchingBootstrap,
+    isShowingPreviousBootstrap,
+    isBootstrapRefetchError,
     hasNextEmployeePage,
     isFetchingNextEmployeePage,
     fetchNextEmployeePage,
   } = useTimelineEmployees({
-    filters: timelineFilters,
-    bootstrap: plannerHomeBootstrap,
+    request: bootstrapRequest,
+    initialBootstrap,
   });
-  const timelineBrands = useMemo(
-    () => Object.values(plannerHomeBootstrap?.brandsById ?? {}).map(toBrandOption),
-    [plannerHomeBootstrap]
-  );
-  const timelineProjects = useMemo(
-    () => Object.values(plannerHomeBootstrap?.projectsById ?? {}).map(toProjectOption),
-    [plannerHomeBootstrap]
-  );
+  const timelineBrands = useMemo(() => Object.values(brandsById).map(toBrandOption), [brandsById]);
+  const timelineProjects = useMemo(() => Object.values(projectsById).map(toProjectOption), [projectsById]);
   const selectedBrandProjectIds = useMemo(
     () =>
       new Set(
@@ -259,9 +247,6 @@ export function Timeline({
   );
   const projectById = useMemo(() => new Map(timelineProjects.map((project) => [project.id, project])), [timelineProjects]);
   const brandById = useMemo(() => new Map(timelineBrands.map((brand) => [brand.id, brand])), [timelineBrands]);
-  const plannerTimeline = bootstrapPlannerTimeline;
-  const dateFilteredAssignments = useMemo(() => plannerTimeline?.assignments ?? [], [plannerTimeline]);
-  const visibleActualAssignments = useMemo(() => plannerTimeline?.actualAssignments ?? [], [plannerTimeline]);
 
   const days = useMemo(() => columns.columns.map((column) => column.date), [columns.columns]);
 
@@ -345,40 +330,43 @@ export function Timeline({
     rowVirtualizer.scrollToOffset(0);
   }, [rowStateResetKey, rowVirtualizer]);
 
+  // Skeletons (and the edit lock) engage only while OLD-request data is shown
+  // for a NEW request (filter/date change). Same-key background refetches —
+  // e.g. the invalidation after every save/drag — keep rendering current data.
+  const isApplyingNewRequest = isShowingPreviousBootstrap && isFetchingBootstrap;
+
   useEffect(() => {
-    if (useCompleteEmployeeList || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
+    // While a new request is applying, placeholder rows are the OLD key's —
+    // fetching "next" here cancels and restarts the new key's page-0 fetch.
+    if (isApplyingNewRequest || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
     const lastVirtualRow = virtualRows[virtualRows.length - 1];
-    const shouldPrefetchInitialRows = !isLoadingEmployees && visibleIds.length < 20;
+    const shouldPrefetchInitialRows = !isLoadingBootstrap && visibleIds.length < 20;
     const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleIds.length - 10;
 
     if (shouldPrefetchInitialRows || shouldPrefetchNearEnd) {
-      fetchNextEmployeePage();
+      // Dedupe onto any in-flight fetch instead of cancel-restarting it.
+      fetchNextEmployeePage({ cancelRefetch: false });
     }
   }, [
     fetchNextEmployeePage,
     hasNextEmployeePage,
+    isApplyingNewRequest,
     isFetchingNextEmployeePage,
-    isLoadingEmployees,
-    useCompleteEmployeeList,
+    isLoadingBootstrap,
     virtualRows,
     visibleIds.length,
   ]);
 
-  // Skeletons (and the edit lock) engage only while OLD-request data is shown
-  // for a NEW request (filter/date change). Same-key background refetches —
-  // e.g. the invalidation after every save/drag — keep rendering current data,
-  // otherwise each edit flashes the whole timeline into loading states.
-  const isApplyingNewRequest = isShowingPreviousBootstrap && isFetchingPlannerHomeBootstrap;
   const rowLoadingState = getResourceRowLoadingState({
-    hasPlannerData: !!plannerTimeline,
+    hasPlannerData: hasBootstrapData,
     isPlannerApplyingFilters: isApplyingNewRequest,
-    isPlannerRefreshing: !!plannerTimeline && isApplyingNewRequest,
-    hasPlannerRefreshError: !!plannerTimeline && isPlannerHomeBootstrapRefetchError,
+    isPlannerRefreshing: hasBootstrapData && isApplyingNewRequest,
+    hasPlannerRefreshError: hasBootstrapData && isBootstrapRefetchError,
   });
   const isInitialTimelineLoading =
     !isLayoutReady ||
-    isLoadingPlannerHomeBootstrap ||
-    (!plannerHomeBootstrap && (isLoadingEmployees || rowLoadingState.showInitialSkeleton));
+    isLoadingBootstrap ||
+    (!hasBootstrapData && rowLoadingState.showInitialSkeleton);
 
   useEffect(() => {
     if (isInitialTimelineLoading || hasLoggedTimelineFirstVisibleRef.current) return;
@@ -394,34 +382,28 @@ export function Timeline({
   }, [columns.columns.length, isInitialTimelineLoading, visibleIds.length]);
 
   const plannerFreshnessState = useMemo(() => {
-    if (plannerHomeBootstrap?.metadataFreshness) {
-      const freshness = plannerHomeBootstrap.metadataFreshness;
-      if (freshness.state === "syncing") {
+    if (metadataFreshness) {
+      if (metadataFreshness.state === "syncing") {
         return { tone: "syncing" as const, message: "Refreshing planner directory..." };
       }
-      if (freshness.state === "stale") {
+      if (metadataFreshness.state === "stale") {
         return { tone: "warning" as const, message: "Showing saved planner data. Directory sync is stale." };
       }
-      if (freshness.state === "unavailable") {
+      if (metadataFreshness.state === "unavailable") {
         return { tone: "warning" as const, message: "Showing saved planner data. Directory sync is unavailable." };
       }
     }
 
-    if (isPlannerHomeBootstrapRefetchError) {
+    if (isBootstrapRefetchError) {
       return { tone: "warning" as const, message: "Showing saved planner data. Refresh failed." };
     }
 
-    if (!!plannerTimeline && isFetchingPlannerHomeBootstrap) {
+    if (hasBootstrapData && isFetchingBootstrap) {
       return { tone: "syncing" as const, message: "Updating planner..." };
     }
 
     return null;
-  }, [
-    isFetchingPlannerHomeBootstrap,
-    isPlannerHomeBootstrapRefetchError,
-    plannerHomeBootstrap?.metadataFreshness,
-    plannerTimeline,
-  ]);
+  }, [hasBootstrapData, isBootstrapRefetchError, isFetchingBootstrap, metadataFreshness]);
 
   const canEditAssignments = rowLoadingState.canEditAssignments && !!session?.access?.can_view_all;
   const hasEditorTarget = useAssignmentEditorStore((state) => state.target !== null);

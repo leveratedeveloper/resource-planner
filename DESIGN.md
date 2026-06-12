@@ -318,3 +318,24 @@ Structural wins not visible in bundle bytes (verify in Profiler): expanding a ro
 allocation math is one O(A+D) pass per data change; saves/drags no longer flash the
 timeline into skeletons. Side effects of the teardown: repo tsc errors 92 → 85, repo
 lint errors 103 → 91, whitebox tests 402 → 449 (only the 9 pre-existing failures remain).
+
+### Phase 7 — bootstrap payload diet (2026-06-12)
+
+`/api/planner/home-bootstrap`, quarter view, 60-employee page, `next start` on `:3001`,
+measured via DevTools MCP + server `[Timing]` telemetry:
+
+| Metric | Before | After | Target |
+|---|---|---|---|
+| Payload (uncompressed) | 7,879,300 B | **988,504 B (−87%)** | < 1 MB ✓ |
+| Month blocks shipped | 4,908 (company-wide) | **1,199 (page-scoped)** | — |
+| TTFB, cold first hit | 4,537 ms | 3,430 ms | < 800 ms ✗ |
+| TTFB, warm (3rd request) | — | **~1,150 ms** | < 800 ms ✗ |
+| Scroll past row 60 | n/a (single shot) | pages at offset 60/120, each with own bars ✓ | ✓ |
+
+Why TTFB misses the target: the remaining cost is not payload but the day-level row pull —
+the scoped quarter query still returns **26,339 raw one-day rows** from Supabase (Tokyo,
+~93 ms/round-trip) in ~825 ms before the API summarizes them into 1,199 month blocks.
+Cutting further means SQL-side month aggregation (GROUP BY), a semantics-bearing rewrite
+of `summarizeMonthlyAssignments` — out of scope for the approved spec; candidate Phase 8.
+`filter-options/projects` was inspected and left unchanged: it already ships 8-field
+options; its 1.2 MB is cardinality (5,257 projects), not fat fields.

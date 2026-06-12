@@ -1,16 +1,22 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import type {
   PlannerHomeBootstrapRequest,
   PlannerHomeBootstrapResponse,
 } from "@/lib/query/server/planner-home-bootstrap";
 import { queryKeys } from "@/lib/query/queryKeys";
 
-function getPlannerHomeBootstrapQueryKey(request: PlannerHomeBootstrapRequest) {
-  return [...queryKeys.plannerHomeBootstrap, request] as const;
+// Employee pages are the unit of loading: each bootstrap page carries its own
+// employees AND their timeline assignments (payload-diet spec 2026-06-12), so
+// the page param is the employee offset and scrolling fetches the next slice.
+export type PlannerHomeBootstrapPageRequest = Omit<PlannerHomeBootstrapRequest, "employeeOffset">;
+
+function getPlannerHomeBootstrapPagesQueryKey(request: PlannerHomeBootstrapPageRequest) {
+  return [...queryKeys.plannerHomeBootstrap, "pages", request] as const;
 }
 
 async function fetchPlannerHomeBootstrap(
-  request: PlannerHomeBootstrapRequest
+  request: PlannerHomeBootstrapRequest,
+  signal?: AbortSignal
 ): Promise<PlannerHomeBootstrapResponse> {
   const url = new URL("/api/planner/home-bootstrap", window.location.origin);
   url.searchParams.set("viewMode", request.viewMode);
@@ -28,7 +34,9 @@ async function fetchPlannerHomeBootstrap(
     if (value) url.searchParams.set(key, value);
   }
 
-  const response = await fetch(url.toString());
+  // Forward the abort signal so a cancelled query actually aborts on the wire
+  // — without it, every cancellation still costs the server the full query.
+  const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
     throw new Error("Failed to fetch planner home bootstrap");
   }
@@ -37,20 +45,31 @@ async function fetchPlannerHomeBootstrap(
   return result.data;
 }
 
-export function usePlannerHomeBootstrap(
-  request?: PlannerHomeBootstrapRequest,
+export function usePlannerHomeBootstrapPages(
+  request?: PlannerHomeBootstrapPageRequest,
   options: {
     enabled?: boolean;
     initialData?: PlannerHomeBootstrapResponse | null;
     initialDataUpdatedAt?: number;
   } = {}
 ) {
-  return useQuery({
-    queryKey: request ? getPlannerHomeBootstrapQueryKey(request) : [...queryKeys.plannerHomeBootstrap, "disabled"],
-    queryFn: () => fetchPlannerHomeBootstrap(request!),
+  return useInfiniteQuery({
+    queryKey: request
+      ? getPlannerHomeBootstrapPagesQueryKey(request)
+      : [...queryKeys.plannerHomeBootstrap, "pages", "disabled"],
+    queryFn: ({ pageParam, signal }) =>
+      fetchPlannerHomeBootstrap({ ...request!, employeeOffset: pageParam }, signal),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.employeeHasMore
+        ? allPages.reduce((count, page) => count + page.employees.length, 0)
+        : undefined,
     enabled: !!request && (options.enabled ?? true),
     placeholderData: keepPreviousData,
-    initialData: options.initialData ?? undefined,
+    // The SSR bootstrap seeds page 0 exactly like the old single-shot query.
+    initialData: options.initialData
+      ? { pages: [options.initialData], pageParams: [0] }
+      : undefined,
     initialDataUpdatedAt: options.initialDataUpdatedAt,
   });
 }

@@ -7,10 +7,6 @@ import {
   hasActiveTimelineScopeFilter,
 } from "@/lib/timeline-v2/timeline-filters";
 
-type EmployeePage = {
-  data: Employee[];
-};
-
 type EmployeeNameRecord = {
   fullName?: string | null;
   full_name?: string | null;
@@ -31,14 +27,6 @@ export type TimelineEmployeeFilterInput = {
   selectedBrandProjectIds?: Set<string>;
   filters: TimelineEmployeeFilters;
 };
-
-export function getLoadedTimelineEmployees(pages?: EmployeePage[]): Employee[] {
-  if (!pages?.length) {
-    return [];
-  }
-
-  return pages.flatMap((page) => page.data);
-}
 
 export function sortTimelineEmployees(employees: Employee[]): Employee[] {
   return sortEmployeeRecordsByName(employees);
@@ -103,18 +91,4 @@ export function filterTimelineEmployees({
   }
 
   return sortTimelineEmployees(filtered);
-}
-
-export function shouldUseCompleteEmployeeList({
-  brandId,
-  department,
-  projectId,
-  searchQuery,
-}: {
-  brandId: string | null;
-  department: string | null;
-  projectId?: string | null;
-  searchQuery?: string;
-}): boolean {
-  return !!brandId || !!department || !!projectId || !!searchQuery?.trim();
 }

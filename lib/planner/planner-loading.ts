@@ -28,12 +28,14 @@ export type PlannerTimelineRequest = {
 };
 
 export type MonthlyTimelineAssignment = Assignment & {
-  detailIds: string[];
+  // Number of underlying per-day rows. The IDs themselves never ship — the
+  // month editor fetches detail on demand (payload-diet spec 2026-06-12).
+  detailCount: number;
   resolution: "month";
 };
 
 export type MonthlyTimelineActualAssignment = ActualAssignment & {
-  detailUuids: string[];
+  detailCount: number;
   resolution: "month";
 };
 
@@ -172,7 +174,7 @@ export function summarizeMonthlyAssignments(
 
       if (existing) {
         existing.totalHours = roundHours((existing.totalHours ?? 0) + monthTotalHours);
-        existing.detailIds.push(assignment.id);
+        existing.detailCount += 1;
         existing.hoursPerDay = String(roundHours((existing.totalHours ?? 0) / countWeekdays(monthStart, monthEnd)));
         continue;
       }
@@ -184,7 +186,7 @@ export function summarizeMonthlyAssignments(
         endDate: toLocalDateString(monthEnd),
         hoursPerDay: String(roundHours(monthTotalHours / countWeekdays(monthStart, monthEnd))),
         totalHours: roundHours(monthTotalHours),
-        detailIds: [assignment.id],
+        detailCount: 1,
         resolution: "month",
       });
     }
@@ -229,7 +231,7 @@ export function summarizeMonthlyActualAssignments(
       if (existing) {
         const nextTotal = existing.hoursPerDay * countWeekdays(monthStart, monthEnd) + monthHours;
         existing.hoursPerDay = roundHours(nextTotal / countWeekdays(monthStart, monthEnd));
-        existing.detailUuids.push(actual.uuid);
+        existing.detailCount += 1;
         continue;
       }
 
@@ -239,7 +241,7 @@ export function summarizeMonthlyActualAssignments(
         startDate: toLocalDateString(monthStart),
         endDate: toLocalDateString(monthEnd),
         hoursPerDay: roundHours(monthHours / countWeekdays(monthStart, monthEnd)),
-        detailUuids: [actual.uuid],
+        detailCount: 1,
         resolution: "month",
       });
     }

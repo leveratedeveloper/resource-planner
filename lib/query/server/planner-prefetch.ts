@@ -118,11 +118,15 @@ function transformActual(mysqlActual: ApiRecord): ActualAssignment {
 export async function fetchPlannerAssignments(
   session: SessionData,
   dateRange: { startDate: string; endDate: string },
-  filters: PlannerTimelineRequest["filters"] = {}
+  filters: PlannerTimelineRequest["filters"] = {},
+  employeeUuids?: string[]
 ): Promise<Assignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
   const assignments = (await getTimelineAssignments({
     employee_uuid: employeeUuid,
+    // Query-layer invariant: restricted users stay scoped to their own uuid
+    // even if a caller passes a uuid list (the list would supersede it).
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
     status: filters?.status,
@@ -135,11 +139,15 @@ export async function fetchPlannerAssignments(
 export async function fetchPlannerActualAssignments(
   session: SessionData,
   dateRange: { startDate: string; endDate: string },
-  filters: PlannerTimelineRequest["filters"] = {}
+  filters: PlannerTimelineRequest["filters"] = {},
+  employeeUuids?: string[]
 ): Promise<ActualAssignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
   const actuals = (await getTimelineActualAssignments({
     employee_uuid: employeeUuid,
+    // Query-layer invariant: restricted users stay scoped to their own uuid
+    // even if a caller passes a uuid list (the list would supersede it).
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
     status: filters?.status,
@@ -152,7 +160,7 @@ export async function fetchPlannerActualAssignments(
 export async function fetchPlannerTimeline(
   session: SessionData,
   request: PlannerTimelineRequest,
-  options: { timing?: PlannerTiming } = {}
+  options: { timing?: PlannerTiming; employeeUuids?: string[] } = {}
 ): Promise<PlannerTimelineResponse> {
   const timing: PlannerTiming = options.timing ?? {
     phase: () => undefined,
@@ -161,11 +169,11 @@ export async function fetchPlannerTimeline(
     startDate: request.startDate,
     endDate: request.endDate,
   };
-  const plannedPromise = fetchPlannerAssignments(session, dateRange, request.filters).then((assignments) => {
+  const plannedPromise = fetchPlannerAssignments(session, dateRange, request.filters, options.employeeUuids).then((assignments) => {
     timing.phase("planned_assignments_query", { count: assignments.length });
     return assignments;
   });
-  const actualPromise = fetchPlannerActualAssignments(session, dateRange, request.filters).then((actualAssignments) => {
+  const actualPromise = fetchPlannerActualAssignments(session, dateRange, request.filters, options.employeeUuids).then((actualAssignments) => {
     timing.phase("actual_assignments_query", { count: actualAssignments.length });
     return actualAssignments;
   });
