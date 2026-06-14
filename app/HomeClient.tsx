@@ -20,6 +20,7 @@ import {
   usePlannerFilterProjects,
 } from "@/lib/query/hooks";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import type { Brand } from "@/lib/query/hooks/useBrands";
 
 interface HomeClientProps {
   initialTimelineAnchor: string;
@@ -75,27 +76,34 @@ export function HomeClient({
   children,
 }: HomeClientProps) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  // The selected brand/project objects are stashed at selection time, not
+  // derived by .find() over loaded pages — with server pagination a selection
+  // made via search may not be in the currently-loaded page.
+  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [brandSearch, setBrandSearch] = useState("");
+  const debouncedBrandSearch = useDebounce(brandSearch, 300);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [isSetupOpen, setIsSetupOpen] = useState(false);
 
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectOption | null>(null);
   const [selectedProjectStatus, setSelectedProjectStatus] = useState<ProjectOption["status"] | null>(null);
   const [selectedProjectSourceType, setSelectedProjectSourceType] = useState<ProjectOption["projectType"] | null>(null);
   const [projectSearch, setProjectSearch] = useState("");
+  const debouncedProjectSearch = useDebounce(projectSearch, 300);
   const { data: departments = [] } = useDepartments();
 
-  const {
-    data: brandOptions,
-    isFetching: isFetchingBrandOptions,
-  } = usePlannerFilterBrands();
-
-  const {
-    data: projectOptions,
-    isFetching: isFetchingFilterOptions,
-  } = usePlannerFilterProjects();
+  // Infinite filter catalogs: search and project scope (brand/status/type) are
+  // server-side, so the dropdown payload stays bounded as the directory grows.
+  const brandQuery = usePlannerFilterBrands({ search: debouncedBrandSearch });
+  const projectQuery = usePlannerFilterProjects({
+    brandId: selectedBrandId,
+    status: selectedProjectStatus,
+    sourceType: selectedProjectSourceType,
+    search: debouncedProjectSearch,
+  });
 
   useEffect(() => {
     console.info("[Timing]", {
@@ -115,59 +123,41 @@ export function HomeClient({
     [debouncedSearch, filterProjectId, selectedBrandId, selectedDepartment]
   );
 
-  const brands = useMemo(() => {
-    const byId = new Map(
-      brandOptions?.brands.map((brand) => [brand.id, brand])
-    );
-
-    return Array.from(byId.values());
-  }, [brandOptions?.brands]);
-  const selectedBrand = brands.find((brand) => brand.id === selectedBrandId) ?? null;
-  const brandTotal = Math.max(
-    brandOptions?.total ?? 0,
-    brands.length + (selectedBrand && !brands.some((brand) => brand.id === selectedBrand.id) ? 1 : 0)
+  const brands = useMemo(
+    () => brandQuery.data?.pages.flatMap((page) => page.brands) ?? [],
+    [brandQuery.data]
   );
-  const allProjects = useMemo(() => {
-    const projectsById = new Map(
-      projectOptions?.projects.map((project) => [project.id, project])
-    );
-
-    return Array.from(projectsById.values());
-  }, [projectOptions?.projects]);
+  const brandTotal = brandQuery.data?.pages[0]?.total ?? brands.length;
   const projects = useMemo(
-    () =>
-      allProjects.filter(
-        (project) =>
-          (!selectedBrandId || project.brandId === selectedBrandId) &&
-          (!selectedProjectStatus || project.status === selectedProjectStatus) &&
-          (!selectedProjectSourceType || project.projectType === selectedProjectSourceType)
-      ),
-    [allProjects, selectedBrandId, selectedProjectSourceType, selectedProjectStatus]
+    () => projectQuery.data?.pages.flatMap((page) => page.projects) ?? [],
+    [projectQuery.data]
   );
-  const selectedProject = allProjects.find((project) => project.id === filterProjectId) ?? null;
-  const projectTotal = projects.length;
+  const projectTotal = projectQuery.data?.pages[0]?.total ?? projects.length;
 
-  // Brand and project filters intersect on the client and the server now scopes
-  // the employee page by the selected project's brand. A project left selected
-  // from a different brand intersects to an empty timeline and makes the server
-  // page the wrong employees — clear it (and its dependent status/type) when the
-  // brand changes to one the project doesn't belong to.
+  // Brand and project filters intersect on the client and the server scopes the
+  // employee page by the selected project's brand. A project left selected from
+  // a different brand intersects to an empty timeline and makes the server page
+  // the wrong employees — clear it (and its dependent status/type) when the
+  // brand changes to one the project doesn't belong to. Reads the stashed
+  // selectedProject object, not a lookup over loaded pages.
   const handleBrandChange = useCallback(
-    (brandId: string | null) => {
-      setSelectedBrandId(brandId);
-      setFilterProjectId((currentProjectId) => {
-        if (!currentProjectId || !brandId) return currentProjectId;
-        const currentProject = allProjects.find((project) => project.id === currentProjectId);
-        if (currentProject && currentProject.brandId !== brandId) {
-          setSelectedProjectStatus(null);
-          setSelectedProjectSourceType(null);
-          return null;
-        }
-        return currentProjectId;
-      });
+    (brand: Brand | null) => {
+      setSelectedBrand(brand);
+      setSelectedBrandId(brand?.id ?? null);
+      if (brand && selectedProject && selectedProject.brandId !== brand.id) {
+        setSelectedProject(null);
+        setFilterProjectId(null);
+        setSelectedProjectStatus(null);
+        setSelectedProjectSourceType(null);
+      }
     },
-    [allProjects]
+    [selectedProject]
   );
+
+  const handleProjectChange = useCallback((project: ProjectOption | null) => {
+    setSelectedProject(project);
+    setFilterProjectId(project?.id ?? null);
+  }, []);
 
   return (
     <HomePlannerContext.Provider value={plannerFilters}>
@@ -181,7 +171,12 @@ export function HomeClient({
           onBrandChange={handleBrandChange}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          isLoadingBrands={isFetchingBrandOptions}
+          isLoadingBrands={brandQuery.isFetching && !brandQuery.isFetchingNextPage}
+          brandHasMore={brandQuery.hasNextPage}
+          isFetchingMoreBrands={brandQuery.isFetchingNextPage}
+          onLoadMoreBrands={() => {
+            if (brandQuery.hasNextPage && !brandQuery.isFetchingNextPage) brandQuery.fetchNextPage();
+          }}
           onBrandSearchChange={setBrandSearch}
           selectedDepartment={selectedDepartment}
           onDepartmentChange={setSelectedDepartment}
@@ -189,11 +184,16 @@ export function HomeClient({
           onSearchChange={setSearchQuery}
           onOpenSetup={() => setIsSetupOpen(true)}
           projectId={filterProjectId}
-          onProjectChange={setFilterProjectId}
+          onProjectChange={handleProjectChange}
           selectedProject={selectedProject}
           projectSearch={projectSearch}
           projectTotal={projectTotal}
-          isLoadingProjects={isFetchingFilterOptions}
+          isLoadingProjects={projectQuery.isFetching && !projectQuery.isFetchingNextPage}
+          projectHasMore={projectQuery.hasNextPage}
+          isFetchingMoreProjects={projectQuery.isFetchingNextPage}
+          onLoadMoreProjects={() => {
+            if (projectQuery.hasNextPage && !projectQuery.isFetchingNextPage) projectQuery.fetchNextPage();
+          }}
           projectScopeBrandName={selectedBrand?.name ?? null}
           selectedProjectStatus={selectedProjectStatus}
           selectedProjectSourceType={selectedProjectSourceType}

@@ -34,10 +34,13 @@ interface FilterBarProps {
   departments: Department[];
   projects: ProjectOption[];
   selectedBrandId: string | null;
-  onBrandChange: (brandId: string | null) => void;
+  onBrandChange: (brand: Brand | null) => void;
   brandSearch: string;
   brandTotal: number;
   isLoadingBrands: boolean;
+  brandHasMore: boolean;
+  isFetchingMoreBrands: boolean;
+  onLoadMoreBrands: () => void;
   onBrandSearchChange: (search: string) => void;
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
@@ -45,11 +48,14 @@ interface FilterBarProps {
   onSearchChange: (query: string) => void;
   onOpenSetup: () => void;
   projectId: string | null;
-  onProjectChange: (projectId: string | null) => void;
+  onProjectChange: (project: ProjectOption | null) => void;
   selectedProject: ProjectOption | null;
   projectSearch: string;
   projectTotal: number;
   isLoadingProjects: boolean;
+  projectHasMore: boolean;
+  isFetchingMoreProjects: boolean;
+  onLoadMoreProjects: () => void;
   projectScopeBrandName: string | null;
   selectedProjectStatus: ProjectOption["status"] | null;
   selectedProjectSourceType: ProjectOption["projectType"] | null;
@@ -68,6 +74,9 @@ const FilterBarComponent = ({
   brandSearch,
   brandTotal,
   isLoadingBrands,
+  brandHasMore,
+  isFetchingMoreBrands,
+  onLoadMoreBrands,
   onBrandSearchChange,
   selectedDepartment,
   onDepartmentChange,
@@ -80,6 +89,9 @@ const FilterBarComponent = ({
   projectSearch,
   projectTotal,
   isLoadingProjects,
+  projectHasMore,
+  isFetchingMoreProjects,
+  onLoadMoreProjects,
   projectScopeBrandName,
   selectedProjectStatus,
   selectedProjectSourceType,
@@ -118,6 +130,9 @@ const FilterBarComponent = ({
           brandSearch={brandSearch}
           brandTotal={brandTotal}
           isLoading={isLoadingBrands}
+          hasMore={brandHasMore}
+          isFetchingNextPage={isFetchingMoreBrands}
+          onLoadMore={onLoadMoreBrands}
           onChange={onBrandChange}
           onBrandSearchChange={onBrandSearchChange}
         />
@@ -129,6 +144,9 @@ const FilterBarComponent = ({
           projectSearch={projectSearch}
           projectTotal={projectTotal}
           isLoading={isLoadingProjects}
+          hasMore={projectHasMore}
+          isFetchingNextPage={isFetchingMoreProjects}
+          onLoadMore={onLoadMoreProjects}
           scopeBrandName={projectScopeBrandName}
           selectedStatus={selectedProjectStatus}
           selectedSourceType={selectedProjectSourceType}

@@ -9,26 +9,36 @@ describe("planner filter options route", () => {
     const projectServerSource = readFileSync("lib/query/server/planner-filter-projects.ts", "utf8");
 
     expect(brandRouteSource).toContain("fetchPlannerFilterBrands");
-    expect(brandRouteSource).not.toContain("selectedBrandId");
-    expect(brandRouteSource).not.toContain("offset");
-    expect(brandRouteSource).not.toContain("limit");
+    expect(brandRouteSource).toContain("NextRequest");
+    expect(brandRouteSource).toContain("boundedInteger");
+    expect(brandRouteSource).toContain('searchParams.get("limit")');
+    expect(brandRouteSource).toContain('searchParams.get("offset")');
+    expect(brandRouteSource).toContain('searchParams.get("search")');
 
     expect(projectRouteSource).toContain("fetchPlannerFilterProjects");
-    expect(projectRouteSource).not.toContain("selectedProjectId");
-    expect(projectRouteSource).not.toContain('searchParams.get("status")');
-    expect(projectRouteSource).not.toContain('searchParams.get("sourceType")');
-    expect(projectRouteSource).not.toContain('searchParams.get("offset")');
-    expect(projectRouteSource).not.toContain('searchParams.get("limit")');
+    expect(projectRouteSource).toContain('searchParams.get("brandId")');
+    expect(projectRouteSource).toContain('searchParams.get("status")');
+    expect(projectRouteSource).toContain('searchParams.get("sourceType")');
+    expect(projectRouteSource).toContain('searchParams.get("offset")');
+    expect(projectRouteSource).toContain('searchParams.get("limit")');
+    expect(projectRouteSource).toContain('searchParams.get("search")');
 
     expect(brandServerSource).toContain("plannerDirectoryRepository.listBrandsForFilterOptions");
     expect(brandServerSource).not.toContain("plannerDirectoryRepository.listBrandsByIds");
     expect(brandServerSource).toContain("export type PlannerFilterBrandsRequest");
     expect(brandServerSource).toContain("export type PlannerFilterBrandsResponse");
+    expect(brandServerSource).toContain("request.limit");
+    expect(brandServerSource).toContain("request.offset");
+    expect(brandServerSource).toContain("request.search");
 
     expect(projectServerSource).toContain("plannerDirectoryRepository.listProjectsForFilterOptions");
     expect(projectServerSource).not.toContain("plannerDirectoryRepository.getProjectForFilterOption");
     expect(projectServerSource).toContain("export type PlannerFilterProjectsRequest");
     expect(projectServerSource).toContain("export type PlannerFilterProjectsResponse");
+    expect(projectServerSource).toContain("request.brandId");
+    expect(projectServerSource).toContain("request.status");
+    expect(projectServerSource).toContain("request.sourceType");
+    expect(projectServerSource).toContain("request.search");
     expect(projectServerSource).toContain("availableStatuses");
     expect(projectServerSource).toContain("availableTypes");
   });

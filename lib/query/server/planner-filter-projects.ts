@@ -2,17 +2,24 @@ import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import type { PlannerDirectoryProjectRow } from "@/lib/planner-directory/types";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
-export type PlannerFilterProjectsRequest = Record<string, never>;
+export type PlannerFilterProjectsRequest = {
+  brandId?: string | null;
+  status?: ProjectOption["status"] | null;
+  sourceType?: ProjectOption["projectType"] | null;
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+};
 
 export type PlannerFilterProjectsResponse = {
   projects: ProjectOption[];
   total: number;
   hasMore: boolean;
   scope: {
-    brandId: null;
-    brandName: null;
-    status: null;
-    sourceType: null;
+    brandId: string | null;
+    brandName: string | null;
+    status: ProjectOption["status"] | null;
+    sourceType: ProjectOption["projectType"] | null;
   };
   availableStatuses: ProjectOption["status"][];
   availableTypes: ProjectOption["projectType"][];
@@ -50,19 +57,30 @@ function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
   };
 }
 
-export async function fetchPlannerFilterProjects(): Promise<PlannerFilterProjectsResponse> {
+export async function fetchPlannerFilterProjects(
+  request: PlannerFilterProjectsRequest = {}
+): Promise<PlannerFilterProjectsResponse> {
   const fetchedAt = new Date().toISOString();
-  const projects = await plannerDirectoryRepository.listProjectsForFilterOptions();
+  const limit = request.limit ?? 50;
+  const offset = request.offset ?? 0;
+  const { data, total, hasMore } = await plannerDirectoryRepository.listProjectsForFilterOptions({
+    brandId: request.brandId ?? null,
+    status: request.status ?? null,
+    sourceType: request.sourceType ?? null,
+    search: request.search ?? null,
+    limit,
+    offset,
+  });
 
   return {
-    projects: projects.map(toProjectOption),
-    total: projects.length,
-    hasMore: false,
+    projects: data.map(toProjectOption),
+    total,
+    hasMore,
     scope: {
-      brandId: null,
+      brandId: request.brandId ?? null,
       brandName: null,
-      status: null,
-      sourceType: null,
+      status: request.status ?? null,
+      sourceType: request.sourceType ?? null,
     },
     availableStatuses: ["planning", "active", "on_hold", "completed", "cancelled"],
     availableTypes: ["campaign", "pitch"],

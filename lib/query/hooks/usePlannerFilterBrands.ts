@@ -1,11 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
 import type { PlannerFilterBrandsResponse } from "@/lib/query/server/planner-filter-brands";
 
-async function fetchPlannerFilterBrands(): Promise<PlannerFilterBrandsResponse> {
-  const url = new URL("/api/planner/filter-options/brands", window.location.origin);
+const PAGE_SIZE = 50;
 
-  const response = await fetch(url.toString());
+async function fetchPage(
+  pageParam: number,
+  search: string,
+  signal?: AbortSignal
+): Promise<PlannerFilterBrandsResponse> {
+  const url = new URL("/api/planner/filter-options/brands", window.location.origin);
+  url.searchParams.set("limit", String(PAGE_SIZE));
+  url.searchParams.set("offset", String(pageParam));
+  if (search) url.searchParams.set("search", search);
+
+  const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
     throw new Error("Failed to fetch planner filter brands");
   }
@@ -15,12 +24,18 @@ async function fetchPlannerFilterBrands(): Promise<PlannerFilterBrandsResponse> 
 }
 
 export function usePlannerFilterBrands(
+  params: { search?: string } = {},
   options: { enabled?: boolean } = {}
 ) {
-  return useQuery({
-    queryKey: queryKeys.plannerFilterBrands,
-    queryFn: fetchPlannerFilterBrands,
+  const search = params.search ?? "";
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.plannerFilterBrandsInfinite, search] as const,
+    queryFn: ({ pageParam, signal }) => fetchPage(pageParam, search, signal),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore ? allPages.reduce((count, page) => count + page.brands.length, 0) : undefined,
     enabled: options.enabled ?? true,
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   });
 }

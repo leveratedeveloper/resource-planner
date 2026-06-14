@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,12 +23,15 @@ type ProjectFilterComboboxProps = {
   projectSearch: string;
   projectTotal: number;
   isLoading: boolean;
+  hasMore: boolean;
+  isFetchingNextPage: boolean;
+  onLoadMore: () => void;
   scopeBrandName: string | null;
   selectedStatus: ProjectOption["status"] | null;
   selectedSourceType: ProjectOption["projectType"] | null;
   onStatusChange: (status: ProjectOption["status"] | null) => void;
   onSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
-  onChange: (projectId: string | null) => void;
+  onChange: (project: ProjectOption | null) => void;
   onProjectSearchChange: (search: string) => void;
 };
 
@@ -39,6 +42,9 @@ export function ProjectFilterCombobox({
   projectSearch,
   projectTotal,
   isLoading,
+  hasMore,
+  isFetchingNextPage,
+  onLoadMore,
   scopeBrandName,
   selectedStatus,
   selectedSourceType,
@@ -53,9 +59,14 @@ export function ProjectFilterCombobox({
     [projects, selectedProject, value]
   );
 
+  // Server page union. In the default (empty-search) view the Map prepends the
+  // selected project so an off-page selection stays visible/clearable; during
+  // an active search the prepend is dropped so an off-scope selection doesn't
+  // pin atop unrelated results or inflate the footer count. The trigger label
+  // reads the stashed selection unconditionally. Search/scope are server-driven.
   const renderedProjects = useMemo(() => {
     const byId = new Map<string, ProjectOption>();
-    if (selectedProjectOption) {
+    if (selectedProjectOption && !projectSearch.trim()) {
       byId.set(selectedProjectOption.id, selectedProjectOption);
     }
     for (const project of projects) {
@@ -64,20 +75,42 @@ export function ProjectFilterCombobox({
       }
     }
     return Array.from(byId.values());
-  }, [projects, selectedProjectOption]);
+  }, [projects, selectedProjectOption, projectSearch]);
 
-  const filteredProjects = useMemo(() => {
-    const normalizedSearch = projectSearch.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return renderedProjects;
-    }
-
-    return renderedProjects.filter((project) =>
-      [project.name, project.brandName, project.brandCompanyName]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(normalizedSearch))
-    );
-  }, [projectSearch, renderedProjects]);
+  // Auto-load the next page near the bottom of the Radix ScrollArea viewport.
+  // A scroll listener on the viewport is deterministic; the latest onLoadMore
+  // closure is captured via a ref so the listener stays attached across renders.
+  const scrollWrapRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  useEffect(() => {
+    if (!open || !hasMore) return;
+    let raf = 0;
+    let detach = () => {};
+    // The Radix viewport mounts asynchronously into the popover portal, so it
+    // isn't in the DOM on the effect's first run — retry via rAF until it is.
+    const attach = () => {
+      const viewport = scrollWrapRef.current?.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      ) as HTMLElement | null;
+      if (!viewport) {
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      const handleScroll = () => {
+        if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 160) {
+          onLoadMoreRef.current();
+        }
+      };
+      viewport.addEventListener("scroll", handleScroll, { passive: true });
+      detach = () => viewport.removeEventListener("scroll", handleScroll);
+    };
+    attach();
+    return () => {
+      cancelAnimationFrame(raf);
+      detach();
+    };
+  }, [open, hasMore]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -166,6 +199,7 @@ export function ProjectFilterCombobox({
             </div>
           </div>
 
+          <div ref={scrollWrapRef}>
           <ScrollArea className="h-[260px] rounded-md border">
             <div className="p-1">
               <button
@@ -182,7 +216,7 @@ export function ProjectFilterCombobox({
                 All Projects
               </button>
 
-              {filteredProjects.map((project) => (
+              {renderedProjects.map((project) => (
                 <button
                   key={project.id}
                   type="button"
@@ -191,7 +225,7 @@ export function ProjectFilterCombobox({
                     value === project.id && "bg-accent"
                   )}
                   onClick={() => {
-                    onChange(project.id);
+                    onChange(project);
                     setOpen(false);
                   }}
                 >
@@ -204,17 +238,27 @@ export function ProjectFilterCombobox({
                 </button>
               ))}
 
-              {filteredProjects.length === 0 && !isLoading ? (
+              {renderedProjects.length === 0 && !isLoading ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   No projects found
                 </div>
               ) : null}
+
+              {isFetchingNextPage ? (
+                <div
+                  className="px-2 py-2 text-center text-xs text-muted-foreground"
+                  data-testid="filter-project-loading-more"
+                >
+                  Loading more…
+                </div>
+              ) : null}
             </div>
           </ScrollArea>
+          </div>
 
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              {isLoading ? "Loading..." : `${filteredProjects.length} of ${projectTotal} projects`}
+              {isLoading ? "Loading..." : `${renderedProjects.length} of ${projectTotal} projects`}
             </span>
           </div>
         </div>

@@ -2,7 +2,11 @@ import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import type { PlannerDirectoryBrandRow } from "@/lib/planner-directory/types";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 
-export type PlannerFilterBrandsRequest = Record<string, never>;
+export type PlannerFilterBrandsRequest = {
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+};
 
 export type PlannerFilterBrandsResponse = {
   brands: Brand[];
@@ -52,14 +56,22 @@ function toBrandOption(brand: PlannerDirectoryBrandRow): Brand {
   };
 }
 
-export async function fetchPlannerFilterBrands(): Promise<PlannerFilterBrandsResponse> {
+export async function fetchPlannerFilterBrands(
+  request: PlannerFilterBrandsRequest = {}
+): Promise<PlannerFilterBrandsResponse> {
   const fetchedAt = new Date().toISOString();
-  const brands = await plannerDirectoryRepository.listBrandsForFilterOptions();
+  const limit = request.limit ?? 50;
+  const offset = request.offset ?? 0;
+  const { data, total, hasMore } = await plannerDirectoryRepository.listBrandsForFilterOptions({
+    search: request.search ?? null,
+    limit,
+    offset,
+  });
 
   return {
-    brands: brands.map(toBrandOption),
-    total: brands.length,
-    hasMore: false,
+    brands: data.map(toBrandOption),
+    total,
+    hasMore,
     freshness: {
       fetchedAt,
     },

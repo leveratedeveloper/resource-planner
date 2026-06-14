@@ -12,9 +12,9 @@ describe("timeline-v2 source parity", () => {
     // Brand change goes through a handler that clears an incompatible project
     // selection (brand∩project would otherwise intersect to an empty timeline).
     expect(source).toContain("onBrandChange={handleBrandChange}");
-    expect(source).toContain("setSelectedBrandId(brandId)");
+    expect(source).toContain("setSelectedBrandId(brand?.id ?? null)");
     expect(source).toContain("onDepartmentChange={setSelectedDepartment}");
-    expect(source).toContain("onProjectChange={setFilterProjectId}");
+    expect(source).toContain("onProjectChange={handleProjectChange}");
   });
 
   it("keeps brand and project ids out of planner assignment request filters", () => {

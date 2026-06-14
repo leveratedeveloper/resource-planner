@@ -332,24 +332,36 @@ describe("planner directory repository", () => {
     );
   });
 
-  it("queries all non-archived brands for filter options", async () => {
+  it("queries a paginated, searchable brand slice for filter options", async () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });
 
-    await repository.listBrandsForFilterOptions();
+    await repository.listBrandsForFilterOptions({ search: "acme", limit: 50, offset: 0 });
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("FROM planner_brands"),
-      []
+      expect.stringContaining("COUNT(*) OVER() AS total_count"),
+      expect.arrayContaining(["%acme%", 50, 0])
     );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("archived_at IS NULL"),
-      expect.any(Array)
-    );
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("LIMIT"), expect.any(Array));
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("OFFSET"), expect.any(Array));
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("ORDER BY name ASC"),
       expect.any(Array)
     );
+  });
+
+  it("derives total and hasMore for the brand slice from the window count", async () => {
+    const db = {
+      query: vi.fn(async () => [[
+        { brand_id: "b1", name: "Acme", company_name: "Acme Inc", status: "active", total_count: "120" },
+      ]]),
+    };
+    const repository = createPlannerDirectoryRepository({ db });
+
+    const result = await repository.listBrandsForFilterOptions({ limit: 50, offset: 0 });
+    expect(result.total).toBe(120);
+    expect(result.hasMore).toBe(true);
+    expect(result.data).toHaveLength(1);
   });
 
   it("queries all non-archived departments for filter options", async () => {
@@ -372,15 +384,18 @@ describe("planner directory repository", () => {
     );
   });
 
-  it("queries all projects for filter options with brand metadata", async () => {
+  it("queries a paginated, searchable, scoped project slice for filter options", async () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });
 
-    await repository.listProjectsForFilterOptions();
+    await repository.listProjectsForFilterOptions({
+      brandId: "brand-9", status: "active", sourceType: "campaign",
+      search: "launch", limit: 50, offset: 0,
+    });
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("FROM planner_projects"),
-      []
+      expect.stringContaining("COUNT(*) OVER() AS total_count"),
+      expect.arrayContaining(["brand-9", "active", "campaign", "%launch%", 50, 0])
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("LEFT JOIN planner_brands"),
@@ -390,14 +405,7 @@ describe("planner directory repository", () => {
       expect.stringContaining("b.name AS brand_name"),
       expect.any(Array)
     );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("b.company_name AS brand_company_name"),
-      expect.any(Array)
-    );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.not.stringContaining("COUNT(*) OVER() AS total_count"),
-      []
-    );
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("LIMIT"), expect.any(Array));
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining("p.archived_at IS NULL"),
       expect.any(Array)

@@ -699,18 +699,45 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     return readRows<DbRow>(result).map(mapBrandReadRow);
   }
 
-  async function listBrandsForFilterOptions(): Promise<PlannerDirectoryBrandRow[]> {
+  async function listBrandsForFilterOptions(args: {
+    search?: string | null;
+    limit: number;
+    offset: number;
+  } = { limit: 50, offset: 0 }): Promise<{
+    data: PlannerDirectoryBrandRow[];
+    total: number;
+    hasMore: boolean;
+  }> {
+    const params: unknown[] = [];
+    const whereClauses = ["archived_at IS NULL"];
+
+    const searchClause = buildLikeSearchClause(["name", "company_name"], args.search, dialect, params);
+    if (searchClause) whereClauses.push(searchClause);
+
+    params.push(args.limit);
+    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    params.push(args.offset);
+    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+
     const result = await db.query(
       `
-        SELECT *
+        SELECT *, COUNT(*) OVER() AS total_count
         FROM planner_brands
-        WHERE archived_at IS NULL
+        WHERE ${whereClauses.join(" AND ")}
         ORDER BY name ASC
+        LIMIT ${limitPlaceholder}
+        OFFSET ${offsetPlaceholder}
       `,
-      []
+      params
     );
 
-    return readRows<DbRow>(result).map(mapBrandReadRow);
+    const rows = readRows<DbRow>(result);
+    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
+    return {
+      data: rows.map(mapBrandReadRow),
+      total,
+      hasMore: total > args.offset + rows.length,
+    };
   }
 
   async function listProjects(): Promise<PlannerDirectoryProjectRow[]> {
@@ -925,7 +952,14 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     brandId?: string | null;
     status?: string | null;
     sourceType?: string | null;
-  } = {}): Promise<PlannerDirectoryProjectRow[]> {
+    search?: string | null;
+    limit: number;
+    offset: number;
+  } = { limit: 50, offset: 0 }): Promise<{
+    data: PlannerDirectoryProjectRow[];
+    total: number;
+    hasMore: boolean;
+  }> {
     const params: unknown[] = [];
     const whereClauses = ["p.archived_at IS NULL"];
 
@@ -944,18 +978,37 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
       whereClauses.push(`p.source_type = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
     }
 
+    const searchClause = buildLikeSearchClause(["p.name", "b.name", "b.company_name"], args.search, dialect, params);
+    if (searchClause) whereClauses.push(searchClause);
+
+    params.push(args.limit);
+    const limitPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    params.push(args.offset);
+    const offsetPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+
+    // Small reference table: the LOWER(...) LIKE search seq-scans (<200ms) — a
+    // leading-wildcard LIKE can't use a btree index, and pg_trgm is overkill here.
     const result = await db.query(
       `
-        SELECT p.*, b.name AS brand_name, b.company_name AS brand_company_name
+        SELECT p.*, b.name AS brand_name, b.company_name AS brand_company_name,
+               COUNT(*) OVER() AS total_count
         FROM planner_projects p
         LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
         WHERE ${whereClauses.join(" AND ")}
         ORDER BY p.name ASC
+        LIMIT ${limitPlaceholder}
+        OFFSET ${offsetPlaceholder}
       `,
       params
     );
 
-    return readRows<DbRow>(result).map(mapProjectReadRow);
+    const rows = readRows<DbRow>(result);
+    const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
+    return {
+      data: rows.map(mapProjectReadRow),
+      total,
+      hasMore: total > args.offset + rows.length,
+    };
   }
 
   async function listBrandsByIds(brandIds: string[]): Promise<PlannerDirectoryBrandRow[]> {

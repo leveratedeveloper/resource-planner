@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,10 @@ type BrandFilterComboboxProps = {
   brandSearch: string;
   brandTotal: number;
   isLoading: boolean;
-  onChange: (brandId: string | null) => void;
+  hasMore: boolean;
+  isFetchingNextPage: boolean;
+  onLoadMore: () => void;
+  onChange: (brand: Brand | null) => void;
   onBrandSearchChange: (search: string) => void;
 };
 
@@ -27,6 +30,9 @@ export function BrandFilterCombobox({
   brandSearch,
   brandTotal,
   isLoading,
+  hasMore,
+  isFetchingNextPage,
+  onLoadMore,
   onChange,
   onBrandSearchChange,
 }: BrandFilterComboboxProps) {
@@ -36,9 +42,16 @@ export function BrandFilterCombobox({
     [brands, selectedBrand, value]
   );
 
+  // The server returns the page union. In the default (empty-search) view the
+  // Map prepends the selected brand so an off-page selection stays visible and
+  // clearable. During an active search the prepend is dropped, so an off-scope
+  // selection doesn't pin atop unrelated results or inflate the footer count
+  // (e.g. "2 of 1"). The trigger label still reads `selected` unconditionally,
+  // so persistence is unaffected. No client-side filtering: search is server-
+  // driven (debounced upstream).
   const renderedBrands = useMemo(() => {
     const byId = new Map<string, Brand>();
-    if (selected) {
+    if (selected && !brandSearch.trim()) {
       byId.set(selected.id, selected);
     }
     for (const brand of brands) {
@@ -47,20 +60,45 @@ export function BrandFilterCombobox({
       }
     }
     return Array.from(byId.values());
-  }, [brands, selected]);
+  }, [brands, selected, brandSearch]);
 
-  const filteredBrands = useMemo(() => {
-    const normalizedSearch = brandSearch.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return renderedBrands;
-    }
-
-    return renderedBrands.filter((brand) =>
-      [brand.name, brand.companyName]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(normalizedSearch))
-    );
-  }, [brandSearch, renderedBrands]);
+  // Auto-load the next page near the bottom of the Radix ScrollArea viewport.
+  // A scroll listener on the viewport is deterministic; a document-rooted
+  // IntersectionObserver never sees the sentinel because the viewport clips its
+  // overflow, and a viewport-rooted observer is racy against effect re-attach.
+  // The latest onLoadMore closure is captured via a ref so the listener stays
+  // attached across renders instead of tearing down each time.
+  const scrollWrapRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  useEffect(() => {
+    if (!open || !hasMore) return;
+    let raf = 0;
+    let detach = () => {};
+    // The Radix viewport mounts asynchronously into the popover portal, so it
+    // isn't in the DOM on the effect's first run — retry via rAF until it is.
+    const attach = () => {
+      const viewport = scrollWrapRef.current?.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      ) as HTMLElement | null;
+      if (!viewport) {
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      const handleScroll = () => {
+        if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 160) {
+          onLoadMoreRef.current();
+        }
+      };
+      viewport.addEventListener("scroll", handleScroll, { passive: true });
+      detach = () => viewport.removeEventListener("scroll", handleScroll);
+    };
+    attach();
+    return () => {
+      cancelAnimationFrame(raf);
+      detach();
+    };
+  }, [open, hasMore]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -89,6 +127,7 @@ export function BrandFilterCombobox({
             />
           </div>
 
+          <div ref={scrollWrapRef}>
           <ScrollArea className="h-[280px] rounded-md border">
             <div className="p-1">
               <button
@@ -105,7 +144,7 @@ export function BrandFilterCombobox({
                 <span>All Brands</span>
               </button>
 
-              {filteredBrands.map((brand) => (
+              {renderedBrands.map((brand) => (
                 <button
                   key={brand.id}
                   type="button"
@@ -114,7 +153,7 @@ export function BrandFilterCombobox({
                     value === brand.id && "bg-accent"
                   )}
                   onClick={() => {
-                    onChange(brand.id);
+                    onChange(brand);
                     setOpen(false);
                   }}
                 >
@@ -136,16 +175,26 @@ export function BrandFilterCombobox({
                 </button>
               ))}
 
-              {filteredBrands.length === 0 && !isLoading ? (
+              {renderedBrands.length === 0 && !isLoading ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   No brands found
                 </div>
               ) : null}
+
+              {isFetchingNextPage ? (
+                <div
+                  className="px-2 py-2 text-center text-xs text-muted-foreground"
+                  data-testid="filter-brand-loading-more"
+                >
+                  Loading more…
+                </div>
+              ) : null}
             </div>
           </ScrollArea>
+          </div>
 
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{isLoading ? "Loading..." : `${filteredBrands.length} of ${brandTotal} brands`}</span>
+            <span>{isLoading ? "Loading..." : `${renderedBrands.length} of ${brandTotal} brands`}</span>
           </div>
         </div>
       </PopoverContent>
