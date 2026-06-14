@@ -3,6 +3,7 @@
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -146,6 +147,28 @@ export function HomeClient({
   const selectedProject = allProjects.find((project) => project.id === filterProjectId) ?? null;
   const projectTotal = projects.length;
 
+  // Brand and project filters intersect on the client and the server now scopes
+  // the employee page by the selected project's brand. A project left selected
+  // from a different brand intersects to an empty timeline and makes the server
+  // page the wrong employees — clear it (and its dependent status/type) when the
+  // brand changes to one the project doesn't belong to.
+  const handleBrandChange = useCallback(
+    (brandId: string | null) => {
+      setSelectedBrandId(brandId);
+      setFilterProjectId((currentProjectId) => {
+        if (!currentProjectId || !brandId) return currentProjectId;
+        const currentProject = allProjects.find((project) => project.id === currentProjectId);
+        if (currentProject && currentProject.brandId !== brandId) {
+          setSelectedProjectStatus(null);
+          setSelectedProjectSourceType(null);
+          return null;
+        }
+        return currentProjectId;
+      });
+    },
+    [allProjects]
+  );
+
   return (
     <HomePlannerContext.Provider value={plannerFilters}>
       <div className="flex flex-col h-screen bg-background">
@@ -155,7 +178,7 @@ export function HomeClient({
           departments={departments}
           projects={projects}
           selectedBrandId={selectedBrandId}
-          onBrandChange={setSelectedBrandId}
+          onBrandChange={handleBrandChange}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
           isLoadingBrands={isFetchingBrandOptions}

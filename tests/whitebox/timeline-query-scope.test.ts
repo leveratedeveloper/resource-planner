@@ -44,11 +44,12 @@ describe("bootstrap employee page scoping", () => {
   it("keeps restricted users scoped to their own uuid at the query layer", () => {
     const prefetchSource = readFileSync("lib/query/server/planner-prefetch.ts", "utf8");
 
+    // 3 sites: raw assignments, raw actuals, and the SQL month-aggregate path
     expect(
       prefetchSource.match(
         /employee_uuids: session\.access\.can_view_all \? employeeUuids : undefined/g
       )?.length
-    ).toBe(2);
+    ).toBe(3);
   });
 
   // Bootstrap pages are the timeline's only employee source; department must
@@ -60,5 +61,17 @@ describe("bootstrap employee page scoping", () => {
 
     expect(repositorySource).toContain("e.department_id = ${dialect");
     expect(bootstrapSource).toContain("department: session.access.can_view_all");
+  });
+
+  // Same completeness rule for brand/project filters: the bootstrap resolves
+  // the scoped project ids first (can_view_all only) and the employee page is
+  // narrowed by assignment EXISTS; an empty brand short-circuits to an empty
+  // slice instead of an unfiltered company-wide page.
+  it("scopes the employee page to brand/project assignments on the server", () => {
+    const bootstrapSource = readFileSync("lib/query/server/planner-home-bootstrap.ts", "utf8");
+
+    expect(bootstrapSource).toContain("session.access.can_view_all && (request.projectId || request.brandId)");
+    expect(bootstrapSource).toContain("assignmentProjectIds: scopedProjectIds");
+    expect(bootstrapSource).toContain("scopedProjectIds && scopedProjectIds.length === 0");
   });
 });

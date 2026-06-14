@@ -285,6 +285,30 @@ describe("planner directory repository", () => {
     );
   });
 
+  it("scopes the employee bootstrap slice to project assignments when brand/project filters are active", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listEmployeesForBootstrap({
+      offset: 0,
+      limit: 60,
+      assignmentProjectIds: ["proj-1", "proj-2"],
+      assignmentRange: { startDate: "2026-04-01", endDate: "2026-06-30" },
+    });
+
+    const [sql, params] = db.query.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain("EXISTS (SELECT 1 FROM assignments x WHERE x.employee_uuid = e.employee_uuid");
+    expect(sql).toContain("EXISTS (SELECT 1 FROM actual x WHERE x.employee_uuid = e.employee_uuid");
+    expect(sql).toContain("COALESCE(x.is_time_off, 0) = 0");
+    // params in textual order: plan EXISTS (ids, range), actual EXISTS (ids,
+    // range), then LIMIT/OFFSET — positional placeholders bind by position.
+    expect(params).toEqual([
+      "proj-1", "proj-2", "2026-04-01", "2026-06-30",
+      "proj-1", "proj-2", "2026-04-01", "2026-06-30",
+      60, 0,
+    ]);
+  });
+
   it("queries local projects and brands for bootstrap without touching Timetrack", async () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });

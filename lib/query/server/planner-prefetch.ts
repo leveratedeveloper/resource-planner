@@ -1,14 +1,20 @@
 import {
   getTimelineActualAssignments,
   getTimelineAssignments,
+  getTimelineMonthlyActualAggregates,
+  getTimelineMonthlyAssignmentAggregates,
 } from "@/lib/mysql-assignments/queries";
 import { toLocalDateString } from "@/lib/utils";
 import type { SessionData } from "@/lib/auth/session";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import {
+  buildMonthlyActualBlocksFromAggregates,
+  buildMonthlyAssignmentBlocksFromAggregates,
   summarizeMonthlyActualAssignments,
   summarizeMonthlyAssignments,
+  type MonthlyAggregateActualRow,
+  type MonthlyAggregateAssignmentRow,
   type PlannerTimelineRequest,
   type PlannerTimelineResponse,
 } from "@/lib/planner/planner-loading";
@@ -157,6 +163,85 @@ export async function fetchPlannerActualAssignments(
   return actuals.map(transformActual);
 }
 
+// Raw aggregate rows (snake_case, numerics possibly strings from pg) → typed
+// shaping inputs. Coercion mirrors transformAssignment/transformActual.
+function coerceMonthlyAssignmentAggregateRow(row: ApiRecord): MonthlyAggregateAssignmentRow {
+  return {
+    employeeUuid: text(row.employee_uuid),
+    projectUuid: nullableText(row.project_uuid),
+    monthStart: dateValue(row.month_start),
+    note: nullableText(row.note),
+    category: nullableText(row.category),
+    status: text(row.status),
+    isBillable: booleanValue(row.is_billable),
+    isAdjustment: booleanValue(row.is_adjustment),
+    totalHours: numberValue(row.total_hours),
+    detailCount: numberValue(row.detail_count),
+    createdAt: text(row.created_at),
+    updatedAt: text(row.updated_at),
+  };
+}
+
+function coerceMonthlyActualAggregateRow(row: ApiRecord): MonthlyAggregateActualRow {
+  return {
+    employeeUuid: text(row.employee_uuid),
+    projectUuid: nullableText(row.project_uuid),
+    monthStart: dateValue(row.month_start),
+    note: nullableText(row.note),
+    category: nullableText(row.category),
+    status: text(row.status),
+    isBillable: booleanValue(row.is_billable),
+    monthHours: numberValue(row.month_hours),
+    detailCount: numberValue(row.detail_count),
+    createdAt: text(row.created_at),
+    updatedAt: text(row.updated_at),
+  };
+}
+
+// SQL-side month aggregation is the default; PLANNER_SQL_MONTH_AGG=0 falls
+// back to the raw-row pull + TS summarize for one release (parity insurance —
+// Phase 8 spec).
+function shouldUseSqlMonthAggregation(): boolean {
+  return process.env.PLANNER_SQL_MONTH_AGG !== "0";
+}
+
+async function fetchMonthlyTimelineAggregates(
+  session: SessionData,
+  request: PlannerTimelineRequest,
+  employeeUuids: string[] | undefined,
+  timing: PlannerTiming
+): Promise<PlannerTimelineResponse> {
+  // Same restricted-user gating as the raw fetchers: the session uuid is the
+  // floor, caller-supplied lists only apply for can_view_all sessions.
+  const filters = {
+    employee_uuid: !session.access.can_view_all ? session.employee?.uuid : undefined,
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
+    start_date: request.startDate,
+    end_date: request.endDate,
+    status: request.filters?.status,
+    category: request.filters?.category,
+  };
+
+  const [aggregateRows, actualAggregateRows] = await Promise.all([
+    getTimelineMonthlyAssignmentAggregates(filters) as Promise<ApiRecord[]>,
+    getTimelineMonthlyActualAggregates(filters) as Promise<ApiRecord[]>,
+  ]);
+
+  const assignments = buildMonthlyAssignmentBlocksFromAggregates(
+    aggregateRows.map(coerceMonthlyAssignmentAggregateRow)
+  );
+  const actualAssignments = buildMonthlyActualBlocksFromAggregates(
+    actualAggregateRows.map(coerceMonthlyActualAggregateRow)
+  );
+  timing.phase("monthly_summary", {
+    assignmentCount: assignments.length,
+    actualAssignmentCount: actualAssignments.length,
+    sqlAggregated: true,
+  });
+
+  return { request, assignments, actualAssignments };
+}
+
 export async function fetchPlannerTimeline(
   session: SessionData,
   request: PlannerTimelineRequest,
@@ -165,6 +250,11 @@ export async function fetchPlannerTimeline(
   const timing: PlannerTiming = options.timing ?? {
     phase: () => undefined,
   };
+
+  if (request.resolution === "month" && shouldUseSqlMonthAggregation()) {
+    return fetchMonthlyTimelineAggregates(session, request, options.employeeUuids, timing);
+  }
+
   const dateRange = {
     startDate: request.startDate,
     endDate: request.endDate,

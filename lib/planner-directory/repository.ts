@@ -743,12 +743,39 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     }));
   }
 
+  // EXISTS over one assignment table for the brand/project employee scoping —
+  // both planner_* and assignments tables live in the same database (the
+  // repository's default db IS assignmentsDb).
+  function buildAssignmentExistsClause(
+    table: "assignments" | "actual",
+    projectIds: string[],
+    range: { startDate: string; endDate: string },
+    params: unknown[]
+  ): string {
+    const inClause = buildInClause("x.project_uuid", projectIds, dialect, params);
+    params.push(range.startDate);
+    const startPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+    params.push(range.endDate);
+    const endPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
+
+    // Cross-type time-off exclusion: ::integer keeps this valid whether
+    // is_time_off is stored as integer (live DB) or boolean (schema file).
+    const timeOffExclusion =
+      dialect === "postgresql"
+        ? "COALESCE(x.is_time_off::integer, 0) = 0"
+        : "COALESCE(x.is_time_off, 0) = 0";
+
+    return `EXISTS (SELECT 1 FROM ${table} x WHERE x.employee_uuid = e.employee_uuid AND ${inClause} AND x.end_date >= ${startPlaceholder} AND x.start_date <= ${endPlaceholder} AND ${timeOffExclusion})`;
+  }
+
   async function listEmployeesForBootstrap(args: {
     offset: number;
     limit: number;
     search?: string | null;
     department?: string | null;
     employeeUuid?: string | null;
+    assignmentProjectIds?: string[] | null;
+    assignmentRange?: { startDate: string; endDate: string } | null;
   }): Promise<{
     data: PlannerDirectoryEmployeeRow[];
     total: number;
@@ -768,6 +795,15 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     if (args.department) {
       params.push(args.department);
       whereClauses.push(`e.department_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    // Brand/project filters get the same treatment: only employees with a
+    // planned or actual assignment on the scoped projects inside the visible
+    // range make the page, so employeeTotal/hasMore describe the filtered set.
+    if (args.assignmentProjectIds && args.assignmentProjectIds.length > 0 && args.assignmentRange) {
+      const planExists = buildAssignmentExistsClause("assignments", args.assignmentProjectIds, args.assignmentRange, params);
+      const actualExists = buildAssignmentExistsClause("actual", args.assignmentProjectIds, args.assignmentRange, params);
+      whereClauses.push(`(${planExists} OR ${actualExists})`);
     }
 
     const searchClause = buildLikeSearchClause(

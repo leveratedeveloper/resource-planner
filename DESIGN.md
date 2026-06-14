@@ -339,3 +339,22 @@ Cutting further means SQL-side month aggregation (GROUP BY), a semantics-bearing
 of `summarizeMonthlyAssignments` — out of scope for the approved spec; candidate Phase 8.
 `filter-options/projects` was inspected and left unchanged: it already ships 8-field
 options; its 1.2 MB is cardinality (5,257 projects), not fat fields.
+
+### Phase 8 — SQL month aggregation + filter completeness (2026-06-12)
+
+Month-resolution timeline queries now aggregate in the DB (dialect-branched
+GROUP BY with a closed-form weekday count; `PLANNER_SQL_MONTH_AGG=0` falls back
+to the TS path for one release). Brand/project filters scope the employee page
+server-side via assignment EXISTS, same as department.
+
+| Metric | Phase 7 | Phase 8 | Target |
+|---|---|---|---|
+| Company-wide quarter timeline (same data, parity script) | 1,905 ms | **229 ms (8×)** | — |
+| `home-bootstrap` warm TTFB (quarter, 60-employee page) | ~1,150 ms | **485–595 ms** | < 800 ms ✓ |
+| Parity old-vs-new (573 blocks, real DB) | — | **573/573 keys, max Δ 0.0000 h** | ±0.1 h ✓ |
+| Brand filter (HSBC) | progressive crawl | **complete in one scoped request (6/6 members)** | ✓ |
+
+Caveat: absolute payload/block counts shifted between measurement days (live
+dev DB; directory sync churns) — the 8× query speedup and 573/573 parity were
+measured same-second on identical data via `scripts/check-month-aggregation-parity.ts`
+(read-only; rerun after any change to `summarizeMonthly*` or the aggregate SQL).

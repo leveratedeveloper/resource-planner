@@ -269,3 +269,163 @@ export function shouldLoadPlannerAssignmentDetail(assignment?: Assignment): bool
 export function shouldLoadPlannerActualDetail(assignment?: ActualAssignment): boolean {
   return !!assignment && isMonthlyPlannerActualAssignment(assignment);
 }
+
+// ---------------------------------------------------------------------------
+// Month aggregation (Phase 8): the SQL path groups day-level rows in the DB
+// (lib/mysql-assignments/queries.ts) and these builders shape the grouped rows
+// into the SAME blocks summarizeMonthly* produce — same `planner-month:` key
+// scheme, same hoursPerDay derivation. One deliberate difference: totals are
+// rounded ONCE on the SQL-summed value, while the TS path rounds at every
+// accumulation step, so block totals may differ by ≤0.1h (the SQL value is
+// the more correct one; accepted in the Phase 8 spec).
+//
+// SQL groups by RAW status, but transformAssignment normalizes unknown
+// statuses to "confirmed" — so two raw statuses can collapse to one key here.
+// The builders merge such collisions instead of dropping them.
+
+export type MonthlyAggregateAssignmentRow = {
+  employeeUuid: string;
+  projectUuid: string | null;
+  monthStart: string; // yyyy-MM-01
+  note: string | null;
+  category: string | null;
+  status: string;
+  isBillable: boolean;
+  isAdjustment: boolean;
+  totalHours: number;
+  detailCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MonthlyAggregateActualRow = {
+  employeeUuid: string;
+  projectUuid: string | null;
+  monthStart: string;
+  note: string | null;
+  category: string | null;
+  status: string;
+  isBillable: boolean;
+  monthHours: number;
+  detailCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function normalizeAssignmentStatus(status: string): Assignment["status"] {
+  return status === "draft" || status === "confirmed" || status === "completed"
+    ? status
+    : "confirmed";
+}
+
+export function buildMonthlyAssignmentBlocksFromAggregates(
+  rows: MonthlyAggregateAssignmentRow[]
+): MonthlyTimelineAssignment[] {
+  const summaries = new Map<string, MonthlyTimelineAssignment>();
+
+  for (const row of rows) {
+    const status = normalizeAssignmentStatus(row.status);
+    const key = [
+      row.employeeUuid,
+      row.projectUuid ?? "unassigned",
+      row.monthStart,
+      row.note ?? "",
+      row.category ?? "",
+      status,
+      row.isBillable ? "billable" : "non-billable",
+      row.isAdjustment ? "adjustment" : "plan",
+      "work",
+    ].join(":");
+    const monthStart = startOfDay(new Date(`${row.monthStart}T00:00:00`));
+    const monthEnd = endOfMonth(monthStart);
+    const monthWeekdays = countWeekdays(monthStart, monthEnd);
+    const existing = summaries.get(key);
+
+    if (existing) {
+      existing.totalHours = roundHours((existing.totalHours ?? 0) + row.totalHours);
+      existing.detailCount += row.detailCount;
+      existing.hoursPerDay = String(roundHours((existing.totalHours ?? 0) / monthWeekdays));
+      continue;
+    }
+
+    summaries.set(key, {
+      id: `planner-month:${key}`,
+      employeeId: row.employeeUuid,
+      projectId: row.projectUuid,
+      taskId: null,
+      startDate: toLocalDateString(monthStart),
+      endDate: toLocalDateString(monthEnd),
+      hoursPerDay: String(roundHours(row.totalHours / monthWeekdays)),
+      totalHours: roundHours(row.totalHours),
+      allocationPercentage: null,
+      isTimeOff: false,
+      timeOffTypeId: null,
+      category: row.category,
+      isBillable: row.isBillable,
+      isAdjustment: row.isAdjustment,
+      status,
+      note: row.note,
+      createdById: null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      detailCount: row.detailCount,
+      resolution: "month",
+    });
+  }
+
+  return Array.from(summaries.values());
+}
+
+export function buildMonthlyActualBlocksFromAggregates(
+  rows: MonthlyAggregateActualRow[]
+): MonthlyTimelineActualAssignment[] {
+  const summaries = new Map<string, MonthlyTimelineActualAssignment>();
+
+  for (const row of rows) {
+    const key = [
+      row.employeeUuid,
+      row.projectUuid ?? "unassigned",
+      row.monthStart,
+      row.note ?? "",
+      row.category ?? "",
+      row.status,
+      row.isBillable ? "billable" : "non-billable",
+      "work",
+    ].join(":");
+    const monthStart = startOfDay(new Date(`${row.monthStart}T00:00:00`));
+    const monthEnd = endOfMonth(monthStart);
+    const monthWeekdays = countWeekdays(monthStart, monthEnd);
+    const existing = summaries.get(key);
+
+    if (existing) {
+      const nextTotal = existing.hoursPerDay * monthWeekdays + row.monthHours;
+      existing.hoursPerDay = roundHours(nextTotal / monthWeekdays);
+      existing.detailCount += row.detailCount;
+      continue;
+    }
+
+    summaries.set(key, {
+      uuid: `planner-month:${key}`,
+      employeeUuid: row.employeeUuid,
+      projectUuid: row.projectUuid,
+      taskUuid: null,
+      startDate: toLocalDateString(monthStart),
+      endDate: toLocalDateString(monthEnd),
+      hoursPerDay: roundHours(row.monthHours / monthWeekdays),
+      allocationPercentage: null,
+      isTimeOff: false,
+      timeOffTypeUuid: null,
+      category: row.category,
+      isBillable: row.isBillable,
+      status: row.status,
+      note: row.note,
+      createdByUuid: null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      detailCount: row.detailCount,
+      resolution: "month",
+    });
+  }
+
+  return Array.from(summaries.values());
+}

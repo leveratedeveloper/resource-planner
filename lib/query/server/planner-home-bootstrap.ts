@@ -197,13 +197,44 @@ export async function fetchPlannerHomeBootstrap(
   // employees this response actually renders — unscoped, a quarter view shipped
   // every assignment in the company (measured: 4,908 blocks / 7.9 MB / 4.5 s
   // for 60 rendered employees). One serial hop buys a bounded payload.
-  const employeeSliceResult = await plannerDirectoryRepository.listEmployeesForBootstrap({
-    offset: session.access.can_view_all ? request.employeeOffset : 0,
-    limit: session.access.can_view_all ? request.employeeLimit : 1,
-    search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
-    department: session.access.can_view_all ? request.department?.trim() || undefined : undefined,
-    employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
-  });
+  // Brand/project filters scope the employee page server-side (Phase 8 8B):
+  // pages carry their own assignments, so a client-only filter would reveal a
+  // brand's members progressively as pages crawl in. Resolving the brand's
+  // project ids first costs one indexed query, only when the filter is active.
+  let scopedProjectIds: string[] | undefined;
+  if (session.access.can_view_all && (request.projectId || request.brandId)) {
+    // Brand+project intersect on the client. When both are set, the project
+    // must belong to the brand or the intersection is empty — scope to the
+    // project only if it is one of the brand's, otherwise to an empty set so
+    // the page matches what the client will render.
+    if (request.projectId && request.brandId) {
+      const brandProjectIds = (
+        await plannerDirectoryRepository.listProjectsForBootstrap({ brandId: request.brandId })
+      ).map((project) => project.sourceProjectId);
+      scopedProjectIds = brandProjectIds.includes(request.projectId) ? [request.projectId] : [];
+    } else if (request.projectId) {
+      scopedProjectIds = [request.projectId];
+    } else {
+      scopedProjectIds = (
+        await plannerDirectoryRepository.listProjectsForBootstrap({ brandId: request.brandId })
+      ).map((project) => project.sourceProjectId);
+    }
+  }
+
+  const employeeSliceResult =
+    scopedProjectIds && scopedProjectIds.length === 0
+      ? // A brand with no projects can have no matching employees — skip the
+        // query rather than letting an empty IN-list fall through.
+        { data: [], total: 0, hasMore: false }
+      : await plannerDirectoryRepository.listEmployeesForBootstrap({
+          offset: session.access.can_view_all ? request.employeeOffset : 0,
+          limit: session.access.can_view_all ? request.employeeLimit : 1,
+          search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
+          department: session.access.can_view_all ? request.department?.trim() || undefined : undefined,
+          employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
+          assignmentProjectIds: scopedProjectIds,
+          assignmentRange: { startDate: request.startDate, endDate: request.endDate },
+        });
   const pageEmployeeUuids = employeeSliceResult.data.map((employee) => employee.employeeUuid);
 
   const [latestSuccessfulSync, latestInFlightSync, departments, plannerTimeline] = await Promise.all([

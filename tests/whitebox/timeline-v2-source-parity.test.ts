@@ -9,7 +9,10 @@ describe("timeline-v2 source parity", () => {
     expect(source).toContain("Timeline");
     expect(source).not.toContain("components/timeline/Timeline");
     expect(source).toContain("searchQuery={searchQuery}");
-    expect(source).toContain("onBrandChange={setSelectedBrandId}");
+    // Brand change goes through a handler that clears an incompatible project
+    // selection (brand∩project would otherwise intersect to an empty timeline).
+    expect(source).toContain("onBrandChange={handleBrandChange}");
+    expect(source).toContain("setSelectedBrandId(brandId)");
     expect(source).toContain("onDepartmentChange={setSelectedDepartment}");
     expect(source).toContain("onProjectChange={setFilterProjectId}");
   });
