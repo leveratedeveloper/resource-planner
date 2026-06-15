@@ -181,11 +181,11 @@ export function useAssignmentsByEmployee(employeeId: string) {
   });
 }
 
-export function useAssignmentsByProject(projectId: string) {
+export function useAssignmentsByProject(projectId: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.assignmentsByProject(projectId),
     queryFn: () => fetchAssignmentsByProject(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId && (options.enabled ?? true),
   });
 }
 

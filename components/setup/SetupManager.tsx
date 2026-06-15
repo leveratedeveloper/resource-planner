@@ -1,53 +1,50 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandSetup } from "./BrandSetup";
 import { ResourceManagement } from "./ResourceManagement";
 import { ProjectSetup } from "./ProjectSetup";
-import { useIsStuck } from "@/hooks/use-is-stuck";
-import { cn } from "@/lib/utils";
 
 export const SetupManager = () => {
-  const { sentinelRef, isStuck } = useIsStuck(0);
+  const [activeTab, setActiveTab] = useState<"brands" | "projects" | "resources">("brands");
 
   return (
-    <div className="w-full">
-      <Tabs defaultValue="brands" className="w-full">
-        <div ref={sentinelRef} className="h-px -mt-px invisible" />
-        <TabsList className={cn("sticky top-0 z-10 bg-muted p-1 rounded-full grid w-full grid-cols-3 transition-shadow duration-200", isStuck && "shadow-sm")}>
+    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="flex h-full w-full flex-col gap-0">
+      <div className="sticky top-0 z-30 border-b bg-background py-5 pl-6 pr-16">
+        <TabsList className="grid h-10 w-full grid-cols-3 rounded-full bg-muted p-1">
           <TabsTrigger
             value="brands"
-            className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+            className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm"
             data-testid="setup-tab-brands"
           >
             Brands
           </TabsTrigger>
           <TabsTrigger
             value="projects"
-            className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+            className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm"
             data-testid="setup-tab-projects"
           >
             Projects
           </TabsTrigger>
           <TabsTrigger
             value="resources"
-            className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+            className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm"
             data-testid="setup-tab-resources"
           >
             Team
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="brands" className="mt-6">
-          <BrandSetup />
-        </TabsContent>
-        <TabsContent value="projects" className="mt-6">
-          <ProjectSetup />
-        </TabsContent>
-        <TabsContent value="resources" className="mt-6">
-          <ResourceManagement />
-        </TabsContent>
-      </Tabs>
-    </div>
+      </div>
+      <TabsContent value="brands" className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+        {activeTab === "brands" ? <BrandSetup /> : null}
+      </TabsContent>
+      <TabsContent value="projects" className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+        {activeTab === "projects" ? <ProjectSetup /> : null}
+      </TabsContent>
+      <TabsContent value="resources" className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+        {activeTab === "resources" ? <ResourceManagement /> : null}
+      </TabsContent>
+    </Tabs>
   );
 };

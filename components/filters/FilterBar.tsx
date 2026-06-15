@@ -28,6 +28,10 @@ import { ExportButton } from "@/components/export";
 import { BrandFilterCombobox } from "@/components/filters/BrandFilterCombobox";
 import { ProjectFilterCombobox } from "@/components/filters/ProjectFilterCombobox";
 
+// Dashboard/Insights is still under development and not ready for production.
+// Set this to `true` to re-enable the home-page entry point once it ships.
+const DASHBOARD_FEATURE_ENABLED = false;
+
 interface FilterBarProps {
   brands: Brand[];
   selectedBrand: Brand | null;
@@ -191,7 +195,7 @@ const FilterBarComponent = ({
             endDate: undefined,
           }}
         />
-        {hasDashboardAccess && (
+        {DASHBOARD_FEATURE_ENABLED && hasDashboardAccess && (
           <Button asChild variant="outline" data-testid="open-dashboard-button">
             <Link href="/dashboard">
               <Icon icon="lucide:layout-dashboard" className="mr-2 h-4 w-4" />

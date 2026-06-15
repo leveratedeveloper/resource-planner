@@ -12,13 +12,14 @@ import {
 import { FilterBar } from "@/components/filters/FilterBar";
 import { SetupManager } from "@/components/setup/SetupManager";
 import { Timeline } from "@/components/timeline-v2";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   useDepartments,
   usePlannerFilterBrands,
   usePlannerFilterProjects,
 } from "@/lib/query/hooks";
+import { XIcon } from "lucide-react";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 
@@ -209,13 +210,17 @@ export function HomeClient({
         </main>
 
         <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
-          <DialogContent className="w-full h-[90vh] overflow-y-auto">
+          <DialogContent className="flex w-full h-[90vh] overflow-hidden p-0 gap-0" showCloseButton={false}>
             <div className="sr-only">
               <DialogTitle>Setup</DialogTitle>
               <DialogDescription>
                 Manage your brands and team resources.
               </DialogDescription>
             </div>
+            <DialogClose className="absolute right-4 top-4 z-[70] inline-flex size-10 items-center justify-center rounded-xl border-2 border-border/80 bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+              <XIcon className="size-4" />
+              <span className="sr-only">Close setup</span>
+            </DialogClose>
             <SetupManager />
           </DialogContent>
         </Dialog>

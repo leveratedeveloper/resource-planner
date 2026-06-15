@@ -1,6 +1,5 @@
 "use client";
 
-import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
@@ -55,6 +54,7 @@ import {
   updateProjectChannelManHours,
   type EditableProjectChannel,
 } from "@/lib/setup/project-channel-editor";
+import { SetupSectionHeader } from "./SetupSectionHeader";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -89,6 +89,7 @@ export const ProjectSetup = () => {
   const { session } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showEmptyBrands, setShowEmptyBrands] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   const {
@@ -125,9 +126,12 @@ export const ProjectSetup = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [initialManHoursByEmployee, setInitialManHoursByEmployee] = useState<Record<string, string>>({});
 
-  const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
-  const { data: allAssignments = [] } = useAssignments();
-  const { data: employees = [] } = useEmployees();
+  const isProjectDetailOpen = isDialogOpen && !!viewingProject;
+  const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "", {
+    enabled: isProjectDetailOpen,
+  });
+  const { data: allAssignments = [] } = useAssignments(undefined, { enabled: isProjectDetailOpen });
+  const { data: employees = [] } = useEmployees({ enabled: isProjectDetailOpen });
   const deleteAssignment = useDeleteAssignment();
 
   const employeeMap = useMemo(() => {
@@ -383,21 +387,28 @@ export const ProjectSetup = () => {
   // Group projects by brand
   // In default state: show all brands even if they have no projects
   // In search state: show brands that match the search OR have matching projects
-  const projectsByBrand = brands
-    .map((brand) => ({
-      brand,
-      projects: projects.filter((p) => p.brandId === brand.id),
-    }))
-    .filter(({ brand, projects: brandProjects }) => {
-      // If there's no search, show all brands
-      if (!debouncedSearch) return true;
+  const projectsByBrand = useMemo(() => {
+    const normalizedSearch = debouncedSearch.trim().toLowerCase();
+    const projectsByBrandId = new Map<string, Project[]>();
 
-      // If searching, show brands that match the search or have matching projects
-      const brandNameMatches = brand.name.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const hasMatchingProjects = brandProjects.length > 0;
+    for (const project of projects) {
+      const bucket = projectsByBrandId.get(project.brandId) ?? [];
+      bucket.push(project);
+      projectsByBrandId.set(project.brandId, bucket);
+    }
 
-      return brandNameMatches || hasMatchingProjects;
-    });
+    return brands
+      .map((brand) => ({
+        brand,
+        projects: projectsByBrandId.get(brand.id) ?? [],
+      }))
+      .filter(({ brand, projects: brandProjects }) => {
+        if (!normalizedSearch) return showEmptyBrands || brandProjects.length > 0;
+
+        const brandNameMatches = brand.name.toLowerCase().includes(normalizedSearch);
+        return brandNameMatches || brandProjects.length > 0;
+      });
+  }, [brands, projects, debouncedSearch, showEmptyBrands]);
 
   // Get currency symbol
   const getCurrencySymbol = (code: string) => {
@@ -524,31 +535,29 @@ export const ProjectSetup = () => {
     });
   };
 
-  const { sentinelRef, isStuck } = useIsStuck(40);
-
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-6">
-        {/* Header */}
-        <div ref={sentinelRef} className="h-px -mt-px invisible" />
-        <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex items-center justify-between transition-shadow duration-200", isStuck && "shadow-sm")}>
-          <div>
-            <h3 className="text-lg font-semibold">Projects</h3>
-            <p className="text-sm text-muted-foreground">
-              Manage projects within your brands
-            </p>
-          </div>
-          <div className="relative">
-            <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              data-testid="project-search-input"
-              placeholder="Search projects..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-64"
-            />
-          </div>
-        </div>
+        <SetupSectionHeader
+          title="Projects"
+          description="Manage projects within your brands"
+          searchValue={searchQuery}
+          searchPlaceholder="Search projects..."
+          searchTestId="project-search-input"
+          onSearchChange={setSearchQuery}
+          actions={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEmptyBrands((value) => !value)}
+              aria-pressed={showEmptyBrands}
+              data-testid="toggle-empty-brands"
+            >
+              {showEmptyBrands ? "Hide empty" : "Show empty"}
+            </Button>
+          }
+        />
 
         {/* Projects List grouped by Brand */}
         <div className="space-y-6">
@@ -560,7 +569,11 @@ export const ProjectSetup = () => {
           ) : projectsByBrand.length === 0 && !projectsLoading ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:folder-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No brands yet. Create one in the Brands tab first.</p>
+              <p className="text-sm">
+                {debouncedSearch
+                  ? `No projects or brands found matching "${debouncedSearch}"`
+                  : "No brands yet. Create one in the Brands tab first."}
+              </p>
             </div>
           ) : (
             projectsByBrand.map(({ brand, projects: brandProjects }) => (

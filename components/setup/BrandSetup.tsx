@@ -17,11 +17,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@iconify/react";
-import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
-import { cn } from "@/lib/utils";
+import { SetupSectionHeader } from "./SetupSectionHeader";
 const INDUSTRY_CATEGORIES = [
   "Agriculture",
   "Airline",
@@ -69,7 +68,7 @@ const generateClientCode = (brandName: string, existingCodes: string[] = []): st
 
   // Create base code from first 3-4 letters of brand name
   const cleanName = brandName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  let baseCode = cleanName.substring(0, 4);
+  const baseCode = cleanName.substring(0, 4);
 
   // If code exists, append a number
   let code = baseCode;
@@ -94,20 +93,10 @@ export const BrandSetup = () => {
     fetchNextPage,
   } = useInfiniteBrands(debouncedSearch || undefined);
   const { data: businessUnits = [] } = useBusinessUnits();
-  const { sentinelRef, isStuck } = useIsStuck(40);
-
   // Flatten all pages into a single array of brands and deduplicate by id
   const brands = useMemo(() => {
     if (!brandsData?.pages) return [];
-
-    console.log('[BrandSetup] Processing brands data:', {
-      pageCount: brandsData.pages.length,
-      pages: brandsData.pages.map(p => ({ dataLength: p.data?.length, total: p.total, hasMore: p.hasMore })),
-    });
-
     const allBrands = brandsData.pages.flatMap((page) => page.data || []);
-
-    console.log('[BrandSetup] Flattened brands:', { count: allBrands.length, brands: allBrands.slice(0, 3) });
 
     // Deduplicate by id to handle cases where the API returns duplicate brands
     const uniqueBrandsMap = new Map<string, Brand>();
@@ -117,10 +106,7 @@ export const BrandSetup = () => {
       }
     }
 
-    const result = Array.from(uniqueBrandsMap.values());
-    console.log('[BrandSetup] Final brands after deduplication:', { count: result.length });
-
-    return result;
+    return Array.from(uniqueBrandsMap.values());
   }, [brandsData]);
 
   const handleLoadMore = useCallback(() => {
@@ -166,14 +152,12 @@ export const BrandSetup = () => {
       setIsDialogOpen(true);
 
       try {
-        console.log('[BrandSetup] Fetching complete brand data for:', brand.name);
         // Fetch complete brand data by name
         const response = await fetch(`/api/brands/lookup?brandName=${encodeURIComponent(brand.name)}`);
         const result = await response.json();
 
         if (result.success && result.data) {
           const completeBrand = result.data;
-          console.log('[BrandSetup] Got complete brand data:', completeBrand);
           brand = { ...brand, ...completeBrand } as BrandWithMetadata;
 
           // Update form with complete data
@@ -196,7 +180,6 @@ export const BrandSetup = () => {
           setDescription(completeBrand.description || "");
           setEditingBrand(brand);
         } else {
-          console.log('[BrandSetup] No complete brand data found, using partial data');
           // Set partial data
           setCompanyName(brand.companyName || "");
           setName(brand.name);
@@ -265,22 +248,13 @@ export const BrandSetup = () => {
 
   return (
     <div className="space-y-6">
-      <div ref={sentinelRef} className="h-px -mt-px invisible" />
-      <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex justify-between items-center mb-6 transition-shadow duration-200", isStuck && "shadow-sm")}>
-        <h2 className="text-xl font-bold tracking-tight">Brand Management</h2>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              data-testid="brand-search-input"
-              placeholder="Search brands..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-64"
-            />
-          </div>
-        </div>
-      </div>
+      <SetupSectionHeader
+        title="Brand Management"
+        searchValue={searchQuery}
+        searchPlaceholder="Search brands..."
+        searchTestId="brand-search-input"
+        onSearchChange={setSearchQuery}
+      />
 
       {brandsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
