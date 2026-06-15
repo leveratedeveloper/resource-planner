@@ -27,6 +27,10 @@ describe("filter bar source", () => {
     expect(brandSelectSource).toContain('addEventListener("scroll"');
     expect(brandSelectSource).toContain("data-radix-scroll-area-viewport");
     expect(brandSelectSource).toContain("filter-brand-loading-more");
+    expect(brandSelectSource).toContain("hasQuery");
+    expect(brandSelectSource).toContain("Type to search brands");
+    expect(brandSelectSource).toContain("No brands found");
+    expect(brandSelectSource).not.toContain("selected && !brandSearch.trim()");
     expect(projectSelectSource).toContain("projectSearch");
     expect(projectSelectSource).toContain("onProjectSearchChange");
     expect(projectSelectSource).not.toContain("filteredProjects");
@@ -41,5 +45,9 @@ describe("filter bar source", () => {
     expect(projectSelectSource).toContain("Project Type");
     expect(projectSelectSource).toContain("formatFilterLabel");
     expect(projectSelectSource).toContain("grid grid-cols-3 gap-1");
+    expect(projectSelectSource).toContain("hasQuery");
+    expect(projectSelectSource).toContain("Type to search projects");
+    expect(projectSelectSource).toContain("No projects found");
+    expect(projectSelectSource).not.toContain("selectedProjectOption && !projectSearch.trim()");
   });
 });

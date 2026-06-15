@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
 import type { PlannerFilterBrandsResponse } from "@/lib/query/server/planner-filter-brands";
 
@@ -28,14 +28,14 @@ export function usePlannerFilterBrands(
   options: { enabled?: boolean } = {}
 ) {
   const search = params.search ?? "";
+  const hasCriteria = search.trim().length > 0;
   return useInfiniteQuery({
     queryKey: [...queryKeys.plannerFilterBrandsInfinite, search] as const,
     queryFn: ({ pageParam, signal }) => fetchPage(pageParam, search, signal),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.hasMore ? allPages.reduce((count, page) => count + page.brands.length, 0) : undefined,
-    enabled: options.enabled ?? true,
-    placeholderData: keepPreviousData,
+    enabled: (options.enabled ?? true) && hasCriteria,
     staleTime: 5 * 60 * 1000,
   });
 }

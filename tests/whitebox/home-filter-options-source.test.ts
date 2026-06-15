@@ -20,6 +20,9 @@ describe("home filter options source", () => {
     expect(source).toContain("onLoadMoreProjects");
     expect(source).toContain("brandTotal");
     expect(source).toContain("projectTotal");
+    expect(source).toContain("brandSearchPending");
+    expect(source).toContain("projectSearchPending");
+    expect(source).toContain("brandSearch.trim() !== debouncedBrandSearch.trim()");
     expect(source).toContain("useDepartments");
     expect(source).not.toContain("allProjects.find((project) => project.id === filterProjectId) ?? null");
     expect(source).not.toContain("Object.values(bootstrapData?.brandsById ?? {}).map(toBrandOption)");

@@ -59,23 +59,24 @@ export function ProjectFilterCombobox({
     [projects, selectedProject, value]
   );
 
-  // Server page union. In the default (empty-search) view the Map prepends the
-  // selected project so an off-page selection stays visible/clearable; during
-  // an active search the prepend is dropped so an off-scope selection doesn't
-  // pin atop unrelated results or inflate the footer count. The trigger label
-  // reads the stashed selection unconditionally. Search/scope are server-driven.
+  // Search-first: results are the server page union only. A status/type chip or
+  // an inherited brand scope counts as input too, so the list fills in those
+  // cases without typing. The selected project shows in the trigger label
+  // (persistence) and renders checked here only when it is itself a result.
+  const hasQuery =
+    projectSearch.trim().length > 0 ||
+    !!selectedStatus ||
+    !!selectedSourceType ||
+    !!scopeBrandName;
   const renderedProjects = useMemo(() => {
     const byId = new Map<string, ProjectOption>();
-    if (selectedProjectOption && !projectSearch.trim()) {
-      byId.set(selectedProjectOption.id, selectedProjectOption);
-    }
     for (const project of projects) {
       if (!byId.has(project.id)) {
         byId.set(project.id, project);
       }
     }
     return Array.from(byId.values());
-  }, [projects, selectedProjectOption, projectSearch]);
+  }, [projects]);
 
   // Auto-load the next page near the bottom of the Radix ScrollArea viewport.
   // A scroll listener on the viewport is deterministic; the latest onLoadMore
@@ -216,51 +217,67 @@ export function ProjectFilterCombobox({
                 All Projects
               </button>
 
-              {renderedProjects.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  className={cn(
-                    "flex h-8 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-accent",
-                    value === project.id && "bg-accent"
-                  )}
-                  onClick={() => {
-                    onChange(project);
-                    setOpen(false);
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  <span className="truncate">{project.name}</span>
-                </button>
-              ))}
-
-              {renderedProjects.length === 0 && !isLoading ? (
+              {!hasQuery ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                  No projects found
+                  Type to search projects…
                 </div>
-              ) : null}
+              ) : (
+                <>
+                  {renderedProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      className={cn(
+                        "flex h-8 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-accent",
+                        value === project.id && "bg-accent"
+                      )}
+                      onClick={() => {
+                        onChange(project);
+                        setOpen(false);
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: project.color }}
+                      />
+                      <span className="truncate">{project.name}</span>
+                    </button>
+                  ))}
 
-              {isFetchingNextPage ? (
-                <div
-                  className="px-2 py-2 text-center text-xs text-muted-foreground"
-                  data-testid="filter-project-loading-more"
-                >
-                  Loading more…
-                </div>
-              ) : null}
+                  {renderedProjects.length === 0 && isLoading ? (
+                    <div
+                      className="px-2 py-6 text-center text-sm text-muted-foreground"
+                      data-testid="filter-project-searching"
+                    >
+                      Searching…
+                    </div>
+                  ) : null}
+                  {renderedProjects.length === 0 && !isLoading ? (
+                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      No projects found
+                    </div>
+                  ) : null}
+
+                  {isFetchingNextPage ? (
+                    <div
+                      className="px-2 py-2 text-center text-xs text-muted-foreground"
+                      data-testid="filter-project-loading-more"
+                    >
+                      Loading more…
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           </ScrollArea>
           </div>
 
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>
-              {isLoading ? "Loading..." : `${renderedProjects.length} of ${projectTotal} projects`}
-            </span>
-          </div>
+          {hasQuery && renderedProjects.length > 0 ? (
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>{`${renderedProjects.length} of ${projectTotal} projects`}</span>
+            </div>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>

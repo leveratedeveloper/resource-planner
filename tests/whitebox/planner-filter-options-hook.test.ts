@@ -13,7 +13,9 @@ describe("planner filter options hook", () => {
     expect(brandHookSource).toContain("useInfiniteQuery");
     expect(brandHookSource).toContain("getNextPageParam");
     expect(brandHookSource).toContain("initialPageParam");
-    expect(brandHookSource).toContain("keepPreviousData");
+    // No keepPreviousData: a search/scope change clears to "Searching…" rather
+    // than holding the previous term's stale results in a search-first dropdown.
+    expect(brandHookSource).not.toContain("keepPreviousData");
     expect(brandHookSource).toContain("staleTime: 5 * 60 * 1000");
 
     expect(projectHookSource).toContain("/api/planner/filter-options/projects");
@@ -22,11 +24,19 @@ describe("planner filter options hook", () => {
     expect(projectHookSource).toContain("getNextPageParam");
     expect(projectHookSource).toContain("brandId");
     expect(projectHookSource).toContain("sourceType");
-    expect(projectHookSource).toContain("keepPreviousData");
+    expect(projectHookSource).not.toContain("keepPreviousData");
 
     expect(indexSource).toContain('export * from "./usePlannerFilterBrands"');
     expect(indexSource).toContain('export * from "./usePlannerFilterProjects"');
     expect(queryKeysSource).toContain("plannerFilterBrandsInfinite");
     expect(queryKeysSource).toContain("plannerFilterProjectsInfinite");
+
+    expect(brandHookSource).toContain("search.trim().length > 0");
+    expect(brandHookSource).toContain("enabled:");
+
+    expect(projectHookSource).toContain("scope.search.trim().length > 0");
+    expect(projectHookSource).toContain("scope.brandId");
+    expect(projectHookSource).toContain("scope.status");
+    expect(projectHookSource).toContain("scope.sourceType");
   });
 });

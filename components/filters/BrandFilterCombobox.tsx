@@ -42,25 +42,20 @@ export function BrandFilterCombobox({
     [brands, selectedBrand, value]
   );
 
-  // The server returns the page union. In the default (empty-search) view the
-  // Map prepends the selected brand so an off-page selection stays visible and
-  // clearable. During an active search the prepend is dropped, so an off-scope
-  // selection doesn't pin atop unrelated results or inflate the footer count
-  // (e.g. "2 of 1"). The trigger label still reads `selected` unconditionally,
-  // so persistence is unaffected. No client-side filtering: search is server-
-  // driven (debounced upstream).
+  // Search-first: results are the server page union only. The selected brand
+  // shows in the trigger label (persistence) and renders checked here only when
+  // it is itself a search match — the empty/open view shows the hint, never the
+  // selection. No client-side filtering: search is server-driven (debounced).
+  const hasQuery = brandSearch.trim().length > 0;
   const renderedBrands = useMemo(() => {
     const byId = new Map<string, Brand>();
-    if (selected && !brandSearch.trim()) {
-      byId.set(selected.id, selected);
-    }
     for (const brand of brands) {
       if (!byId.has(brand.id)) {
         byId.set(brand.id, brand);
       }
     }
     return Array.from(byId.values());
-  }, [brands, selected, brandSearch]);
+  }, [brands]);
 
   // Auto-load the next page near the bottom of the Radix ScrollArea viewport.
   // A scroll listener on the viewport is deterministic; a document-rooted
@@ -144,58 +139,76 @@ export function BrandFilterCombobox({
                 <span>All Brands</span>
               </button>
 
-              {renderedBrands.map((brand) => (
-                <button
-                  key={brand.id}
-                  type="button"
-                  className={cn(
-                    "flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-sm px-2 text-left text-sm hover:bg-accent",
-                    value === brand.id && "bg-accent"
-                  )}
-                  onClick={() => {
-                    onChange(brand);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: brand.color }}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate">{brand.name}</span>
-                      {brand.companyName ? (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {brand.companyName}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                </button>
-              ))}
-
-              {renderedBrands.length === 0 && !isLoading ? (
+              {!hasQuery ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                  No brands found
+                  Type to search brands…
                 </div>
-              ) : null}
+              ) : (
+                <>
+                  {renderedBrands.map((brand) => (
+                    <button
+                      key={brand.id}
+                      type="button"
+                      className={cn(
+                        "flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-sm px-2 text-left text-sm hover:bg-accent",
+                        value === brand.id && "bg-accent"
+                      )}
+                      onClick={() => {
+                        onChange(brand);
+                        setOpen(false);
+                      }}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="h-3 w-3 shrink-0 rounded-full"
+                          style={{ backgroundColor: brand.color }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate">{brand.name}</span>
+                          {brand.companyName ? (
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {brand.companyName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
 
-              {isFetchingNextPage ? (
-                <div
-                  className="px-2 py-2 text-center text-xs text-muted-foreground"
-                  data-testid="filter-brand-loading-more"
-                >
-                  Loading more…
-                </div>
-              ) : null}
+                  {renderedBrands.length === 0 && isLoading ? (
+                    <div
+                      className="px-2 py-6 text-center text-sm text-muted-foreground"
+                      data-testid="filter-brand-searching"
+                    >
+                      Searching…
+                    </div>
+                  ) : null}
+                  {renderedBrands.length === 0 && !isLoading ? (
+                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      No brands found
+                    </div>
+                  ) : null}
+
+                  {isFetchingNextPage ? (
+                    <div
+                      className="px-2 py-2 text-center text-xs text-muted-foreground"
+                      data-testid="filter-brand-loading-more"
+                    >
+                      Loading more…
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           </ScrollArea>
           </div>
 
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{isLoading ? "Loading..." : `${renderedBrands.length} of ${brandTotal} brands`}</span>
-          </div>
+          {hasQuery && renderedBrands.length > 0 ? (
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>{`${renderedBrands.length} of ${brandTotal} brands`}</span>
+            </div>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>

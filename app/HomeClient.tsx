@@ -105,6 +105,14 @@ export function HomeClient({
     search: debouncedProjectSearch,
   });
 
+  // True while typed input hasn't yet produced settled results — covers the
+  // 300ms debounce window AND the in-flight fetch — so the dropdown shows
+  // "Searching…" instead of flickering to "No results".
+  const brandSearchPending =
+    brandSearch.trim() !== debouncedBrandSearch.trim() || brandQuery.isFetching;
+  const projectSearchPending =
+    projectSearch.trim() !== debouncedProjectSearch.trim() || projectQuery.isFetching;
+
   useEffect(() => {
     console.info("[Timing]", {
       flow: "planner_startup",
@@ -171,7 +179,7 @@ export function HomeClient({
           onBrandChange={handleBrandChange}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          isLoadingBrands={brandQuery.isFetching && !brandQuery.isFetchingNextPage}
+          isLoadingBrands={brandSearchPending && !brandQuery.isFetchingNextPage}
           brandHasMore={brandQuery.hasNextPage}
           isFetchingMoreBrands={brandQuery.isFetchingNextPage}
           onLoadMoreBrands={() => {
@@ -188,7 +196,7 @@ export function HomeClient({
           selectedProject={selectedProject}
           projectSearch={projectSearch}
           projectTotal={projectTotal}
-          isLoadingProjects={projectQuery.isFetching && !projectQuery.isFetchingNextPage}
+          isLoadingProjects={projectSearchPending && !projectQuery.isFetchingNextPage}
           projectHasMore={projectQuery.hasNextPage}
           isFetchingMoreProjects={projectQuery.isFetchingNextPage}
           onLoadMoreProjects={() => {
