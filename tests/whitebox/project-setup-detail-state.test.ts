@@ -45,8 +45,8 @@ describe("project setup detail state", () => {
       projectCategoryId: "",
       budget: "",
       notes: "",
-      region: "Indonesia",
-      pitchStatus: "introduction",
+      region: "",
+      pitchStatus: "",
     });
   });
 });
