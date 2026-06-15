@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { getSession } from "@/lib/auth/session";
 
 vi.mock("@/lib/auth/session", () => ({
   getSession: vi.fn(async () => ({ access_token: "tok" })),
@@ -23,11 +24,20 @@ describe("GET /api/projects/[type]/[id]", () => {
     fetchPitch.mockReset();
   });
 
+  it("returns 401 when there is no session", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce(null);
+    const res = await GET(makeRequest(), {
+      params: Promise.resolve({ type: "campaigns", id: "c-1" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
   it("rejects an unsupported project type", async () => {
     const res = await GET(makeRequest(), {
       params: Promise.resolve({ type: "widgets", id: "x" }),
     });
     expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ success: false });
   });
 
   it("returns the mapped campaign on success", async () => {
