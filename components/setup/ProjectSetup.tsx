@@ -85,6 +85,21 @@ type ProjectWithRawChannels = Project & {
   channels?: ProjectChannelSource[];
   projectChannels?: ProjectChannelSource[];
 };
+
+// Pure data transform — hoisted to module scope so it has no closure deps and
+// is safe to reference from the empty-dep useCallback appliers below.
+function mapRawChannels(project: Project): EditableProjectChannel[] {
+  const projectWithChannels = project as ProjectWithRawChannels;
+  const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
+  return channelsData.map((pc) => ({
+    channelId: pc.channelId || pc.channel_id || "",
+    deliverableId: pc.deliverableId || pc.deliverable_id || "",
+    quantity: pc.quantity || "",
+    channelBudget: pc.channelBudget || pc.channel_budget || "",
+    manHours: pc.manHours || pc.man_hours || "",
+  }));
+}
+
 export const ProjectSetup = () => {
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -305,18 +320,6 @@ export const ProjectSetup = () => {
     return response;
   };
 
-  const mapRawChannels = (project: Project): EditableProjectChannel[] => {
-    const projectWithChannels = project as ProjectWithRawChannels;
-    const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
-    return channelsData.map((pc) => ({
-      channelId: pc.channelId || pc.channel_id || "",
-      deliverableId: pc.deliverableId || pc.deliverable_id || "",
-      quantity: pc.quantity || "",
-      channelBudget: pc.channelBudget || pc.channel_budget || "",
-      manHours: pc.manHours || pc.man_hours || "",
-    }));
-  };
-
   const applyProjectToForm = useCallback((project: Project) => {
     const detailState = getProjectDetailState(project);
     setProjectType(detailState.projectType);
@@ -365,7 +368,10 @@ export const ProjectSetup = () => {
     setPitchStatus(detailState.pitchStatus);
     setValueTotalEstimate(detailState.valueTotalEstimate);
     setHsDealId(detailState.hsDealId);
-    setProjectChannels(mapRawChannels(detail));
+    // Channels are intentionally NOT overlaid: the live single-fetch does not
+    // reliably return channel rows, and channel.manHours is user-editable —
+    // re-applying here would wipe projection channels or stomp an edit. Channel
+    // population is out of scope for this change.
   }, []);
 
   const detailProjectType =
