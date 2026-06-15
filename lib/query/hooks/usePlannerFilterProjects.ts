@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
+import { hasProjectCriteria } from "@/lib/query/filterCriteria";
 import type { PlannerFilterProjectsResponse } from "@/lib/query/server/planner-filter-projects";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
@@ -49,18 +50,20 @@ export function usePlannerFilterProjects(
     sourceType: params.sourceType ?? null,
     search: params.search ?? "",
   };
-  const hasCriteria =
-    scope.search.trim().length > 0 ||
-    !!scope.brandId ||
-    !!scope.status ||
-    !!scope.sourceType;
   return useInfiniteQuery({
     queryKey: [...queryKeys.plannerFilterProjectsInfinite, scope] as const,
     queryFn: ({ pageParam, signal }) => fetchPage(pageParam, scope, signal),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.hasMore ? allPages.reduce((count, page) => count + page.projects.length, 0) : undefined,
-    enabled: (options.enabled ?? true) && hasCriteria,
+    enabled:
+      (options.enabled ?? true) &&
+      hasProjectCriteria({
+        search: scope.search,
+        brandId: scope.brandId,
+        status: scope.status,
+        sourceType: scope.sourceType,
+      }),
     staleTime: 5 * 60 * 1000,
   });
 }
