@@ -28,6 +28,8 @@ export const queryKeys = {
   projectsInfinite: ["projects", "infinite"] as const,
   project: (id: string) => ["projects", id] as const,
   projectsByBrand: (brandId: string) => ["projects", "brand", brandId] as const,
+  projectDetail: (type: "campaign" | "pitch", id: string) =>
+    ["projects", "detail", type, id] as const,
 
   // Channel Classifications
   channelClassifications: ["channel-classifications"] as const,
