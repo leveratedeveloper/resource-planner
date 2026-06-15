@@ -42,6 +42,7 @@ interface FilterBarProps {
   isFetchingMoreBrands: boolean;
   onLoadMoreBrands: () => void;
   onBrandSearchChange: (search: string) => void;
+  brandHasQuery: boolean;
   selectedDepartment: string | null;
   onDepartmentChange: (dept: string | null) => void;
   searchQuery: string;
@@ -62,6 +63,7 @@ interface FilterBarProps {
   onProjectStatusChange: (status: ProjectOption["status"] | null) => void;
   onProjectSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
   onProjectSearchChange: (search: string) => void;
+  projectHasQuery: boolean;
 }
 
 const FilterBarComponent = ({
@@ -78,6 +80,7 @@ const FilterBarComponent = ({
   isFetchingMoreBrands,
   onLoadMoreBrands,
   onBrandSearchChange,
+  brandHasQuery,
   selectedDepartment,
   onDepartmentChange,
   searchQuery,
@@ -98,6 +101,7 @@ const FilterBarComponent = ({
   onProjectStatusChange,
   onProjectSourceTypeChange,
   onProjectSearchChange,
+  projectHasQuery,
 }: FilterBarProps) => {
   const { session, logout } = useAuth();
   const hasFullAccess = isFullAccess(session);
@@ -135,6 +139,7 @@ const FilterBarComponent = ({
           onLoadMore={onLoadMoreBrands}
           onChange={onBrandChange}
           onBrandSearchChange={onBrandSearchChange}
+          hasQuery={brandHasQuery}
         />
 
         <ProjectFilterCombobox
@@ -154,6 +159,7 @@ const FilterBarComponent = ({
           onSourceTypeChange={onProjectSourceTypeChange}
           onChange={onProjectChange}
           onProjectSearchChange={onProjectSearchChange}
+          hasQuery={projectHasQuery}
         />
 
         <Select
