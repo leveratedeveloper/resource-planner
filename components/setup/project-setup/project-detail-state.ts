@@ -48,9 +48,9 @@ export function getProjectDetailState(project: Project): ProjectDetailState {
     description: project.description || "",
     notes: project.notes || "",
     flag: project.flag || "",
-    region: project.region || "Indonesia",
+    region: project.region || "",
     submitDate: project.submitDate || "",
-    pitchStatus: project.pitchStatus || "introduction",
+    pitchStatus: project.pitchStatus || "",
     valueTotalEstimate: project.valueTotalEstimate || "",
     hsDealId: project.hsDealId || "",
   };
