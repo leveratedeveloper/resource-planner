@@ -344,7 +344,8 @@ export const ProjectSetup = () => {
     setPitchStatus(detailState.pitchStatus);
     setValueTotalEstimate(detailState.valueTotalEstimate);
     setHsDealId(detailState.hsDealId);
-    setProjectChannels(mapRawChannels(project));
+    // Channels are set by handleOpenView (alongside initialProjectChannels) so
+    // the projection's channel list is mapped exactly once per open.
   }, []);
 
   const applyDetailOverlay = useCallback((detail: Project) => {
@@ -396,6 +397,7 @@ export const ProjectSetup = () => {
     applyProjectToForm(project);
     setDateRange(getProjectAssignmentDateRange(project));
     const nextProjectChannels = mapRawChannels(project);
+    setProjectChannels(nextProjectChannels);
     setInitialProjectChannels(nextProjectChannels);
     setPendingAssignments([]);
     if (viewingProject?.id !== project.id) {
