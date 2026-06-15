@@ -15,14 +15,14 @@ export async function GET(request: Request) {
     const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
     const search = searchParams.get("search")?.trim().toLowerCase() || "";
 
-    const projects = await plannerDirectoryRepository.listProjects();
-    const filtered = projects.filter((project) => {
-      if (brandId && project.brandId !== brandId) return false;
-      if (!search) return true;
-      return project.name.toLowerCase().includes(search);
+    const page = await plannerDirectoryRepository.listProjectsPage({
+      brandId: brandId ?? null,
+      search: search || null,
+      limit,
+      offset,
     });
 
-    const data = filtered.slice(offset, offset + limit).map((project) => ({
+    const data = page.data.map((project) => ({
       id: project.sourceProjectId,
       brandId: project.brandId || "",
       businessUnitId: null,
@@ -76,8 +76,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       data,
-      total: filtered.length,
-      hasMore: offset + limit < filtered.length,
+      total: page.total,
+      hasMore: page.hasMore,
     });
   } catch (error) {
     console.error("Failed to fetch projects:", error);
