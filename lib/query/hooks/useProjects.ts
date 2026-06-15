@@ -170,7 +170,7 @@ async function fetchProjectDetail(
   const segment = projectType === "campaign" ? "campaigns" : "pitches";
   const response = await fetch(`/api/projects/${segment}/${encodeURIComponent(id)}`);
   if (!response.ok) {
-    throw new Error("Failed to fetch project detail");
+    throw new Error(`Failed to fetch ${projectType} detail`);
   }
   const data = await response.json();
   return data.data;
@@ -242,6 +242,13 @@ export function useProject(id: string) {
   });
 }
 
+/**
+ * Live, Timetrack-backed detail fetch for a single campaign/pitch, keyed by
+ * source type + UUID. Used by the detail modal (cold path) to overlay accurate
+ * financial/identity fields onto the projection data. Distinct from `useProject`
+ * (which targets a different, non-type-aware endpoint). Pass `enabled` so it only
+ * fires while the modal is open.
+ */
 export function useProjectDetail(
   projectType: "campaign" | "pitch" | undefined,
   id: string | undefined,
