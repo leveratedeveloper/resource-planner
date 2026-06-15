@@ -31,12 +31,12 @@ describe("planner filter options hook", () => {
     expect(queryKeysSource).toContain("plannerFilterBrandsInfinite");
     expect(queryKeysSource).toContain("plannerFilterProjectsInfinite");
 
-    expect(brandHookSource).toContain("search.trim().length > 0");
+    // The criteria predicate now lives in lib/query/filterCriteria.ts; the hooks
+    // gate `enabled` through it rather than re-deriving the rule inline.
+    expect(brandHookSource).toContain("hasBrandCriteria");
     expect(brandHookSource).toContain("enabled:");
 
-    expect(projectHookSource).toContain("scope.search.trim().length > 0");
-    expect(projectHookSource).toContain("scope.brandId");
-    expect(projectHookSource).toContain("scope.status");
-    expect(projectHookSource).toContain("scope.sourceType");
+    expect(projectHookSource).toContain("hasProjectCriteria");
+    expect(projectHookSource).toContain("enabled:");
   });
 });
