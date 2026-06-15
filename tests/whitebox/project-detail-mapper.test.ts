@@ -61,6 +61,40 @@ describe("mapCampaignToProject", () => {
     expect(p.region).toBeNull();
     expect(p.pitchStatus).toBeNull();
   });
+
+  it("maps inactive flag to completed and null/empty fields to null", () => {
+    const p = mapCampaignToProject({
+      ...campaign,
+      flag: "inactive",
+      budget: null as unknown as number,
+      asf: null as unknown as number,
+      grand_total: null as unknown as number,
+      io_number: "",
+      quotation_reference: "",
+    });
+    expect(p.status).toBe("completed");
+    expect(p.budget).toBeNull();
+    expect(p.asf).toBeNull();
+    expect(p.grandTotal).toBeNull();
+    expect(p.projectNumber).toBeNull();
+    expect(p.quotationReference).toBeNull();
+  });
+
+  it("maps campaign brand/company relations and channels when present", () => {
+    const p = mapCampaignToProject({
+      ...campaign,
+      brand: { uuid: "b-uuid", brand_name: "ALO Indonesia", company_name: "PT ALO" },
+      company: { id: 3, company_name: "PT ALO" },
+      channels: [{ id: 7, channel_name: "Instagram" }],
+    });
+    expect(p.brand).toMatchObject({ id: "b-uuid", name: "ALO Indonesia" });
+    expect(p.businessUnit).toMatchObject({ id: "3", name: "PT ALO" });
+    expect(p.projectChannels).toHaveLength(1);
+    expect(p.projectChannels?.[0]).toMatchObject({
+      channelId: "7",
+      channel: { channelName: "Instagram" },
+    });
+  });
 });
 
 describe("mapPitchToProject", () => {
