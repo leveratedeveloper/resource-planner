@@ -20,6 +20,7 @@ import {
   usePlannerFilterProjects,
 } from "@/lib/query/hooks";
 import { XIcon } from "lucide-react";
+import { hasBrandCriteria, hasProjectCriteria } from "@/lib/query/filterCriteria";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 
@@ -106,6 +107,27 @@ export function HomeClient({
     search: debouncedProjectSearch,
   });
 
+  // True while typed input hasn't yet produced settled results — covers the
+  // 300ms debounce window AND the in-flight fetch — so the dropdown shows
+  // "Searching…" instead of flickering to "No results".
+  const brandSearchPending =
+    brandSearch.trim() !== debouncedBrandSearch.trim() || brandQuery.isFetching;
+  const projectSearchPending =
+    projectSearch.trim() !== debouncedProjectSearch.trim() || projectQuery.isFetching;
+
+  // Single source of truth for "show results vs the empty hint", computed from
+  // the SAME canonical scope ids the hooks gate `enabled` on (never the brand
+  // name) so the fetch decision and the display decision cannot disagree.
+  // Search uses the IMMEDIATE value so the dropdown shows "Searching…" during
+  // the debounce window instead of flickering back to the hint.
+  const brandHasQuery = hasBrandCriteria(brandSearch);
+  const projectHasQuery = hasProjectCriteria({
+    search: projectSearch,
+    brandId: selectedBrandId,
+    status: selectedProjectStatus,
+    sourceType: selectedProjectSourceType,
+  });
+
   useEffect(() => {
     console.info("[Timing]", {
       flow: "planner_startup",
@@ -172,13 +194,14 @@ export function HomeClient({
           onBrandChange={handleBrandChange}
           brandSearch={brandSearch}
           brandTotal={brandTotal}
-          isLoadingBrands={brandQuery.isFetching && !brandQuery.isFetchingNextPage}
+          isLoadingBrands={brandSearchPending && !brandQuery.isFetchingNextPage}
           brandHasMore={brandQuery.hasNextPage}
           isFetchingMoreBrands={brandQuery.isFetchingNextPage}
           onLoadMoreBrands={() => {
             if (brandQuery.hasNextPage && !brandQuery.isFetchingNextPage) brandQuery.fetchNextPage();
           }}
           onBrandSearchChange={setBrandSearch}
+          brandHasQuery={brandHasQuery}
           selectedDepartment={selectedDepartment}
           onDepartmentChange={setSelectedDepartment}
           searchQuery={searchQuery}
@@ -189,7 +212,7 @@ export function HomeClient({
           selectedProject={selectedProject}
           projectSearch={projectSearch}
           projectTotal={projectTotal}
-          isLoadingProjects={projectQuery.isFetching && !projectQuery.isFetchingNextPage}
+          isLoadingProjects={projectSearchPending && !projectQuery.isFetchingNextPage}
           projectHasMore={projectQuery.hasNextPage}
           isFetchingMoreProjects={projectQuery.isFetchingNextPage}
           onLoadMoreProjects={() => {
@@ -201,6 +224,7 @@ export function HomeClient({
           onProjectStatusChange={setSelectedProjectStatus}
           onProjectSourceTypeChange={setSelectedProjectSourceType}
           onProjectSearchChange={setProjectSearch}
+          projectHasQuery={projectHasQuery}
         />
 
         <main className="flex-1 overflow-hidden">

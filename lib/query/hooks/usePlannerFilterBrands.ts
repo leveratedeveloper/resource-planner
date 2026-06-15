@@ -1,5 +1,6 @@
-import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
+import { hasBrandCriteria } from "@/lib/query/filterCriteria";
 import type { PlannerFilterBrandsResponse } from "@/lib/query/server/planner-filter-brands";
 
 const PAGE_SIZE = 50;
@@ -34,8 +35,7 @@ export function usePlannerFilterBrands(
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.hasMore ? allPages.reduce((count, page) => count + page.brands.length, 0) : undefined,
-    enabled: options.enabled ?? true,
-    placeholderData: keepPreviousData,
+    enabled: (options.enabled ?? true) && hasBrandCriteria(search),
     staleTime: 5 * 60 * 1000,
   });
 }

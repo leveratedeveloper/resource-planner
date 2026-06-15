@@ -13,7 +13,9 @@ describe("planner filter options hook", () => {
     expect(brandHookSource).toContain("useInfiniteQuery");
     expect(brandHookSource).toContain("getNextPageParam");
     expect(brandHookSource).toContain("initialPageParam");
-    expect(brandHookSource).toContain("keepPreviousData");
+    // No keepPreviousData: a search/scope change clears to "Searching…" rather
+    // than holding the previous term's stale results in a search-first dropdown.
+    expect(brandHookSource).not.toContain("keepPreviousData");
     expect(brandHookSource).toContain("staleTime: 5 * 60 * 1000");
 
     expect(projectHookSource).toContain("/api/planner/filter-options/projects");
@@ -22,11 +24,19 @@ describe("planner filter options hook", () => {
     expect(projectHookSource).toContain("getNextPageParam");
     expect(projectHookSource).toContain("brandId");
     expect(projectHookSource).toContain("sourceType");
-    expect(projectHookSource).toContain("keepPreviousData");
+    expect(projectHookSource).not.toContain("keepPreviousData");
 
     expect(indexSource).toContain('export * from "./usePlannerFilterBrands"');
     expect(indexSource).toContain('export * from "./usePlannerFilterProjects"');
     expect(queryKeysSource).toContain("plannerFilterBrandsInfinite");
     expect(queryKeysSource).toContain("plannerFilterProjectsInfinite");
+
+    // The criteria predicate now lives in lib/query/filterCriteria.ts; the hooks
+    // gate `enabled` through it rather than re-deriving the rule inline.
+    expect(brandHookSource).toContain("hasBrandCriteria");
+    expect(brandHookSource).toContain("enabled:");
+
+    expect(projectHookSource).toContain("hasProjectCriteria");
+    expect(projectHookSource).toContain("enabled:");
   });
 });
