@@ -33,6 +33,7 @@ type ProjectFilterComboboxProps = {
   onSourceTypeChange: (sourceType: ProjectOption["projectType"] | null) => void;
   onChange: (project: ProjectOption | null) => void;
   onProjectSearchChange: (search: string) => void;
+  hasQuery: boolean;
 };
 
 export function ProjectFilterCombobox({
@@ -52,6 +53,7 @@ export function ProjectFilterCombobox({
   onSourceTypeChange,
   onChange,
   onProjectSearchChange,
+  hasQuery,
 }: ProjectFilterComboboxProps) {
   const [open, setOpen] = useState(false);
   const selectedProjectOption = useMemo(
@@ -63,11 +65,8 @@ export function ProjectFilterCombobox({
   // an inherited brand scope counts as input too, so the list fills in those
   // cases without typing. The selected project shows in the trigger label
   // (persistence) and renders checked here only when it is itself a result.
-  const hasQuery =
-    projectSearch.trim().length > 0 ||
-    !!selectedStatus ||
-    !!selectedSourceType ||
-    !!scopeBrandName;
+  // `hasQuery` is derived once in HomeClient (see hasProjectCriteria) — keyed on
+  // the brand id, not the name — so it always matches the hook's `enabled` gate.
   const renderedProjects = useMemo(() => {
     const byId = new Map<string, ProjectOption>();
     for (const project of projects) {

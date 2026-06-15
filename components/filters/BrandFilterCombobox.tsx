@@ -21,6 +21,7 @@ type BrandFilterComboboxProps = {
   onLoadMore: () => void;
   onChange: (brand: Brand | null) => void;
   onBrandSearchChange: (search: string) => void;
+  hasQuery: boolean;
 };
 
 export function BrandFilterCombobox({
@@ -35,6 +36,7 @@ export function BrandFilterCombobox({
   onLoadMore,
   onChange,
   onBrandSearchChange,
+  hasQuery,
 }: BrandFilterComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(
@@ -46,7 +48,8 @@ export function BrandFilterCombobox({
   // shows in the trigger label (persistence) and renders checked here only when
   // it is itself a search match — the empty/open view shows the hint, never the
   // selection. No client-side filtering: search is server-driven (debounced).
-  const hasQuery = brandSearch.trim().length > 0;
+  // `hasQuery` is derived once in HomeClient (see hasBrandCriteria) and passed
+  // in so it always matches the hook's `enabled` gate.
   const renderedBrands = useMemo(() => {
     const byId = new Map<string, Brand>();
     for (const brand of brands) {
