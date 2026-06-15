@@ -2,14 +2,13 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useInfiniteEmployees } from "@/lib/query/hooks/useEmployees";
-import { useAssignmentsByProject, useCreateAssignment, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignmentsByProject, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
-import { format } from "date-fns";
 
 interface AssignEmployeesDialogProps {
   open: boolean;
@@ -46,7 +45,6 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
   } = useInfiniteEmployees(debouncedSearch);
 
   // Mutations
-  const createAssignment = useCreateAssignment();
   const deleteAssignment = useDeleteAssignment();
 
   // Flatten employees from all pages

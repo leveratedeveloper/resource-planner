@@ -87,6 +87,15 @@ export interface Project {
   projectChannels?: ProjectChannel[];
 }
 
+export type ProjectOption = Pick<
+  Project,
+  "id" | "name" | "color" | "status" | "projectType" | "startDate" | "endDate"
+> & {
+  brandId: string | null;
+  brandName?: string | null;
+  brandCompanyName?: string | null;
+};
+
 export type NewProject = {
   name: string;
   brandId: string;
@@ -136,6 +145,15 @@ async function fetchProjects(): Promise<Project[]> {
   return data.data;
 }
 
+async function fetchProjectOptions(): Promise<ProjectOption[]> {
+  const response = await fetch("/api/projects/summary");
+  if (!response.ok) {
+    throw new Error("Failed to fetch project options");
+  }
+  const data = await response.json();
+  return data.data;
+}
+
 async function fetchProject(id: string): Promise<Project> {
   const response = await fetch(`/api/projects/${id}`);
   if (!response.ok) {
@@ -145,8 +163,8 @@ async function fetchProject(id: string): Promise<Project> {
   return data.data;
 }
 
-async function fetchProjectsByBrand(brandId: string): Promise<Project[]> {
-  const response = await fetch(`/api/projects?brandId=${brandId}`);
+async function fetchProjectsByBrand(brandId: string): Promise<ProjectOption[]> {
+  const response = await fetch(`/api/projects/summary?brandId=${encodeURIComponent(brandId)}`);
   if (!response.ok) {
     throw new Error("Failed to fetch projects by brand");
   }
@@ -159,6 +177,13 @@ export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: fetchProjects,
+  });
+}
+
+export function useProjectOptions() {
+  return useQuery({
+    queryKey: [...queryKeys.projects, "summary"],
+    queryFn: fetchProjectOptions,
   });
 }
 

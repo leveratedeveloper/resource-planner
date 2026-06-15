@@ -4,7 +4,6 @@
  */
 
 import { ResourceCapacityAnalysis } from '@/lib/analysis/types';
-import type { MySqlAssignment, MySqlEmployee, MySqlCampaign } from '@/lib/types/mysql';
 
 // ============================================================================
 // CSV Generation Utilities
@@ -34,9 +33,9 @@ function escapeCsvValue(value: string | number | null | undefined | Date): strin
 /**
  * Convert an array of objects to CSV string
  */
-function arrayToCsv<T extends Record<string, any>>(
+function arrayToCsv<T extends Record<string, unknown>>(
   data: T[],
-  columns: { key: string; header: string }[]
+  columns: { key: keyof T; header: string }[]
 ): string {
   if (data.length === 0) {
     // Return header row only
@@ -70,7 +69,6 @@ export interface AssignmentExportData {
   category: string | null;
   status: string;
   billable: boolean | string;
-  isTimeOff: boolean | string;
   note: string | null;
 }
 
@@ -93,7 +91,6 @@ export function exportAssignmentsToCSV(data: AssignmentExportData[]): string {
     { key: 'category', header: 'Category' },
     { key: 'status', header: 'Status' },
     { key: 'billable', header: 'Billable' },
-    { key: 'isTimeOff', header: 'Time Off' },
     { key: 'note', header: 'Notes' },
   ];
 
@@ -156,14 +153,11 @@ export function capacityAnalysisToUtilizationExport(
     const assignedHours = a.dailyUtilization.reduce((sum, day) => sum + day.hoursAllocated, 0);
 
     // Calculate billable vs non-billable
-    const billableHours = a.dailyUtilization.reduce((sum, day) => {
-      const billableForDay = day.assignments.reduce((billableSum, assignId) => {
-        // Note: We'd need the actual assignment data to determine billable status
-        // For now, estimate based on utilization
-        return billableSum + (day.hoursAllocated * a.billablePercent / 100);
-      }, 0);
-      return sum + billableForDay;
-    }, 0);
+    // Note: we'd need assignment detail data to determine exact billable status.
+    const billableHours = a.dailyUtilization.reduce(
+      (sum, day) => sum + (day.hoursAllocated * a.billablePercent / 100),
+      0
+    );
 
     return {
       employeeName: a.resourceName,

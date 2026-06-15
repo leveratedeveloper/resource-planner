@@ -139,15 +139,9 @@ export function calculateDailyUtilization(
       isDateInAssignment(dateTime, a)
     );
 
-    const hasTimeOff = dayAssignments.some((a) => a.isTimeOff);
-    
-    // If there's time off, available hours = 0
-    const hoursAvailable = hasTimeOff ? 0 : dailyCapacity;
-    
-    // Calculate allocated hours (excluding time-off blocks from allocation count)
-    const hoursAllocated = dayAssignments
-      .filter((a) => !a.isTimeOff)
-      .reduce((sum, a) => sum + a.hoursPerDay, 0);
+    const workAssignments = dayAssignments.filter((a) => !a.isTimeOff);
+    const hoursAvailable = dailyCapacity;
+    const hoursAllocated = workAssignments.reduce((sum, a) => sum + a.hoursPerDay, 0);
 
     // Calculate utilization (handle division by zero)
     const utilizationPercent =
@@ -160,8 +154,8 @@ export function calculateDailyUtilization(
       utilizationPercent,
       isOverallocated: utilizationPercent > 100,
       isUnderutilized: utilizationPercent < 60 && utilizationPercent > 0,
-      hasTimeOff,
-      assignments: dayAssignments.map((a) => a.id),
+      hasTimeOff: false,
+      assignments: workAssignments.map((a) => a.id),
     };
   });
 }
@@ -200,7 +194,7 @@ export function calculateBillablePercent(
 export function determineResourceStatus(
   dailyUtilization: DailyUtilization[]
 ): "overallocated" | "optimal" | "underutilized" {
-  const workingDays = dailyUtilization.filter((d) => !d.hasTimeOff);
+  const workingDays = dailyUtilization;
   
   if (workingDays.length === 0) return "optimal";
 
@@ -236,7 +230,7 @@ export function analyzeResourceCapacity(
     dateTimestamps
   );
 
-  const workingDays = dailyUtilization.filter((d) => !d.hasTimeOff);
+  const workingDays = dailyUtilization;
   const utilizationValues = workingDays.map((d) => d.utilizationPercent);
 
   const averageUtilization =

@@ -5,12 +5,6 @@ export interface PendingProjectAssignment {
   employeeId: string;
 }
 
-export interface ProjectDeliverableOption {
-  id: string | number;
-  deliverableName?: string | null;
-  deliverableNameNew?: string | null;
-}
-
 export interface ProjectAssignmentDates {
   startDate: string;
   endDate: string;
@@ -23,6 +17,7 @@ export interface ProjectAssignmentPayload {
   startDate: string;
   endDate: string;
   hoursPerDay: string;
+  totalHours: number;
   allocationPercentage: null;
   isTimeOff: false;
   timeOffTypeId: null;
@@ -32,6 +27,9 @@ export interface ProjectAssignmentPayload {
   note: string;
   createdById: null;
 }
+
+export type ProjectAssignmentProjectType = "pitch" | "campaign";
+export type MissingAssignmentPlanningDateReason = "campaign_date_range" | "pitch_submit_date";
 
 export function getAssignmentDateStrings(dateRange: DateRange | undefined, fallbackDate = new Date()): ProjectAssignmentDates {
   const start = dateRange?.from ?? fallbackDate;
@@ -84,6 +82,17 @@ export function getProjectAssignmentDateRange(project: {
   return undefined;
 }
 
+export function getMissingAssignmentPlanningDateReason(
+  projectType: ProjectAssignmentProjectType,
+  dateRange: DateRange | undefined
+): MissingAssignmentPlanningDateReason | null {
+  if (projectType === "pitch") {
+    return dateRange?.from && dateRange?.to ? null : "pitch_submit_date";
+  }
+
+  return dateRange?.from && dateRange?.to ? null : "campaign_date_range";
+}
+
 export function formatProjectDateForDisplay(value: string | Date | null | undefined) {
   if (!value) return "";
 
@@ -93,30 +102,35 @@ export function formatProjectDateForDisplay(value: string | Date | null | undefi
   return format(parsedDate, "MMM d, yyyy");
 }
 
+export function parseManHoursInput(value: string | number | null | undefined): number | null {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  return Number(text);
+}
+
+export function calculateDerivedHoursPerDay(totalHours: number, assignmentDates: ProjectAssignmentDates): string {
+  const start = parseDateLike(assignmentDates.startDate);
+  const end = parseDateLike(assignmentDates.endDate);
+  const workingDays = Math.max(countWeekdaysInclusive(start, end), 1);
+  const hoursPerDay = totalHours / workingDays;
+  return Number.isInteger(hoursPerDay) ? String(hoursPerDay) : hoursPerDay.toFixed(2);
+}
+
 export function buildPendingAssignmentPayloads(params: {
   projectId: string;
   pendingAssignments: PendingProjectAssignment[];
-  selectedDeliverablesByEmployee: Record<string, string[]>;
-  allDeliverables: ProjectDeliverableOption[];
+  manHoursByEmployee: Record<string, string>;
   assignmentDates: ProjectAssignmentDates;
 }): ProjectAssignmentPayload[] {
   const {
     projectId,
     pendingAssignments,
-    selectedDeliverablesByEmployee,
-    allDeliverables,
+    manHoursByEmployee,
     assignmentDates,
   } = params;
 
   return pendingAssignments.map((pending) => {
-    const deliverableIds = selectedDeliverablesByEmployee[pending.employeeId] || [];
-    const deliverables = allDeliverables.filter((deliverable) =>
-      deliverableIds.includes(String(deliverable.id))
-    );
-    const deliverableNames = deliverables
-      .map((deliverable) => deliverable.deliverableNameNew || deliverable.deliverableName)
-      .filter(Boolean)
-      .join(", ");
+    const totalHours = parseManHoursInput(manHoursByEmployee[pending.employeeId]) ?? 0;
 
     return {
       employeeId: pending.employeeId,
@@ -124,19 +138,32 @@ export function buildPendingAssignmentPayloads(params: {
       taskId: null,
       startDate: assignmentDates.startDate,
       endDate: assignmentDates.endDate,
-      hoursPerDay: "0",
+      hoursPerDay: calculateDerivedHoursPerDay(totalHours, assignmentDates),
+      totalHours,
       allocationPercentage: null,
       isTimeOff: false,
       timeOffTypeId: null,
       category: null,
       isBillable: true,
       status: "draft",
-      note: deliverableNames
-        ? `Assigned to project - Deliverables: ${deliverableNames}. Set dates and hours as needed.`
-        : "Assigned to project - set dates and hours as needed.",
+      note: "Assigned to project - set dates and hours as needed.",
       createdById: null,
     };
   });
+}
+
+function countWeekdaysInclusive(start: Date, end: Date) {
+  let count = 0;
+  const cursor = startOfDay(start);
+  const final = startOfDay(end);
+
+  while (cursor.getTime() <= final.getTime()) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return count;
 }
 
 export function parseDateLike(value: string | Date) {

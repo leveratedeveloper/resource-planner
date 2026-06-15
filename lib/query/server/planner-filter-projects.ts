@@ -1,0 +1,91 @@
+import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
+import type { PlannerDirectoryProjectRow } from "@/lib/planner-directory/types";
+import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+
+export type PlannerFilterProjectsRequest = {
+  brandId?: string | null;
+  status?: ProjectOption["status"] | null;
+  sourceType?: ProjectOption["projectType"] | null;
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+};
+
+export type PlannerFilterProjectsResponse = {
+  projects: ProjectOption[];
+  total: number;
+  hasMore: boolean;
+  scope: {
+    brandId: string | null;
+    brandName: string | null;
+    status: ProjectOption["status"] | null;
+    sourceType: ProjectOption["projectType"] | null;
+  };
+  availableStatuses: ProjectOption["status"][];
+  availableTypes: ProjectOption["projectType"][];
+  freshness: {
+    fetchedAt: string;
+  };
+};
+
+function randomColor(seed: string): string {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
+  }
+
+  return `#${hash.toString(16).padStart(6, "0")}`;
+}
+
+function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
+  return {
+    id: project.sourceProjectId,
+    name: project.name,
+    color: project.color ?? randomColor(project.sourceProjectId),
+    status:
+      project.status === "completed" ||
+      project.status === "cancelled" ||
+      project.status === "active" ||
+      project.status === "planning" ||
+      project.status === "on_hold"
+        ? project.status
+        : "planning",
+    projectType: project.sourceType,
+    brandId: project.brandId,
+    brandName: project.brandName ?? null,
+    brandCompanyName: project.brandCompanyName ?? null,
+  };
+}
+
+export async function fetchPlannerFilterProjects(
+  request: PlannerFilterProjectsRequest = {}
+): Promise<PlannerFilterProjectsResponse> {
+  const fetchedAt = new Date().toISOString();
+  const limit = request.limit ?? 50;
+  const offset = request.offset ?? 0;
+  const { data, total, hasMore } = await plannerDirectoryRepository.listProjectsForFilterOptions({
+    brandId: request.brandId ?? null,
+    status: request.status ?? null,
+    sourceType: request.sourceType ?? null,
+    search: request.search ?? null,
+    limit,
+    offset,
+  });
+
+  return {
+    projects: data.map(toProjectOption),
+    total,
+    hasMore,
+    scope: {
+      brandId: request.brandId ?? null,
+      brandName: null,
+      status: request.status ?? null,
+      sourceType: request.sourceType ?? null,
+    },
+    availableStatuses: ["planning", "active", "on_hold", "completed", "cancelled"],
+    availableTypes: ["campaign", "pitch"],
+    freshness: {
+      fetchedAt,
+    },
+  };
+}

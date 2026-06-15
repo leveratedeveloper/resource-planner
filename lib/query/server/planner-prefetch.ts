@@ -1,14 +1,27 @@
-import { getActualAssignments, getAssignments } from "@/lib/mysql-assignments/queries";
+import {
+  getTimelineActualAssignments,
+  getTimelineAssignments,
+  getTimelineMonthlyActualAggregates,
+  getTimelineMonthlyAssignmentAggregates,
+} from "@/lib/mysql-assignments/queries";
 import { toLocalDateString } from "@/lib/utils";
 import type { SessionData } from "@/lib/auth/session";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import {
+  buildMonthlyActualBlocksFromAggregates,
+  buildMonthlyAssignmentBlocksFromAggregates,
   summarizeMonthlyActualAssignments,
   summarizeMonthlyAssignments,
+  type MonthlyAggregateActualRow,
+  type MonthlyAggregateAssignmentRow,
   type PlannerTimelineRequest,
   type PlannerTimelineResponse,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
+
+type PlannerTiming = {
+  phase: (phase: string, context?: Record<string, unknown>) => void;
+};
 
 type ApiRecord = Record<string, unknown>;
 
@@ -110,13 +123,20 @@ function transformActual(mysqlActual: ApiRecord): ActualAssignment {
 
 export async function fetchPlannerAssignments(
   session: SessionData,
-  dateRange: { startDate: string; endDate: string }
+  dateRange: { startDate: string; endDate: string },
+  filters: PlannerTimelineRequest["filters"] = {},
+  employeeUuids?: string[]
 ): Promise<Assignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
-  const assignments = (await getAssignments({
+  const assignments = (await getTimelineAssignments({
     employee_uuid: employeeUuid,
+    // Query-layer invariant: restricted users stay scoped to their own uuid
+    // even if a caller passes a uuid list (the list would supersede it).
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
+    status: filters?.status,
+    category: filters?.category,
   })) as ApiRecord[];
 
   return assignments.map(transformAssignment);
@@ -124,80 +144,159 @@ export async function fetchPlannerAssignments(
 
 export async function fetchPlannerActualAssignments(
   session: SessionData,
-  dateRange: { startDate: string; endDate: string }
+  dateRange: { startDate: string; endDate: string },
+  filters: PlannerTimelineRequest["filters"] = {},
+  employeeUuids?: string[]
 ): Promise<ActualAssignment[]> {
   const employeeUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
-  const actuals = (await getActualAssignments({
+  const actuals = (await getTimelineActualAssignments({
     employee_uuid: employeeUuid,
+    // Query-layer invariant: restricted users stay scoped to their own uuid
+    // even if a caller passes a uuid list (the list would supersede it).
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
     start_date: dateRange.startDate,
     end_date: dateRange.endDate,
+    status: filters?.status,
+    category: filters?.category,
   })) as ApiRecord[];
 
   return actuals.map(transformActual);
 }
 
-function filterPlannerAssignments(
-  assignments: Assignment[],
-  request: PlannerTimelineRequest
-): Assignment[] {
-  return assignments.filter((assignment) => {
-    if (request.filters?.projectId && assignment.projectId !== request.filters.projectId) {
-      return false;
-    }
-    if (request.filters?.category && assignment.category !== request.filters.category) {
-      return false;
-    }
-    if (request.filters?.status && assignment.status !== request.filters.status) {
-      return false;
-    }
-    return true;
-  });
+// Raw aggregate rows (snake_case, numerics possibly strings from pg) → typed
+// shaping inputs. Coercion mirrors transformAssignment/transformActual.
+function coerceMonthlyAssignmentAggregateRow(row: ApiRecord): MonthlyAggregateAssignmentRow {
+  return {
+    employeeUuid: text(row.employee_uuid),
+    projectUuid: nullableText(row.project_uuid),
+    monthStart: dateValue(row.month_start),
+    note: nullableText(row.note),
+    category: nullableText(row.category),
+    status: text(row.status),
+    isBillable: booleanValue(row.is_billable),
+    isAdjustment: booleanValue(row.is_adjustment),
+    totalHours: numberValue(row.total_hours),
+    detailCount: numberValue(row.detail_count),
+    createdAt: text(row.created_at),
+    updatedAt: text(row.updated_at),
+  };
 }
 
-function filterPlannerActualAssignments(
-  actualAssignments: ActualAssignment[],
-  request: PlannerTimelineRequest
-): ActualAssignment[] {
-  return actualAssignments.filter((assignment) => {
-    if (request.filters?.projectId && assignment.projectUuid !== request.filters.projectId) {
-      return false;
-    }
-    if (request.filters?.category && assignment.category !== request.filters.category) {
-      return false;
-    }
-    if (request.filters?.status && assignment.status !== request.filters.status) {
-      return false;
-    }
-    return true;
+function coerceMonthlyActualAggregateRow(row: ApiRecord): MonthlyAggregateActualRow {
+  return {
+    employeeUuid: text(row.employee_uuid),
+    projectUuid: nullableText(row.project_uuid),
+    monthStart: dateValue(row.month_start),
+    note: nullableText(row.note),
+    category: nullableText(row.category),
+    status: text(row.status),
+    isBillable: booleanValue(row.is_billable),
+    monthHours: numberValue(row.month_hours),
+    detailCount: numberValue(row.detail_count),
+    createdAt: text(row.created_at),
+    updatedAt: text(row.updated_at),
+  };
+}
+
+// SQL-side month aggregation is the default; PLANNER_SQL_MONTH_AGG=0 falls
+// back to the raw-row pull + TS summarize for one release (parity insurance —
+// Phase 8 spec).
+function shouldUseSqlMonthAggregation(): boolean {
+  return process.env.PLANNER_SQL_MONTH_AGG !== "0";
+}
+
+async function fetchMonthlyTimelineAggregates(
+  session: SessionData,
+  request: PlannerTimelineRequest,
+  employeeUuids: string[] | undefined,
+  timing: PlannerTiming
+): Promise<PlannerTimelineResponse> {
+  // Same restricted-user gating as the raw fetchers: the session uuid is the
+  // floor, caller-supplied lists only apply for can_view_all sessions.
+  const filters = {
+    employee_uuid: !session.access.can_view_all ? session.employee?.uuid : undefined,
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
+    start_date: request.startDate,
+    end_date: request.endDate,
+    status: request.filters?.status,
+    category: request.filters?.category,
+  };
+
+  const [aggregateRows, actualAggregateRows] = await Promise.all([
+    getTimelineMonthlyAssignmentAggregates(filters) as Promise<ApiRecord[]>,
+    getTimelineMonthlyActualAggregates(filters) as Promise<ApiRecord[]>,
+  ]);
+
+  const assignments = buildMonthlyAssignmentBlocksFromAggregates(
+    aggregateRows.map(coerceMonthlyAssignmentAggregateRow)
+  );
+  const actualAssignments = buildMonthlyActualBlocksFromAggregates(
+    actualAggregateRows.map(coerceMonthlyActualAggregateRow)
+  );
+  timing.phase("monthly_summary", {
+    assignmentCount: assignments.length,
+    actualAssignmentCount: actualAssignments.length,
+    sqlAggregated: true,
   });
+
+  return { request, assignments, actualAssignments };
 }
 
 export async function fetchPlannerTimeline(
   session: SessionData,
-  request: PlannerTimelineRequest
+  request: PlannerTimelineRequest,
+  options: { timing?: PlannerTiming; employeeUuids?: string[] } = {}
 ): Promise<PlannerTimelineResponse> {
+  const timing: PlannerTiming = options.timing ?? {
+    phase: () => undefined,
+  };
+
+  if (request.resolution === "month" && shouldUseSqlMonthAggregation()) {
+    return fetchMonthlyTimelineAggregates(session, request, options.employeeUuids, timing);
+  }
+
   const dateRange = {
     startDate: request.startDate,
     endDate: request.endDate,
   };
-  const [assignments, actualAssignments] = await Promise.all([
-    fetchPlannerAssignments(session, dateRange),
-    fetchPlannerActualAssignments(session, dateRange),
-  ]);
-  const filteredAssignments = filterPlannerAssignments(assignments, request);
-  const filteredActualAssignments = filterPlannerActualAssignments(actualAssignments, request);
+  const plannedPromise = fetchPlannerAssignments(session, dateRange, request.filters, options.employeeUuids).then((assignments) => {
+    timing.phase("planned_assignments_query", { count: assignments.length });
+    return assignments;
+  });
+  const actualPromise = fetchPlannerActualAssignments(session, dateRange, request.filters, options.employeeUuids).then((actualAssignments) => {
+    timing.phase("actual_assignments_query", { count: actualAssignments.length });
+    return actualAssignments;
+  });
+
+  const [assignments, actualAssignments] = await Promise.all([plannedPromise, actualPromise]);
 
   if (request.resolution === "month") {
+    const summarizedAssignments = summarizeMonthlyAssignments(assignments, dateRange);
+    const summarizedActualAssignments = summarizeMonthlyActualAssignments(
+      actualAssignments,
+      dateRange
+    );
+    timing.phase("monthly_summary", {
+      assignmentCount: summarizedAssignments.length,
+      actualAssignmentCount: summarizedActualAssignments.length,
+    });
+
     return {
       request,
-      assignments: summarizeMonthlyAssignments(filteredAssignments, dateRange),
-      actualAssignments: summarizeMonthlyActualAssignments(filteredActualAssignments, dateRange),
+      assignments: summarizedAssignments,
+      actualAssignments: summarizedActualAssignments,
     };
   }
 
+  timing.phase("monthly_summary", {
+    assignmentCount: assignments.length,
+    actualAssignmentCount: actualAssignments.length,
+    skipped: true,
+  });
+
   return {
     request,
-    assignments: filteredAssignments,
-    actualAssignments: filteredActualAssignments,
+    assignments,
+    actualAssignments,
   };
 }

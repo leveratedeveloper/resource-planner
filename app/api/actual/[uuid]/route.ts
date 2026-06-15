@@ -6,10 +6,30 @@ import {
 } from "@/lib/mysql-assignments/queries";
 import { getSession } from "@/lib/auth/session";
 
+type MySqlActualAssignmentRow = {
+  uuid: string;
+  employee_uuid: string;
+  project_uuid: string | null;
+  task_uuid: string | null;
+  start_date: string;
+  end_date: string;
+  hours_per_day: string;
+  allocation_percentage: string | null;
+  is_time_off: boolean;
+  time_off_type_uuid: string | null;
+  category: string | null;
+  is_billable: boolean;
+  status: string;
+  note: string | null;
+  created_by_uuid: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /**
  * Transform MySQL actual assignment format (snake_case) to frontend format (camelCase)
  */
-function transformMySqlActualToFrontend(mysqlActual: any) {
+function transformMySqlActualToFrontend(mysqlActual: MySqlActualAssignmentRow) {
   return {
     uuid: mysqlActual.uuid,
     employeeUuid: mysqlActual.employee_uuid,
@@ -42,6 +62,12 @@ export async function GET(
   try {
     const { uuid } = await params;
     const actual = await getActual(uuid);
+    if (actual.is_time_off) {
+      return NextResponse.json(
+        { success: false, error: "Time-off actual assignments are retired" },
+        { status: 410 }
+      );
+    }
     const transformedActual = transformMySqlActualToFrontend(actual);
 
     return NextResponse.json({
@@ -90,6 +116,12 @@ export async function PUT(
 
     // Get the actual assignment first to check ownership
     const existingActual = await getActual(uuid);
+    if (existingActual.is_time_off) {
+      return NextResponse.json(
+        { success: false, error: "Time-off actual assignments are retired" },
+        { status: 410 }
+      );
+    }
 
     console.log('[API /actual/[uuid] PUT] Existing actual:', {
       uuid: existingActual.uuid,
@@ -109,6 +141,13 @@ export async function PUT(
     }
 
     const body = await request.json();
+
+    if (body.isTimeOff === true || body.isTimeOff === 'true') {
+      return NextResponse.json(
+        { success: false, error: "Time-off actual assignments are retired" },
+        { status: 410 }
+      );
+    }
 
     console.log('[API /actual/[uuid] PUT] Request body:', body);
 
@@ -132,8 +171,6 @@ export async function PUT(
       ...(body.endDate !== undefined && { end_date: body.endDate }),
       ...(body.hoursPerDay !== undefined && { hours_per_day: body.hoursPerDay }),
       ...(body.allocationPercentage !== undefined && { allocation_percentage: body.allocationPercentage }),
-      ...(body.isTimeOff !== undefined && { is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0 }),
-      ...(body.timeOffTypeUuid !== undefined && { time_off_type_uuid: body.timeOffTypeUuid }),
       ...(body.category !== undefined && { category: body.category }),
       ...(body.isBillable !== undefined && { is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1 }),
       ...(body.status !== undefined && { status: body.status }),
@@ -189,6 +226,12 @@ export async function DELETE(
 
     // Get the actual assignment first to check ownership
     const existingActual = await getActual(uuid);
+    if (existingActual.is_time_off) {
+      return NextResponse.json(
+        { success: false, error: "Time-off actual assignments are retired" },
+        { status: 410 }
+      );
+    }
 
     // Actual assignments can only be deleted by the assigned employee themselves
     if (existingActual.employee_uuid !== session.employee?.uuid) {

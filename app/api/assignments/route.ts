@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { getAssignments, createAssignment } from "@/lib/mysql-assignments/queries";
 import { getSession } from "@/lib/auth/session";
+import type { MySqlAssignment } from "@/lib/types/mysql";
+
+type MySqlAssignmentRow = MySqlAssignment & {
+  total_hours?: number | string | null;
+  is_adjustment?: boolean;
+};
 
 /**
  * Transform MySQL API assignment format (snake_case) to frontend format (camelCase)
  */
-function transformMySqlAssignmentToFrontend(mysqlAssignment: any) {
+function transformMySqlAssignmentToFrontend(mysqlAssignment: MySqlAssignmentRow) {
   return {
     id: mysqlAssignment.uuid,
     employeeId: mysqlAssignment.employee_uuid,
@@ -67,10 +73,12 @@ export async function GET(request: Request) {
       start_date: startDate || undefined,
       end_date: endDate || undefined,
       status: status || undefined,
-    }) as any[];
+    }) as MySqlAssignmentRow[];
 
-    // Transform to frontend format
-    const transformedAssignments = assignments.map(transformMySqlAssignmentToFrontend);
+    // Transform to frontend format, ignoring retired legacy time-off records.
+    const transformedAssignments = assignments
+      .filter((assignment) => !assignment.is_time_off)
+      .map(transformMySqlAssignmentToFrontend);
 
     return NextResponse.json({
       success: true,
@@ -104,10 +112,15 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
+    if (body.isTimeOff === true || body.isTimeOff === 'true') {
+      return NextResponse.json(
+        { success: false, error: 'Time-off assignments are retired' },
+        { status: 410 }
+      );
+    }
+
     // Plan assignments can only be created by users with full access
-    // Time off can be created by users for themselves
-    const isCreatingOwnTimeOff = body.isTimeOff && body.employeeId === session.employee?.uuid;
-    if (!session.access.can_view_all && !isCreatingOwnTimeOff) {
+    if (!session.access.can_view_all) {
       return NextResponse.json(
         { error: 'Insufficient permissions - only users with full access can create plan assignments' },
         { status: 403 }
@@ -127,8 +140,8 @@ export async function POST(request: Request) {
       total_hours: body.totalHours || null,
       allocation_percentage: body.allocationPercentage || null,
       // Convert boolean values properly for PostgreSQL (expects integer 0/1)
-      is_time_off: body.isTimeOff === true || body.isTimeOff === 'true' ? 1 : 0,
-      time_off_type_uuid: body.timeOffTypeId || null,
+      is_time_off: 0,
+      time_off_type_uuid: null,
       category: body.category || null,
       is_billable: body.isBillable === false || body.isBillable === 'false' ? 0 : 1,
       is_adjustment: body.isAdjustment === true ? 1 : 0,

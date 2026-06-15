@@ -32,7 +32,8 @@ export interface MySqlPaginationMeta {
 // ============ BRAND ENTITY ============
 
 export interface MySqlBrand {
-  id: number; // Note: API returns 'id' not 'brand_id'
+  id?: number; // Some endpoints return `id`
+  brand_id?: number; // Timetrack list endpoints return `brand_id`
   uuid: string;
   company_name: string;
   client_code: string | number;
@@ -125,6 +126,21 @@ export interface MySqlPitch {
     channel_class?: any;
     deliverable?: any;
   }>;
+}
+
+export interface MySqlProjectDeliverableChannel {
+  id: number | string;
+  channel_name: string | null;
+  channel_name_new: string | null;
+}
+
+export interface MySqlProjectDeliverable {
+  id: number | string;
+  channel_id: number | string | null;
+  deliverable_name: string | null;
+  deliverable_name_new: string | null;
+  flag: string | null;
+  channel?: MySqlProjectDeliverableChannel | null;
 }
 
 // ============ EMPLOYEE ENTITY ============

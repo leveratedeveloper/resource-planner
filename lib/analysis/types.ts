@@ -96,9 +96,7 @@ export type ResourceCapacityAnalysis = {
 // ============================================================================
 
 export type ConflictType =
-  | "time_off_deadline" // Time-off overlaps with project deadline
   | "overallocation" // > 100% on same day
-  | "resource_unavailable" // Assigned during time-off
   | "billable_target"; // < 80% billable but fully allocated
 
 export type ConflictSeverity = "critical" | "warning" | "info";

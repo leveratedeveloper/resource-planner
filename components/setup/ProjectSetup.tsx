@@ -1,18 +1,17 @@
 "use client";
 
-import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { type DateRange } from "react-day-picker";
-import { useProjects, useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
+import { useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
 import { useChannelClassifications } from "@/lib/query/hooks/useChannelClassifications";
 import { useDeliverables } from "@/lib/query/hooks/useDeliverables";
-import { useAssignments, useAssignmentsByProject, useDeleteAssignment, type Assignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignments, useAssignmentsByProject, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
 import { Button } from "@/components/ui/button";
@@ -37,19 +36,25 @@ import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { AssignEmployeesDialog } from "@/components/projects/AssignEmployeesDialog";
 import { ProjectTeamAssignmentsTable } from "@/components/setup/ProjectTeamAssignmentsTable";
 import { useAuth } from "@/context/AuthContext";
+import { buildEmployeeAssignmentMap } from "@/components/setup/project-setup/team-members";
+import { getProjectDetailState } from "@/components/setup/project-setup/project-detail-state";
 import { getCriticalMonthlyAllocations } from "@/lib/utils/critical-allocation";
 import {
   buildPendingAssignmentPayloads,
+  calculateDerivedHoursPerDay,
   formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
+  getMissingAssignmentPlanningDateReason,
   getProjectAssignmentDateRange,
+  parseManHoursInput,
 } from "@/lib/setup/project-assignment-save";
 import {
   hasProjectChannelManHoursChanges,
   updateProjectChannelManHours,
   type EditableProjectChannel,
 } from "@/lib/setup/project-channel-editor";
+import { SetupSectionHeader } from "./SetupSectionHeader";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -80,30 +85,11 @@ type ProjectWithRawChannels = Project & {
   channels?: ProjectChannelSource[];
   projectChannels?: ProjectChannelSource[];
 };
-
-// Generate project number from project name
-const generateProjectNumber = (projectName: string, existingNumbers: string[] = []): string => {
-  if (!projectName) return "";
-
-  const year = new Date().getFullYear();
-
-  // Get all project numbers for current year
-  const yearPrefix = `PROJ-${year}-`;
-  const currentYearNumbers = existingNumbers
-    .filter((num) => num.startsWith(yearPrefix))
-    .map((num) => parseInt(num.replace(yearPrefix, ""), 10))
-    .filter((num) => !isNaN(num));
-
-  // Find next available number
-  const nextNumber = currentYearNumbers.length > 0 ? Math.max(...currentYearNumbers) + 1 : 1;
-
-  return `${yearPrefix}${String(nextNumber).padStart(4, "0")}`;
-};
-
 export const ProjectSetup = () => {
   const { session } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showEmptyBrands, setShowEmptyBrands] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   const {
@@ -113,7 +99,7 @@ export const ProjectSetup = () => {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteProjects(debouncedSearch || undefined);
-  const { data: brands = [], isLoading: brandsLoading } = useBrands();
+  const { data: brands = [] } = useBrands();
   const { data: businessUnits = [] } = useBusinessUnits();
   const { data: projectCategories = [] } = useProjectCategories();
   const { data: channels = [] } = useChannelClassifications();
@@ -135,40 +121,21 @@ export const ProjectSetup = () => {
   const [viewingProject, setViewingProject] = useState<Project | null>(null);
   const [isAssignEmployeesOpen, setIsAssignEmployeesOpen] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [selectedDeliverablesByEmployee, setSelectedDeliverablesByEmployee] = useState<Record<string, string[]>>({});
-  const [pendingAssignments, setPendingAssignments] = useState<Array<{
-    employeeId: string;
-    deliverableIds?: string[];
-  }>>([]);
+  const [manHoursByEmployee, setManHoursByEmployee] = useState<Record<string, string>>({});
+  const [pendingAssignments, setPendingAssignments] = useState<Array<{ employeeId: string }>>([]);
   const [isSaving, setIsSaving] = useState(false);
-  // Track initial deliverable selections to detect changes
-  const [initialDeliverablesByEmployee, setInitialDeliverablesByEmployee] = useState<Record<string, string[]>>({});
+  const [initialManHoursByEmployee, setInitialManHoursByEmployee] = useState<Record<string, string>>({});
 
-  const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "");
-  const { data: allAssignments = [] } = useAssignments();
-  const { data: employees = [] } = useEmployees();
+  const isProjectDetailOpen = isDialogOpen && !!viewingProject;
+  const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "", {
+    enabled: isProjectDetailOpen,
+  });
+  const { data: allAssignments = [] } = useAssignments(undefined, { enabled: isProjectDetailOpen });
+  const { data: employees = [] } = useEmployees({ enabled: isProjectDetailOpen });
   const deleteAssignment = useDeleteAssignment();
 
   const employeeMap = useMemo(() => {
-    const map = new Map<string, { fullName: string; position: string; department: { name: string } | null; allAssignments: Assignment[] }>();
-    for (const emp of employees) {
-      map.set(emp.id, {
-        fullName: emp.fullName,
-        position: emp.position,
-        department: emp.department ?? null,
-        allAssignments: [],
-      });
-    }
-
-    // Populate allAssignments
-    for (const assignment of allAssignments) {
-      const empData = map.get(assignment.employeeId);
-      if (empData) {
-        empData.allAssignments.push(assignment);
-      }
-    }
-
-    return map;
+    return buildEmployeeAssignmentMap(employees, allAssignments);
   }, [employees, allAssignments]);
 
 
@@ -208,15 +175,6 @@ export const ProjectSetup = () => {
   const [projectChannels, setProjectChannels] = useState<EditableProjectChannel[]>([]);
   const [initialProjectChannels, setInitialProjectChannels] = useState<EditableProjectChannel[]>([]);
 
-  const projectDeliverables = useMemo(() => {
-    const deliverableIds = new Set(
-      projectChannels
-        .map(pc => pc.deliverableId ? String(pc.deliverableId) : "")
-        .filter(Boolean)
-    );
-    return allDeliverables.filter(d => deliverableIds.has(String(d.id)));
-  }, [allDeliverables, projectChannels]);
-
   const teamMembers = useMemo(() => {
     // Find which employees are assigned to this project
     const employeeIdsInProject = new Set<string>();
@@ -253,60 +211,41 @@ export const ProjectSetup = () => {
     return brands.find((b) => b.id === brandId)?.name || "";
   }, [brandId, brands]);
 
-  // Detect unsaved deliverable changes for existing team members
-  const unsavedDeliverableChanges = useMemo(() => {
-    const changes: Array<{ employeeId: string; deliverableIds: string[] }> = [];
-
-    // Check for deliverable changes in existing assignments
-    for (const member of teamMembers) {
-      const isPending = pendingAssignments.some(p => p.employeeId === member.id);
-
-      // Only track existing team members (not pending)
-      if (!isPending) {
-        const currentDeliverables = selectedDeliverablesByEmployee[member.id] || [];
-        const initialDeliverables = initialDeliverablesByEmployee[member.id] || [];
-
-        // Compare arrays
-        const isSame = currentDeliverables.length === initialDeliverables.length &&
-          currentDeliverables.every(id => initialDeliverables.includes(id)) &&
-          initialDeliverables.every(id => currentDeliverables.includes(id));
-
-        // If deliverables are changed from initial (including removal)
-        if (!isSame) {
-          changes.push({ employeeId: member.id, deliverableIds: currentDeliverables });
-        }
-      }
-    }
-
-    return changes;
-  }, [teamMembers, selectedDeliverablesByEmployee, pendingAssignments, initialDeliverablesByEmployee]);
-
   const pendingEmployeeIds = useMemo(() => {
     return new Set(pendingAssignments.map((pending) => pending.employeeId));
   }, [pendingAssignments]);
 
-  const changedDeliverableEmployeeIds = useMemo(() => {
-    return new Set(unsavedDeliverableChanges.map((change) => change.employeeId));
-  }, [unsavedDeliverableChanges]);
+  const unsavedManHoursChanges = useMemo(() => {
+    return teamMembers
+      .filter((member) => !pendingEmployeeIds.has(member.id))
+      .map((member) => ({
+        employeeId: member.id,
+        manHours: manHoursByEmployee[member.id] ?? "",
+        initialManHours: initialManHoursByEmployee[member.id] ?? "",
+      }))
+      .filter((change) => change.manHours !== change.initialManHours);
+  }, [teamMembers, pendingEmployeeIds, manHoursByEmployee, initialManHoursByEmployee]);
 
-  const handleUndoDeliverableChange = useCallback((employeeId: string) => {
-    setSelectedDeliverablesByEmployee(prev => ({
+  const changedManHoursEmployeeIds = useMemo(() => {
+    return new Set(unsavedManHoursChanges.map((change) => change.employeeId));
+  }, [unsavedManHoursChanges]);
+
+  const handleUndoManHoursChange = useCallback((employeeId: string) => {
+    setManHoursByEmployee(prev => ({
       ...prev,
-      [employeeId]: initialDeliverablesByEmployee[employeeId] || [],
+      [employeeId]: initialManHoursByEmployee[employeeId] ?? "",
     }));
-  }, [initialDeliverablesByEmployee]);
+  }, [initialManHoursByEmployee]);
 
-  const handleToggleDeliverable = useCallback((employeeId: string, deliverableId: string) => {
-    setSelectedDeliverablesByEmployee(prev => {
-      const current = prev[employeeId] || [];
-      const next = current.includes(deliverableId)
-        ? current.filter(id => id !== deliverableId)
-        : [...current, deliverableId];
-      return { ...prev, [employeeId]: next };
-    });
+  const handleChangeManHours = useCallback((employeeId: string, value: string) => {
+    const numericValue = value.replace(/\D/g, "");
+    setManHoursByEmployee(prev => ({
+      ...prev,
+      [employeeId]: numericValue,
+    }));
   }, []);
 
-  const hasAssignmentChanges = pendingAssignments.length > 0 || unsavedDeliverableChanges.length > 0;
+  const hasAssignmentChanges = pendingAssignments.length > 0 || unsavedManHoursChanges.length > 0;
   const hasManHoursChanges = useMemo(() => {
     return hasProjectChannelManHoursChanges(projectChannels, initialProjectChannels);
   }, [projectChannels, initialProjectChannels]);
@@ -316,23 +255,33 @@ export const ProjectSetup = () => {
     return hasAssignmentChanges || hasManHoursChanges;
   }, [hasAssignmentChanges, hasManHoursChanges]);
 
-  const hasCompleteAssignmentDateRange = !!dateRange?.from && !!dateRange?.to;
+  const missingAssignmentPlanningDateReason = getMissingAssignmentPlanningDateReason(projectType, dateRange);
+  const hasCompleteAssignmentDateRange = missingAssignmentPlanningDateReason === null;
 
-  // Check if all pending/changed employees have deliverables selected
-  const allHaveDeliverables = useMemo(() => {
-    // Check pending assignments
+  const allManHoursAreValid = useMemo(() => {
+    const employeeIdsToValidate = new Set<string>();
+
     for (const pending of pendingAssignments) {
-      const selected = selectedDeliverablesByEmployee[pending.employeeId];
-      if (!selected || selected.length === 0) return false;
+      employeeIdsToValidate.add(pending.employeeId);
     }
-    // Check unsaved deliverable changes already have deliverables by definition
+
+    for (const change of unsavedManHoursChanges) {
+      employeeIdsToValidate.add(change.employeeId);
+    }
+
+    for (const employeeId of employeeIdsToValidate) {
+      if (parseManHoursInput(manHoursByEmployee[employeeId]) === null) {
+        return false;
+      }
+    }
+
     return true;
-  }, [pendingAssignments, selectedDeliverablesByEmployee]);
+  }, [pendingAssignments, unsavedManHoursChanges, manHoursByEmployee]);
 
   const canEditProjectDetails = !!session?.access.can_view_all;
   const isSaveDisabled = isSaving
     || !hasUnsavedChanges
-    || !allHaveDeliverables
+    || !allManHoursAreValid
     || (hasAssignmentChanges && !hasCompleteAssignmentDateRange)
     || !canEditProjectDetails;
 
@@ -357,30 +306,31 @@ export const ProjectSetup = () => {
   };
 
   const handleOpenView = (project: Project) => {
+    const detailState = getProjectDetailState(project);
     setViewingProject(project);
-    setProjectType(project.projectType);
-    setName(project.name);
-    setProjectNumber(project.projectNumber || "");
-    setBrandId(project.brandId);
-    setBusinessUnitId(project.businessUnitId || "");
-    setProjectCategoryId(project.projectCategoryId || "");
-    setColor(project.color);
-    setStatus(project.status);
-    setCurrency(project.currency);
-    setBudget(project.budget || "");
-    setAsf(project.asf || "");
-    setGrandTotal(project.grandTotal || "");
-    setQuotationReference(project.quotationReference || "");
-    setIoFile(project.ioFile || "");
+    setProjectType(detailState.projectType);
+    setName(detailState.name);
+    setProjectNumber(detailState.projectNumber);
+    setBrandId(detailState.brandId);
+    setBusinessUnitId(detailState.businessUnitId);
+    setProjectCategoryId(detailState.projectCategoryId);
+    setColor(detailState.color);
+    setStatus(detailState.status);
+    setCurrency(detailState.currency);
+    setBudget(detailState.budget);
+    setAsf(detailState.asf);
+    setGrandTotal(detailState.grandTotal);
+    setQuotationReference(detailState.quotationReference);
+    setIoFile(detailState.ioFile);
     setDateRange(getProjectAssignmentDateRange(project));
-    setDescription(project.description || "");
-    setNotes(project.notes || "");
-    setFlag(project.flag || "");
-    setRegion(project.region || "Indonesia");
-    setSubmitDate(project.submitDate || "");
-    setPitchStatus(project.pitchStatus || "introduction");
-    setValueTotalEstimate(project.valueTotalEstimate || "");
-    setHsDealId(project.hsDealId || "");
+    setDescription(detailState.description);
+    setNotes(detailState.notes);
+    setFlag(detailState.flag);
+    setRegion(detailState.region);
+    setSubmitDate(detailState.submitDate);
+    setPitchStatus(detailState.pitchStatus);
+    setValueTotalEstimate(detailState.valueTotalEstimate);
+    setHsDealId(detailState.hsDealId);
     const projectWithChannels = project as ProjectWithRawChannels;
     const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
     const nextProjectChannels = channelsData.map((pc) => ({
@@ -393,59 +343,35 @@ export const ProjectSetup = () => {
     setProjectChannels(nextProjectChannels);
     setInitialProjectChannels(nextProjectChannels);
     setPendingAssignments([]);
-    // Don't reset deliverables here - let the useEffect handle loading from existing assignments
-    // Only reset if not already tracking this project
     if (viewingProject?.id !== project.id) {
-      setSelectedDeliverablesByEmployee({});
-      setInitialDeliverablesByEmployee({});
+      setManHoursByEmployee({});
+      setInitialManHoursByEmployee({});
     }
     setIsDialogOpen(true);
   };
 
-  // Load deliverables from existing assignments when project assignments are loaded
+  // Load saved man hours from existing assignments when project assignments are loaded.
   useEffect(() => {
     if (!isDialogOpen || !viewingProject || projectAssignments.length === 0) {
       return;
     }
 
-    // Only populate once (when initial is empty)
-    if (Object.keys(initialDeliverablesByEmployee).length > 0) {
+    if (Object.keys(initialManHoursByEmployee).length > 0) {
       return;
     }
 
-    const deliverablesByEmployee: Record<string, string[]> = {};
+    const nextManHoursByEmployee: Record<string, string> = {};
 
     for (const assignment of projectAssignments) {
       if (!assignment.employeeId) continue;
-
-      // Parse deliverables from note
-      // Note format: "Assigned to project - Deliverable(s): {deliverable names separated by comma}. Set dates and hours as needed."
-      const note = assignment.note;
-      if (note) {
-        // Extract deliverable names from note
-        const deliverableMatch = note.match(/Deliverable[s]?:\s*([^.\n]+)/);
-        if (deliverableMatch) {
-          const deliverableNamesText = deliverableMatch[1].trim();
-          const deliverableNames = deliverableNamesText.split(',').map(n => n.trim());
-
-          // Find matching deliverables by name
-          const matchingIds = allDeliverables
-            .filter(d => deliverableNames.includes(d.deliverableNameNew || d.deliverableName))
-            .map(d => String(d.id));
-
-          if (matchingIds.length > 0) {
-            deliverablesByEmployee[assignment.employeeId] = matchingIds;
-          }
-        }
-      }
+      const totalHours = assignment.totalHours;
+      nextManHoursByEmployee[assignment.employeeId] =
+        totalHours === null || totalHours === undefined ? "" : String(Math.round(Number(totalHours)));
     }
 
-    // Only update if we found deliverables
-    if (Object.keys(deliverablesByEmployee).length > 0) {
-      setSelectedDeliverablesByEmployee(deliverablesByEmployee);
-      setInitialDeliverablesByEmployee(deliverablesByEmployee);
-    }
-  }, [isDialogOpen, viewingProject, projectAssignments, allDeliverables, initialDeliverablesByEmployee]);
+    setManHoursByEmployee(nextManHoursByEmployee);
+    setInitialManHoursByEmployee(nextManHoursByEmployee);
+  }, [isDialogOpen, viewingProject, projectAssignments, initialManHoursByEmployee]);
 
   // Initialize assignment planning range from existing assignments when project has no saved dates
   useEffect(() => {
@@ -461,21 +387,28 @@ export const ProjectSetup = () => {
   // Group projects by brand
   // In default state: show all brands even if they have no projects
   // In search state: show brands that match the search OR have matching projects
-  const projectsByBrand = brands
-    .map((brand) => ({
-      brand,
-      projects: projects.filter((p) => p.brandId === brand.id),
-    }))
-    .filter(({ brand, projects: brandProjects }) => {
-      // If there's no search, show all brands
-      if (!debouncedSearch) return true;
+  const projectsByBrand = useMemo(() => {
+    const normalizedSearch = debouncedSearch.trim().toLowerCase();
+    const projectsByBrandId = new Map<string, Project[]>();
 
-      // If searching, show brands that match the search or have matching projects
-      const brandNameMatches = brand.name.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const hasMatchingProjects = brandProjects.length > 0;
+    for (const project of projects) {
+      const bucket = projectsByBrandId.get(project.brandId) ?? [];
+      bucket.push(project);
+      projectsByBrandId.set(project.brandId, bucket);
+    }
 
-      return brandNameMatches || hasMatchingProjects;
-    });
+    return brands
+      .map((brand) => ({
+        brand,
+        projects: projectsByBrandId.get(brand.id) ?? [],
+      }))
+      .filter(({ brand, projects: brandProjects }) => {
+        if (!normalizedSearch) return showEmptyBrands || brandProjects.length > 0;
+
+        const brandNameMatches = brand.name.toLowerCase().includes(normalizedSearch);
+        return brandNameMatches || brandProjects.length > 0;
+      });
+  }, [brands, projects, debouncedSearch, showEmptyBrands]);
 
   // Get currency symbol
   const getCurrencySymbol = (code: string) => {
@@ -486,8 +419,12 @@ export const ProjectSetup = () => {
   const handleSaveTeamAssignments = async (closeAfterSave = false) => {
     setIsSaving(true);
     try {
-      if (hasAssignmentChanges && !hasCompleteAssignmentDateRange) {
-        throw new Error("Assignment planning requires a complete date range.");
+      if (hasAssignmentChanges && missingAssignmentPlanningDateReason) {
+        throw new Error(
+          missingAssignmentPlanningDateReason === "pitch_submit_date"
+            ? "Pitch assignment planning requires a submission date."
+            : "Campaign assignment planning requires a complete date range."
+        );
       }
 
       const assignmentDates = getAssignmentDateStrings(dateRange);
@@ -496,8 +433,7 @@ export const ProjectSetup = () => {
       const createPromises = buildPendingAssignmentPayloads({
         projectId: viewingProject!.id,
         pendingAssignments,
-        selectedDeliverablesByEmployee,
-        allDeliverables,
+        manHoursByEmployee,
         assignmentDates,
       }).map((payload) =>
         fetch('/api/assignments', {
@@ -509,19 +445,13 @@ export const ProjectSetup = () => {
         }).then(ensureSuccessfulSaveResponse)
       );
 
-      // 2. Update existing assignments with changed deliverables
-      const updatePromises = unsavedDeliverableChanges.map((change) => {
-        // Find the assignment for this employee on this project
+      // 2. Update existing assignments with changed man hours
+      const updatePromises = unsavedManHoursChanges.map((change) => {
         const assignment = projectAssignments.find(a => a.employeeId === change.employeeId);
         if (!assignment) return Promise.resolve();
 
-        const deliverableIds = change.deliverableIds;
-        const deliverables = allDeliverables.filter(d => deliverableIds.includes(String(d.id)));
-        const deliverableNames = deliverables.map(d => d.deliverableNameNew || d.deliverableName).join(", ");
-
-        const note = deliverableNames
-          ? `Assigned to project - Deliverables: ${deliverableNames}. ${assignment.note ? `(Original: ${assignment.note})` : ''}`
-          : assignment.note || "Assigned to project";
+        const totalHours = parseManHoursInput(change.manHours);
+        if (totalHours === null) return Promise.resolve();
 
         return fetch(`/api/assignments/${assignment.id}`, {
           method: 'PUT',
@@ -529,30 +459,25 @@ export const ProjectSetup = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            note,
+            totalHours,
+            hoursPerDay: calculateDerivedHoursPerDay(totalHours, assignmentDates),
           }),
         }).then(ensureSuccessfulSaveResponse);
       });
 
       await Promise.all([...createPromises, ...updatePromises]);
 
-      // Update initial deliverables to match current selections (mark as saved)
-      const newInitialDeliverables: Record<string, string[]> = { ...initialDeliverablesByEmployee };
+      const nextInitialManHours: Record<string, string> = { ...initialManHoursByEmployee };
 
-      // Add newly created assignments to initial state
       for (const pending of pendingAssignments) {
-        const deliverableIds = selectedDeliverablesByEmployee[pending.employeeId];
-        if (deliverableIds) {
-          newInitialDeliverables[pending.employeeId] = deliverableIds;
-        }
+        nextInitialManHours[pending.employeeId] = manHoursByEmployee[pending.employeeId] ?? "";
       }
 
-      // Add changed deliverables to initial state
-      for (const change of unsavedDeliverableChanges) {
-        newInitialDeliverables[change.employeeId] = change.deliverableIds;
+      for (const change of unsavedManHoursChanges) {
+        nextInitialManHours[change.employeeId] = change.manHours;
       }
 
-      setInitialDeliverablesByEmployee(newInitialDeliverables);
+      setInitialManHoursByEmployee(nextInitialManHours);
       setInitialProjectChannels(projectChannels);
 
       // Clear pending assignments after successful save
@@ -579,8 +504,7 @@ export const ProjectSetup = () => {
   // Handler for removing a pending assignment
   const handleRemovePending = (employeeId: string) => {
     setPendingAssignments(prev => prev.filter(p => p.employeeId !== employeeId));
-    // Also clear selected deliverable for this employee
-    setSelectedDeliverablesByEmployee(prev => {
+    setManHoursByEmployee(prev => {
       const next = { ...prev };
       delete next[employeeId];
       return next;
@@ -593,12 +517,12 @@ export const ProjectSetup = () => {
     if (!assignment?.id) return;
 
     // Clean up local state
-    setSelectedDeliverablesByEmployee(prev => {
+    setManHoursByEmployee(prev => {
       const next = { ...prev };
       delete next[employeeId];
       return next;
     });
-    setInitialDeliverablesByEmployee(prev => {
+    setInitialManHoursByEmployee(prev => {
       const next = { ...prev };
       delete next[employeeId];
       return next;
@@ -611,31 +535,29 @@ export const ProjectSetup = () => {
     });
   };
 
-  const { sentinelRef, isStuck } = useIsStuck(40);
-
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-6">
-        {/* Header */}
-        <div ref={sentinelRef} className="h-px -mt-px invisible" />
-        <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex items-center justify-between transition-shadow duration-200", isStuck && "shadow-sm")}>
-          <div>
-            <h3 className="text-lg font-semibold">Projects</h3>
-            <p className="text-sm text-muted-foreground">
-              Manage projects within your brands
-            </p>
-          </div>
-          <div className="relative">
-            <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              data-testid="project-search-input"
-              placeholder="Search projects..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-64"
-            />
-          </div>
-        </div>
+        <SetupSectionHeader
+          title="Projects"
+          description="Manage projects within your brands"
+          searchValue={searchQuery}
+          searchPlaceholder="Search projects..."
+          searchTestId="project-search-input"
+          onSearchChange={setSearchQuery}
+          actions={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEmptyBrands((value) => !value)}
+              aria-pressed={showEmptyBrands}
+              data-testid="toggle-empty-brands"
+            >
+              {showEmptyBrands ? "Hide empty" : "Show empty"}
+            </Button>
+          }
+        />
 
         {/* Projects List grouped by Brand */}
         <div className="space-y-6">
@@ -647,7 +569,11 @@ export const ProjectSetup = () => {
           ) : projectsByBrand.length === 0 && !projectsLoading ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:folder-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No brands yet. Create one in the Brands tab first.</p>
+              <p className="text-sm">
+                {debouncedSearch
+                  ? `No projects or brands found matching "${debouncedSearch}"`
+                  : "No brands yet. Create one in the Brands tab first."}
+              </p>
             </div>
           ) : (
             projectsByBrand.map(({ brand, projects: brandProjects }) => (
@@ -761,7 +687,8 @@ export const ProjectSetup = () => {
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           if (!open) {
             setPendingAssignments([]);
-            setSelectedDeliverablesByEmployee({});
+            setManHoursByEmployee({});
+            setInitialManHoursByEmployee({});
           }
           setIsDialogOpen(open);
         }}>
@@ -1239,29 +1166,29 @@ export const ProjectSetup = () => {
                   <ProjectTeamAssignmentsTable
                     teamMembers={teamMembers}
                     pendingEmployeeIds={pendingEmployeeIds}
-                    changedDeliverableEmployeeIds={changedDeliverableEmployeeIds}
-                    selectedDeliverablesByEmployee={selectedDeliverablesByEmployee}
-                    projectDeliverables={projectDeliverables}
-                    allDeliverables={allDeliverables}
+                    changedManHoursEmployeeIds={changedManHoursEmployeeIds}
+                    manHoursByEmployee={manHoursByEmployee}
                     canAssignTeam={!!session?.access.can_view_all}
                     isDeletePending={deleteAssignment.isPending}
                     onAssignTeam={() => setIsAssignEmployeesOpen(true)}
-                    onUndoDeliverableChange={handleUndoDeliverableChange}
-                    onToggleDeliverable={handleToggleDeliverable}
+                    onUndoManHoursChange={handleUndoManHoursChange}
+                    onChangeManHours={handleChangeManHours}
                     onRemovePending={handleRemovePending}
                     onDeleteSavedAssignment={handleDeleteSavedAssignment}
                   />
 
                   {hasUnsavedChanges && (
                     <div className="flex flex-col items-end gap-2">
-                      {!allHaveDeliverables && (
+                      {!allManHoursAreValid && (
                         <p className="text-xs text-amber-600">
-                          Please select deliverables for all pending employees
+                          Please enter whole-number man hours for all pending or changed employees
                         </p>
                       )}
-                      {!hasCompleteAssignmentDateRange && (
+                      {hasAssignmentChanges && missingAssignmentPlanningDateReason && (
                         <p className="text-xs text-amber-600">
-                          This project has no assignment date range. Set the campaign dates or pitch submission date before assigning a team.
+                          {missingAssignmentPlanningDateReason === "pitch_submit_date"
+                            ? "This pitch has no submission date. Set the pitch submission date before assigning a team."
+                            : "This campaign has no assignment date range. Set the campaign dates before assigning a team."}
                         </p>
                       )}
                     </div>
@@ -1320,6 +1247,13 @@ export const ProjectSetup = () => {
                 ...prev,
                 ...employeeIds.map(empId => ({ employeeId: empId }))
               ]);
+              setManHoursByEmployee(prev => {
+                const next = { ...prev };
+                for (const employeeId of employeeIds) {
+                  if (next[employeeId] === undefined) next[employeeId] = "";
+                }
+                return next;
+              });
             }}
           />
         )}

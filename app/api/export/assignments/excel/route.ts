@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform to export format
-    const exportData = filteredAssignments.map(assignment => {
+    const exportData = filteredAssignments.filter((assignment) => !assignment.is_time_off).map(assignment => {
       const dept = assignment.employee?.department_name || '';
       if (assignment.employee) {
         console.log('[Export Excel] Employee:', assignment.employee.full_name, 'dept_id:', assignment.employee.dept_id, 'department_name:', dept);
@@ -106,7 +106,6 @@ export async function GET(request: NextRequest) {
         category: assignment.category,
         status: assignment.status,
         billable: assignment.is_billable ? 'Yes' : 'No',
-        isTimeOff: assignment.is_time_off ? 'Yes' : 'No',
         note: assignment.note || '',
       };
     });

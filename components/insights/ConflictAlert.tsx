@@ -47,12 +47,8 @@ export const ConflictAlert: React.FC<ConflictAlertProps> = ({
 
   const getTypeLabel = () => {
     switch (conflict.type) {
-      case "time_off_deadline":
-        return "Time-Off Conflict";
       case "overallocation":
         return "Overallocation";
-      case "resource_unavailable":
-        return "Unavailable";
       case "billable_target":
         return "Billable Target";
       default:
@@ -116,7 +112,7 @@ export const ConflictAlert: React.FC<ConflictAlertProps> = ({
             {/* Remove Assignment button - only for actionable conflicts */}
             {onRemoveAssignment &&
              conflict.affectedAssignments.length > 0 &&
-             (conflict.type === "overallocation" || conflict.type === "resource_unavailable") && (
+             conflict.type === "overallocation" && (
               <button
                 onClick={() => {
                   // Remove the last affected assignment (the one that caused/contributed to the conflict)

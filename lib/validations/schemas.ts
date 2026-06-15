@@ -17,8 +17,6 @@ export const AssignmentCreateSchema = z.object({
   endDate: z.string().min(1, "endDate is required"),
   hoursPerDay: z.union([z.string(), z.number()]).optional().default("8").transform(String),
   allocationPercentage: z.union([z.string(), z.number()]).nullable().optional().transform((v) => v != null ? String(v) : null),
-  isTimeOff: z.boolean().optional().default(false),
-  timeOffTypeId: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
   isBillable: z.boolean().optional().default(true),
   status: z.enum(["draft", "confirmed", "completed"]).optional().default("confirmed"),
@@ -35,8 +33,6 @@ export const AssignmentPutSchema = z.object({
   endDate: z.string().min(1, "endDate is required"),
   hoursPerDay: z.union([z.string(), z.number()]).optional().default("8").transform(String),
   allocationPercentage: z.union([z.string(), z.number()]).nullable().optional().transform((v) => v != null ? String(v) : null),
-  isTimeOff: z.boolean().optional().default(false),
-  timeOffTypeId: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
   isBillable: z.boolean().optional().default(true),
   status: z.enum(["draft", "confirmed", "completed"]).optional().default("confirmed"),
@@ -73,7 +69,7 @@ const CapacityAnalysisItemSchema = z.object({
 
 const ConflictSchema = z.object({
   id: z.string(),
-  type: z.enum(["time_off_deadline", "overallocation", "resource_unavailable", "billable_target"]),
+  type: z.enum(["overallocation", "billable_target"]),
   severity: z.enum(["critical", "warning", "info"]),
   resourceId: z.string(),
   resourceName: z.string(),

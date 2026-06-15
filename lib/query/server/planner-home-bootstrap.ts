@@ -1,0 +1,350 @@
+import type { SessionData } from "@/lib/auth/session";
+import { requestPlannerDirectoryRepair } from "@/lib/planner-directory/repair";
+import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
+import { classifyPlannerDirectoryFreshness } from "@/lib/planner-directory/freshness";
+import type {
+  PlannerDirectoryBrandRow,
+  PlannerDirectoryDepartmentRow,
+  PlannerDirectoryEmployeeRow,
+  PlannerDirectoryProjectRow,
+} from "@/lib/planner-directory/types";
+import { fetchPlannerTimeline } from "@/lib/query/server/planner-prefetch";
+import type { Employee } from "@/lib/query/hooks/useEmployees";
+import type {
+  PlannerTimelineRequest,
+  PlannerTimelineResponse,
+} from "@/lib/planner/planner-loading";
+
+// departmentId must ride along: the client department filter compares
+// employee.departmentId (lib/timeline-v2/employees.ts), and bootstrap rows are
+// the timeline's ONLY employee rows since the complete-list path was retired.
+export type MinimalTimelineEmployee = Pick<
+  Employee,
+  "id" | "fullName" | "position" | "weeklyCapacity" | "department" | "departmentId"
+>;
+
+// Wire-shapes for the reference maps: exactly the fields the client mappers
+// read (toProjectOption / toBrandOption / department badge). The raw directory
+// rows carry sync plumbing (source_hash, last_seen_at, ...) that only bloats
+// the payload (payload-diet spec 2026-06-12).
+export type BootstrapProject = Pick<
+  PlannerDirectoryProjectRow,
+  "sourceProjectId" | "name" | "color" | "status" | "sourceType" | "brandId" | "startDate" | "endDate"
+>;
+export type BootstrapBrand = Pick<
+  PlannerDirectoryBrandRow,
+  "brandId" | "name" | "companyName" | "color" | "status" | "sourceUpdatedAt" | "syncedAt"
+>;
+export type BootstrapDepartment = Pick<PlannerDirectoryDepartmentRow, "departmentId" | "name" | "color">;
+
+export function toBootstrapProject(row: PlannerDirectoryProjectRow): BootstrapProject {
+  return {
+    sourceProjectId: row.sourceProjectId,
+    name: row.name,
+    color: row.color,
+    status: row.status,
+    sourceType: row.sourceType,
+    brandId: row.brandId,
+    startDate: row.startDate,
+    endDate: row.endDate,
+  };
+}
+
+export function toBootstrapBrand(row: PlannerDirectoryBrandRow): BootstrapBrand {
+  return {
+    brandId: row.brandId,
+    name: row.name,
+    companyName: row.companyName,
+    color: row.color,
+    status: row.status,
+    sourceUpdatedAt: row.sourceUpdatedAt,
+    syncedAt: row.syncedAt,
+  };
+}
+
+export function toBootstrapDepartment(row: PlannerDirectoryDepartmentRow): BootstrapDepartment {
+  return {
+    departmentId: row.departmentId,
+    name: row.name,
+    color: row.color,
+  };
+}
+
+export type PlannerHomeBootstrapRequest = PlannerTimelineRequest & {
+  employeeLimit: number;
+  employeeOffset: number;
+  brandId?: string | null;
+  department?: string | null;
+  projectId?: string | null;
+  search?: string | null;
+};
+
+export type PlannerHomeBootstrapResponse = {
+  request: PlannerHomeBootstrapRequest;
+  employees: MinimalTimelineEmployee[];
+  employeeTotal: number;
+  employeeHasMore: boolean;
+  departmentsById: Record<string, BootstrapDepartment>;
+  brandsById: Record<string, BootstrapBrand>;
+  projectsById: Record<string, BootstrapProject>;
+  plannerTimeline: PlannerTimelineResponse;
+  metadataPartial: boolean;
+  metadataFreshness: {
+    state: "healthy" | "stale" | "syncing" | "unavailable";
+    lastSuccessfulSyncAt: string | null;
+    latestSyncAt: string | null;
+    stale: boolean;
+    issueCount: number;
+  };
+  freshness: {
+    directoryFetchedAt: string;
+    plannerFetchedAt: string;
+  };
+};
+
+function randomColor(seed: string): string {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
+  }
+
+  return `#${hash.toString(16).padStart(6, "0")}`;
+}
+
+export function toMinimalEmployee(
+  employee: PlannerDirectoryEmployeeRow,
+  departmentsById: Record<string, BootstrapDepartment>
+): MinimalTimelineEmployee {
+  const department = employee.departmentId ? departmentsById[employee.departmentId] : undefined;
+
+  return {
+    id: employee.employeeUuid,
+    fullName: employee.fullName,
+    position: employee.position ?? "",
+    weeklyCapacity: employee.weeklyCapacity,
+    departmentId: employee.departmentId,
+    department: department
+      ? {
+          id: department.departmentId,
+          name: department.name,
+          color: department.color ?? randomColor(department.departmentId),
+        }
+      : undefined,
+  };
+}
+
+function getReferencedProjectIds(
+  plannerTimeline: PlannerTimelineResponse,
+  request: PlannerHomeBootstrapRequest
+): Set<string> {
+  const projectIds = new Set<string>();
+
+  for (const assignment of plannerTimeline.assignments) {
+    if (assignment.projectId) projectIds.add(assignment.projectId);
+  }
+
+  for (const actual of plannerTimeline.actualAssignments) {
+    if (actual.projectUuid) projectIds.add(actual.projectUuid);
+  }
+
+  if (request.projectId) {
+    projectIds.add(request.projectId);
+  }
+
+  return projectIds;
+}
+
+function indexById<T extends { [key: string]: unknown }>(
+  rows: T[],
+  getId: (row: T) => string
+): Record<string, T> {
+  return rows.reduce<Record<string, T>>((acc, row) => {
+    acc[getId(row)] = row;
+    return acc;
+  }, {});
+}
+
+function getDepartmentIdsFromEmployees(employees: PlannerDirectoryEmployeeRow[]): string[] {
+  return Array.from(
+    new Set(
+      employees
+        .map((employee) => employee.departmentId)
+        .filter((departmentId): departmentId is string => !!departmentId)
+    )
+  );
+}
+
+function getBrandIdsFromProjects(projects: PlannerDirectoryProjectRow[]): string[] {
+  return Array.from(
+    new Set(projects.map((project) => project.brandId).filter((brandId): brandId is string => !!brandId))
+  );
+}
+
+function getMissingIds<T extends { [key: string]: unknown }>(
+  referencedIds: Set<string>,
+  rowsById: Record<string, T>
+): string[] {
+  return Array.from(referencedIds).filter((id) => !rowsById[id]);
+}
+
+export async function fetchPlannerHomeBootstrap(
+  session: SessionData,
+  request: PlannerHomeBootstrapRequest
+): Promise<PlannerHomeBootstrapResponse> {
+  const directoryFetchedAt = new Date().toISOString();
+
+  // The employee page resolves FIRST so the timeline query is scoped to the
+  // employees this response actually renders — unscoped, a quarter view shipped
+  // every assignment in the company (measured: 4,908 blocks / 7.9 MB / 4.5 s
+  // for 60 rendered employees). One serial hop buys a bounded payload.
+  // Brand/project filters scope the employee page server-side (Phase 8 8B):
+  // pages carry their own assignments, so a client-only filter would reveal a
+  // brand's members progressively as pages crawl in. Resolving the brand's
+  // project ids first costs one indexed query, only when the filter is active.
+  let scopedProjectIds: string[] | undefined;
+  if (session.access.can_view_all && (request.projectId || request.brandId)) {
+    // Brand+project intersect on the client. When both are set, the project
+    // must belong to the brand or the intersection is empty — scope to the
+    // project only if it is one of the brand's, otherwise to an empty set so
+    // the page matches what the client will render.
+    if (request.projectId && request.brandId) {
+      const brandProjectIds = (
+        await plannerDirectoryRepository.listProjectsForBootstrap({ brandId: request.brandId })
+      ).map((project) => project.sourceProjectId);
+      scopedProjectIds = brandProjectIds.includes(request.projectId) ? [request.projectId] : [];
+    } else if (request.projectId) {
+      scopedProjectIds = [request.projectId];
+    } else {
+      scopedProjectIds = (
+        await plannerDirectoryRepository.listProjectsForBootstrap({ brandId: request.brandId })
+      ).map((project) => project.sourceProjectId);
+    }
+  }
+
+  const employeeSliceResult =
+    scopedProjectIds && scopedProjectIds.length === 0
+      ? // A brand with no projects can have no matching employees — skip the
+        // query rather than letting an empty IN-list fall through.
+        { data: [], total: 0, hasMore: false }
+      : await plannerDirectoryRepository.listEmployeesForBootstrap({
+          offset: session.access.can_view_all ? request.employeeOffset : 0,
+          limit: session.access.can_view_all ? request.employeeLimit : 1,
+          search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
+          department: session.access.can_view_all ? request.department?.trim() || undefined : undefined,
+          employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
+          assignmentProjectIds: scopedProjectIds,
+          assignmentRange: { startDate: request.startDate, endDate: request.endDate },
+        });
+  const pageEmployeeUuids = employeeSliceResult.data.map((employee) => employee.employeeUuid);
+
+  const [latestSuccessfulSync, latestInFlightSync, departments, plannerTimeline] = await Promise.all([
+    plannerDirectoryRepository.getLatestSuccessfulSync(),
+    plannerDirectoryRepository.getLatestInFlightSync(),
+    plannerDirectoryRepository.listDepartments(),
+    pageEmployeeUuids.length > 0
+      ? fetchPlannerTimeline(session, request, { employeeUuids: pageEmployeeUuids })
+      : // An empty employee page must mean an empty timeline — without the
+        // guard, an empty IN-list would fall through to a company-wide query.
+        Promise.resolve({ request, assignments: [], actualAssignments: [] } satisfies PlannerTimelineResponse),
+  ]);
+
+  const metadataFreshness = classifyPlannerDirectoryFreshness({
+    lastSuccessfulSyncAt: latestSuccessfulSync?.finishedAt ?? latestSuccessfulSync?.startedAt ?? null,
+    latestSyncAt: latestInFlightSync?.startedAt ?? latestSuccessfulSync?.startedAt ?? null,
+    isSyncing: !!latestInFlightSync,
+    syncMode: latestInFlightSync?.syncMode ?? null,
+    issueCount: latestSuccessfulSync?.issueCount ?? 0,
+    now: directoryFetchedAt,
+  });
+
+  const departmentsById = indexById(departments.map(toBootstrapDepartment), (department) => department.departmentId);
+
+  const referencedProjectIds = getReferencedProjectIds(plannerTimeline, request);
+  const projects = await plannerDirectoryRepository.listProjectsForBootstrap({
+    brandId: request.brandId || undefined,
+    search: request.search?.trim() || undefined,
+    referencedProjectIds: Array.from(referencedProjectIds),
+  });
+  const projectsById = indexById(projects.map(toBootstrapProject), (project) => project.sourceProjectId);
+  const missingReferencedProjectIds = getMissingIds(referencedProjectIds, projectsById);
+
+  const brandIds = getBrandIdsFromProjects(projects);
+  const brands = await plannerDirectoryRepository.listBrandsByIds(brandIds);
+  const brandsById = indexById(brands.map(toBootstrapBrand), (brand) => brand.brandId);
+  const missingReferencedBrandIds = getMissingIds(new Set(brandIds), brandsById);
+
+  const missingDepartmentIds = getMissingIds(
+    new Set(getDepartmentIdsFromEmployees(employeeSliceResult.data)),
+    departmentsById
+  );
+
+  if (missingReferencedProjectIds.length > 0) {
+    void Promise.all(
+      missingReferencedProjectIds.slice(0, 3).map((projectId) =>
+        requestPlannerDirectoryRepair({
+          session,
+          entityType: "project",
+          sourceId: projectId,
+          triggerSource: "bootstrap",
+          triggeredBy: session.employee.uuid,
+        }).catch((error) => {
+          console.error("[Planner bootstrap] Failed to request project repair:", error);
+        })
+      )
+    );
+  }
+
+  if (missingReferencedBrandIds.length > 0) {
+    void Promise.all(
+      missingReferencedBrandIds.slice(0, 3).map((brandId) =>
+        requestPlannerDirectoryRepair({
+          session,
+          entityType: "brand",
+          sourceId: brandId,
+          triggerSource: "bootstrap",
+          triggeredBy: session.employee.uuid,
+        }).catch((error) => {
+          console.error("[Planner bootstrap] Failed to request brand repair:", error);
+        })
+      )
+    );
+  }
+
+  if (missingDepartmentIds.length > 0) {
+    void Promise.all(
+      missingDepartmentIds.slice(0, 3).map((departmentId) =>
+        requestPlannerDirectoryRepair({
+          session,
+          entityType: "department",
+          sourceId: departmentId,
+          triggerSource: "bootstrap",
+          triggeredBy: session.employee.uuid,
+        }).catch((error) => {
+          console.error("[Planner bootstrap] Failed to request department repair:", error);
+        })
+      )
+    );
+  }
+
+  const metadataPartial =
+    missingReferencedProjectIds.length > 0 ||
+    missingReferencedBrandIds.length > 0 ||
+    missingDepartmentIds.length > 0;
+
+  return {
+    request,
+    employees: employeeSliceResult.data.map((employee) => toMinimalEmployee(employee, departmentsById)),
+    employeeTotal: employeeSliceResult.total,
+    employeeHasMore: employeeSliceResult.hasMore,
+    departmentsById,
+    brandsById,
+    projectsById,
+    plannerTimeline,
+    metadataPartial,
+    metadataFreshness,
+    freshness: {
+      directoryFetchedAt,
+      plannerFetchedAt: directoryFetchedAt,
+    },
+  };
+}

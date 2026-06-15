@@ -82,9 +82,6 @@ function calculateWeekUtilization(
         isDateStrInAssignment(day, a)
       );
 
-      const hasTimeOff = dayAssignments.some((a) => a.isTimeOff);
-      if (hasTimeOff) continue;
-
       const hoursAllocated = dayAssignments
         .filter((a) => !a.isTimeOff)
         .reduce((sum, a) => sum + a.hoursPerDay, 0);

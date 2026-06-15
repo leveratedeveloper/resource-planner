@@ -46,5 +46,10 @@ export const queryKeys = {
   assignmentsByProject: (projectId: string) => ["assignments", "project", projectId] as const,
 
   // Planner timeline
+  plannerHomeBootstrap: ["planner-home-bootstrap"] as const,
   plannerTimeline: ["planner-timeline"] as const,
+  plannerFilterBrands: ["planner-filter-brands"] as const,
+  plannerFilterProjects: ["planner-filter-projects"] as const,
+  plannerFilterBrandsInfinite: ["planner-filter-brands", "infinite"] as const,
+  plannerFilterProjectsInfinite: ["planner-filter-projects", "infinite"] as const,
 } as const;

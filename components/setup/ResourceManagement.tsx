@@ -3,15 +3,13 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { useInfiniteEmployees, type Employee } from "@/lib/query/hooks/useEmployees";
 import { useDepartments } from "@/lib/query/hooks/useDepartments";
-import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@iconify/react";
-import { useIsStuck } from "@/hooks/use-is-stuck";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
+import { SetupSectionHeader } from "./SetupSectionHeader";
 import { cn } from "@/lib/utils";
 
 // Helper to format date for display
@@ -58,8 +56,6 @@ export const ResourceManagement = () => {
         setIsDialogOpen(true);
     };
 
-    const { sentinelRef, isStuck } = useIsStuck(40);
-
     // Get department info for selected employee
     const selectedDepartment = selectedEmployee 
         ? departments.find(d => d.id === selectedEmployee.departmentId) 
@@ -67,22 +63,13 @@ export const ResourceManagement = () => {
 
     return (
         <div className="space-y-6">
-            <div ref={sentinelRef} className="h-px -mt-px invisible" />
-            <div className={cn("sticky top-10 z-10 bg-background py-3 px-2 flex justify-between items-center transition-shadow duration-200", isStuck && "shadow-sm")}>
-                <h2 className="text-2xl font-bold tracking-tight">Team Members</h2>
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Icon icon="lucide:search" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            data-testid="resource-search-input"
-                            placeholder="Search employees..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 w-64"
-                        />
-                    </div>
-                </div>
-            </div>
+            <SetupSectionHeader
+                title="Team Members"
+                searchValue={searchQuery}
+                searchPlaceholder="Search employees..."
+                searchTestId="resource-search-input"
+                onSearchChange={setSearchQuery}
+            />
 
             {isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

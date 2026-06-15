@@ -1,9 +1,10 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
+  getCurrentPlannerTimelineData,
   getPlannerTimelineQueryKey,
   type PlannerTimelineRequest,
   type PlannerTimelineResponse,
-} from "@/lib/timeline/planner-loading";
+} from "@/lib/planner/planner-loading";
 
 async function fetchPlannerTimeline(request: PlannerTimelineRequest): Promise<PlannerTimelineResponse> {
   const url = new URL("/api/planner/timeline", window.location.origin);
@@ -30,10 +31,22 @@ export function usePlannerTimeline(
   request?: PlannerTimelineRequest,
   options: { enabled?: boolean } = {}
 ) {
-  return useQuery({
+  const query = useQuery({
     queryKey: request ? getPlannerTimelineQueryKey(request) : ["planner-timeline", "disabled"],
     queryFn: () => fetchPlannerTimeline(request!),
     enabled: !!request && (options.enabled ?? true),
     placeholderData: keepPreviousData,
   });
+
+  const currentData = getCurrentPlannerTimelineData(query.data, request);
+  const hasMismatchedPlaceholderData = !!query.data && !currentData;
+
+  return {
+    ...query,
+    data: currentData,
+    previousData: hasMismatchedPlaceholderData ? query.data : undefined,
+    isDataForCurrentRequest: !!currentData,
+    isLoadingCurrentData: query.isLoading || (hasMismatchedPlaceholderData && query.isFetching),
+    isShowingPreviousData: hasMismatchedPlaceholderData,
+  };
 }

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
+import { invalidatePlannerData } from "@/lib/query/invalidatePlannerData";
 import type { Employee } from "./useEmployees";
 
 // Types
@@ -180,11 +181,69 @@ export function useAssignmentsByEmployee(employeeId: string) {
   });
 }
 
-export function useAssignmentsByProject(projectId: string) {
+export function useAssignmentsByProject(projectId: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.assignmentsByProject(projectId),
     queryFn: () => fetchAssignmentsByProject(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId && (options.enabled ?? true),
+  });
+}
+
+// The timeline renders from the planner home bootstrap cache, so optimistic
+// mutations must patch it too — otherwise edits visually revert until the
+// post-mutation invalidation refetch lands. The cache holds infinite-query
+// entries ({ pages: [...] }); patch every page — the timeline's page merge
+// dedupes by assignment id, so an optimistic create still renders once.
+type BootstrapWithTimeline = {
+  plannerTimeline?: { assignments: Assignment[]; actualAssignments: unknown[] };
+};
+
+type BootstrapCacheEntry =
+  | BootstrapWithTimeline
+  | { pages: BootstrapWithTimeline[]; pageParams: unknown[] };
+
+function patchBootstrapPage(
+  page: BootstrapWithTimeline,
+  patch: (assignments: Assignment[]) => Assignment[]
+): BootstrapWithTimeline {
+  if (!page?.plannerTimeline) return page;
+  return {
+    ...page,
+    plannerTimeline: {
+      ...page.plannerTimeline,
+      assignments: patch(page.plannerTimeline.assignments),
+    },
+  };
+}
+
+function patchBootstrapAssignments(
+  queryClient: ReturnType<typeof useQueryClient>,
+  patch: (assignments: Assignment[]) => Assignment[]
+) {
+  queryClient.setQueriesData<BootstrapCacheEntry>(
+    { queryKey: queryKeys.plannerHomeBootstrap },
+    (old) => {
+      if (!old) return old;
+      if ("pages" in old) {
+        return { ...old, pages: old.pages.map((page) => patchBootstrapPage(page, patch)) };
+      }
+      return patchBootstrapPage(old, patch);
+    }
+  );
+}
+
+function snapshotBootstrapQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.getQueriesData<BootstrapCacheEntry>({
+    queryKey: queryKeys.plannerHomeBootstrap,
+  });
+}
+
+function restoreBootstrapQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  snapshot: ReturnType<typeof snapshotBootstrapQueries> | undefined
+) {
+  snapshot?.forEach(([queryKey, data]) => {
+    queryClient.setQueryData(queryKey, data);
   });
 }
 
@@ -199,6 +258,9 @@ export function useCreateAssignment() {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+      // A bootstrap refetch in flight from a previous edit would land AFTER
+      // this optimistic patch and briefly snap it back — cancel it first.
+      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
@@ -233,7 +295,11 @@ export function useCreateAssignment() {
         return [...old, optimisticAssignment];
       });
 
-      return { previousAssignments, previousEmployees, optimisticId: optimisticAssignment.id };
+      // Mirror into the planner bootstrap cache the timeline renders from
+      const previousBootstrap = snapshotBootstrapQueries(queryClient);
+      patchBootstrapAssignments(queryClient, (assignments) => [...assignments, optimisticAssignment]);
+
+      return { previousAssignments, previousEmployees, previousBootstrap, optimisticId: optimisticAssignment.id };
     },
 
     // Rollback on error
@@ -247,6 +313,7 @@ export function useCreateAssignment() {
       if (context?.previousEmployees) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
       }
+      restoreBootstrapQueries(queryClient, context?.previousBootstrap);
     },
 
     // Replace temp ID with real data (no refetch needed)
@@ -256,13 +323,16 @@ export function useCreateAssignment() {
         if (!old) return [data];
         return old.map((a) => (a.id === context?.optimisticId ? data : a));
       });
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.map((a) => (a.id === context?.optimisticId ? data : a))
+      );
     },
 
     // Invalidate related queries so brand-filtered views stay in sync
     onSettled: async () => {
       // Invalidate all assignments queries (including those with params)
       await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'active' });
+      await invalidatePlannerData(queryClient, { refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
@@ -300,6 +370,9 @@ export function useUpdateAssignment() {
       // Cancel outgoing refetches to prevent overwriting
       await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+      // A bootstrap refetch in flight from a previous edit would land AFTER
+      // this optimistic patch and briefly snap it back — cancel it first.
+      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
@@ -338,7 +411,15 @@ export function useUpdateAssignment() {
         }
       });
 
-      return { previousAssignments, previousEmployees };
+      // Mirror into the planner bootstrap cache the timeline renders from
+      const previousBootstrap = snapshotBootstrapQueries(queryClient);
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.map((assignment) =>
+          assignment.id === id ? { ...assignment, ...updates } : assignment
+        )
+      );
+
+      return { previousAssignments, previousEmployees, previousBootstrap };
     },
 
     // Rollback on error
@@ -350,6 +431,9 @@ export function useUpdateAssignment() {
       }
       if (context?.previousEmployees && !context?.skipOptimistic) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
+      }
+      if (!context?.skipOptimistic) {
+        restoreBootstrapQueries(queryClient, context?.previousBootstrap);
       }
     },
 
@@ -372,10 +456,14 @@ export function useUpdateAssignment() {
           ),
         }));
       });
+
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.map((a) => (a.id === data.id ? data : a))
+      );
     },
 
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+      invalidatePlannerData(queryClient);
     },
   });
 }
@@ -393,6 +481,7 @@ export function useDeleteAssignment() {
       // Cancel outgoing refetches for ALL assignment queries
       await queryClient.cancelQueries({ queryKey: ["assignments"] });
       await queryClient.cancelQueries({ queryKey: queryKeys.employees });
+      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
 
       // Snapshot for rollback
       const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
@@ -443,12 +532,18 @@ export function useDeleteAssignment() {
         }));
       });
 
+      // Mirror into the planner bootstrap cache the timeline renders from
+      const previousBootstrap = snapshotBootstrapQueries(queryClient);
+      patchBootstrapAssignments(queryClient, (assignments) =>
+        assignments.filter((assignment) => assignment.id !== id)
+      );
+
       // Force immediate UI update by invalidating queries without refetch
       queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'none' });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'none' });
+      invalidatePlannerData(queryClient, { refetchType: 'none' });
       queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'none' });
 
-      return { previousAssignments, previousEmployees };
+      return { previousAssignments, previousEmployees, previousBootstrap };
     },
 
     // Rollback on error (but not if assignment is already deleted - 404)
@@ -462,7 +557,7 @@ export function useDeleteAssignment() {
         console.log('[useDeleteAssignment] Assignment already deleted, keeping optimistic update');
         // Force invalidate to ensure UI is in sync
         queryClient.invalidateQueries({ queryKey: ["assignments"] });
-        queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline });
+        invalidatePlannerData(queryClient);
         return;
       }
 
@@ -473,6 +568,7 @@ export function useDeleteAssignment() {
       if (context?.previousEmployees) {
         queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
       }
+      restoreBootstrapQueries(queryClient, context?.previousBootstrap);
     },
 
     onSuccess: () => {
@@ -484,7 +580,7 @@ export function useDeleteAssignment() {
       console.log('[useDeleteAssignment] Invalidating queries for refetch');
       // Invalidate all assignments queries (including those with params)
       await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline, refetchType: 'active' });
+      await invalidatePlannerData(queryClient, { refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
     },
