@@ -9,7 +9,7 @@ vi.mock("@/lib/auth/session", () => ({
 
 vi.mock("@/lib/planner-directory/repository", () => ({
   plannerDirectoryRepository: {
-    listProjects: vi.fn(),
+    listProjectsPage: vi.fn(),
   },
 }));
 
@@ -20,25 +20,29 @@ describe("projects route submit dates", () => {
 
   it("returns pitch submitDate from the planner directory row", async () => {
     vi.mocked(getSession).mockResolvedValue({ access_token: "token" } as never);
-    vi.mocked(plannerDirectoryRepository.listProjects).mockResolvedValue([
-      {
-        projectKey: "pitch:pitch-1",
-        sourceProjectId: "pitch-1",
-        sourceType: "pitch",
-        name: "Pitch Work",
-        brandId: "brand-1",
-        color: "#64748b",
-        status: "planning",
-        startDate: null,
-        endDate: null,
-        submitDate: "2026-06-12",
-        sourceUpdatedAt: "2026-06-05T00:00:00Z",
-        sourceHash: "hash-1",
-        syncedAt: "2026-06-05T00:00:00Z",
-        lastSeenAt: "2026-06-05T00:00:00Z",
-        archivedAt: null,
-      },
-    ]);
+    vi.mocked(plannerDirectoryRepository.listProjectsPage).mockResolvedValue({
+      data: [
+        {
+          projectKey: "pitch:pitch-1",
+          sourceProjectId: "pitch-1",
+          sourceType: "pitch",
+          name: "Pitch Work",
+          brandId: "brand-1",
+          color: "#64748b",
+          status: "planning",
+          startDate: null,
+          endDate: null,
+          submitDate: "2026-06-12",
+          sourceUpdatedAt: "2026-06-05T00:00:00Z",
+          sourceHash: "hash-1",
+          syncedAt: "2026-06-05T00:00:00Z",
+          lastSeenAt: "2026-06-05T00:00:00Z",
+          archivedAt: null,
+        },
+      ],
+      total: 1,
+      hasMore: false,
+    });
 
     const response = await GET(new Request("http://localhost:3000/api/projects"));
     const body = await response.json();
