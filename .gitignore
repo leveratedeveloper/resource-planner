@@ -57,6 +57,10 @@ db/
 
 # agent notes
 .agent/
+.impeccable/
+docs/
+*.md
+*.markdown
 
 #vscode settings
 .vscode/
