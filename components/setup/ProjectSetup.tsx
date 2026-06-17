@@ -4,7 +4,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { type DateRange } from "react-day-picker";
-import { useInfiniteProjects, type Project } from "@/lib/query/hooks/useProjects";
+import { useInfiniteProjects, useProjectDetail, type Project } from "@/lib/query/hooks/useProjects";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
@@ -85,6 +85,21 @@ type ProjectWithRawChannels = Project & {
   channels?: ProjectChannelSource[];
   projectChannels?: ProjectChannelSource[];
 };
+
+// Pure data transform — hoisted to module scope so it has no closure deps and
+// is safe to reference from the empty-dep useCallback appliers below.
+function mapRawChannels(project: Project): EditableProjectChannel[] {
+  const projectWithChannels = project as ProjectWithRawChannels;
+  const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
+  return channelsData.map((pc) => ({
+    channelId: pc.channelId || pc.channel_id || "",
+    deliverableId: pc.deliverableId || pc.deliverable_id || "",
+    quantity: pc.quantity || "",
+    channelBudget: pc.channelBudget || pc.channel_budget || "",
+    manHours: pc.manHours || pc.man_hours || "",
+  }));
+}
+
 export const ProjectSetup = () => {
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -305,9 +320,8 @@ export const ProjectSetup = () => {
     return response;
   };
 
-  const handleOpenView = (project: Project) => {
+  const applyProjectToForm = useCallback((project: Project) => {
     const detailState = getProjectDetailState(project);
-    setViewingProject(project);
     setProjectType(detailState.projectType);
     setName(detailState.name);
     setProjectNumber(detailState.projectNumber);
@@ -322,7 +336,6 @@ export const ProjectSetup = () => {
     setGrandTotal(detailState.grandTotal);
     setQuotationReference(detailState.quotationReference);
     setIoFile(detailState.ioFile);
-    setDateRange(getProjectAssignmentDateRange(project));
     setDescription(detailState.description);
     setNotes(detailState.notes);
     setFlag(detailState.flag);
@@ -331,15 +344,59 @@ export const ProjectSetup = () => {
     setPitchStatus(detailState.pitchStatus);
     setValueTotalEstimate(detailState.valueTotalEstimate);
     setHsDealId(detailState.hsDealId);
-    const projectWithChannels = project as ProjectWithRawChannels;
-    const channelsData = projectWithChannels.channels || projectWithChannels.projectChannels || [];
-    const nextProjectChannels = channelsData.map((pc) => ({
-      channelId: pc.channelId || pc.channel_id || "",
-      deliverableId: pc.deliverableId || pc.deliverable_id || "",
-      quantity: pc.quantity || "",
-      channelBudget: pc.channelBudget || pc.channel_budget || "",
-      manHours: pc.manHours || pc.man_hours || "",
-    }));
+    // Channels are set by handleOpenView (alongside initialProjectChannels) so
+    // the projection's channel list is mapped exactly once per open.
+  }, []);
+
+  const applyDetailOverlay = useCallback((detail: Project) => {
+    const detailState = getProjectDetailState(detail);
+    // Detail-only fields the projection does not carry. Deliberately omits
+    // name / brandId / color / status / startDate / endDate — those remain from
+    // the projection (single source of truth for timeline-rendered fields).
+    setProjectNumber(detailState.projectNumber);
+    setBusinessUnitId(detailState.businessUnitId);
+    setProjectCategoryId(detailState.projectCategoryId);
+    setCurrency(detailState.currency);
+    setBudget(detailState.budget);
+    setAsf(detailState.asf);
+    setGrandTotal(detailState.grandTotal);
+    setQuotationReference(detailState.quotationReference);
+    setIoFile(detailState.ioFile);
+    setDescription(detailState.description);
+    setNotes(detailState.notes);
+    setRegion(detailState.region);
+    setSubmitDate(detailState.submitDate);
+    setPitchStatus(detailState.pitchStatus);
+    setValueTotalEstimate(detailState.valueTotalEstimate);
+    setHsDealId(detailState.hsDealId);
+    // Channels are intentionally NOT overlaid: the live single-fetch does not
+    // reliably return channel rows, and channel.manHours is user-editable —
+    // re-applying here would wipe projection channels or stomp an edit. Channel
+    // population is out of scope for this change.
+  }, []);
+
+  const detailProjectType =
+    viewingProject?.projectType === "campaign" || viewingProject?.projectType === "pitch"
+      ? viewingProject.projectType
+      : undefined;
+
+  const {
+    data: liveProjectDetail,
+    isFetching: isDetailFetching,
+    isError: isDetailError,
+  } = useProjectDetail(detailProjectType, viewingProject?.id, isDialogOpen);
+
+  useEffect(() => {
+    if (liveProjectDetail) {
+      applyDetailOverlay(liveProjectDetail);
+    }
+  }, [liveProjectDetail, applyDetailOverlay]);
+
+  const handleOpenView = (project: Project) => {
+    setViewingProject(project);
+    applyProjectToForm(project);
+    setDateRange(getProjectAssignmentDateRange(project));
+    const nextProjectChannels = mapRawChannels(project);
     setProjectChannels(nextProjectChannels);
     setInitialProjectChannels(nextProjectChannels);
     setPendingAssignments([]);
@@ -879,7 +936,19 @@ export const ProjectSetup = () => {
 
                 {/* Budget & Financial Section */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-foreground border-b pb-2">Budget & Financial</h3>
+                  <h3 className="text-sm font-semibold text-foreground border-b pb-2 flex items-center">
+                    Budget &amp; Financial
+                    {isDetailFetching ? (
+                      <span className="ml-2 inline-flex items-center text-xs text-muted-foreground font-normal">
+                        <Icon icon="lucide:loader-2" className="h-3 w-3 mr-1 animate-spin" />
+                        Loading details…
+                      </span>
+                    ) : isDetailError ? (
+                      <span className="ml-2 text-xs text-amber-600 font-normal">
+                        Couldn&apos;t load full details from Timetrack
+                      </span>
+                    ) : null}
+                  </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">

@@ -163,6 +163,19 @@ async function fetchProject(id: string): Promise<Project> {
   return data.data;
 }
 
+async function fetchProjectDetail(
+  projectType: "campaign" | "pitch",
+  id: string
+): Promise<Project> {
+  const segment = projectType === "campaign" ? "campaigns" : "pitches";
+  const response = await fetch(`/api/projects/${segment}/${encodeURIComponent(id)}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${projectType} detail`);
+  }
+  const data = await response.json();
+  return data.data;
+}
+
 async function fetchProjectsByBrand(brandId: string): Promise<ProjectOption[]> {
   const response = await fetch(`/api/projects/summary?brandId=${encodeURIComponent(brandId)}`);
   if (!response.ok) {
@@ -226,6 +239,28 @@ export function useProject(id: string) {
     queryKey: queryKeys.project(id),
     queryFn: () => fetchProject(id),
     enabled: !!id,
+  });
+}
+
+/**
+ * Live, Timetrack-backed detail fetch for a single campaign/pitch, keyed by
+ * source type + UUID. Used by the detail modal (cold path) to overlay accurate
+ * financial/identity fields onto the projection data. Distinct from `useProject`
+ * (which targets a different, non-type-aware endpoint). Pass `enabled` so it only
+ * fires while the modal is open.
+ */
+export function useProjectDetail(
+  projectType: "campaign" | "pitch" | undefined,
+  id: string | undefined,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey:
+      projectType && id
+        ? queryKeys.projectDetail(projectType, id)
+        : ["projects", "detail", "disabled"],
+    queryFn: () => fetchProjectDetail(projectType!, id!),
+    enabled: enabled && !!projectType && !!id,
   });
 }
 
