@@ -300,13 +300,57 @@ describe("planner directory repository", () => {
     expect(sql).toContain("EXISTS (SELECT 1 FROM assignments x WHERE x.employee_uuid = e.employee_uuid");
     expect(sql).toContain("EXISTS (SELECT 1 FROM actual x WHERE x.employee_uuid = e.employee_uuid");
     expect(sql).toContain("COALESCE(x.is_time_off, 0) = 0");
-    // params in textual order: plan EXISTS (ids, range), actual EXISTS (ids,
-    // range), then LIMIT/OFFSET — positional placeholders bind by position.
+    expect(sql).toContain("e.employment_status = 'active'");
+    // params in textual order: active filter (range), plan EXISTS (ids, range),
+    // actual EXISTS (ids, range), then LIMIT/OFFSET — positional placeholders
+    // bind by position. The active-employee filter composes with the brand
+    // scope, so its range params lead.
     expect(params).toEqual([
+      "2026-04-01", "2026-06-30",
       "proj-1", "proj-2", "2026-04-01", "2026-06-30",
       "proj-1", "proj-2", "2026-04-01", "2026-06-30",
       60, 0,
     ]);
+  });
+
+  it("shows only active employees, resurfacing inactive ones with planned work in the visible range", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listEmployeesForBootstrap({
+      offset: 0,
+      limit: 60,
+      assignmentRange: { startDate: "2026-01-01", endDate: "2026-12-31" },
+    });
+
+    const [sql, params] = db.query.mock.calls[0] as unknown as [string, unknown[]];
+    // Active employees always show; an inactive employee surfaces only via a
+    // planned (non-time-off) assignment overlapping the range — no actual,
+    // no project scoping.
+    expect(sql).toContain(
+      "(e.employment_status = 'active' OR EXISTS (SELECT 1 FROM assignments x WHERE x.employee_uuid = e.employee_uuid AND x.end_date >="
+    );
+    expect(sql).not.toContain("FROM actual x");
+    expect(sql).toContain("COALESCE(x.is_time_off, 0) = 0");
+    // Only the active filter's range params precede LIMIT/OFFSET.
+    expect(params).toEqual(["2026-01-01", "2026-12-31", 60, 0]);
+  });
+
+  it("does not apply the active-employee filter to the self-scoped fetch", async () => {
+    const db = createMockDb();
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listEmployeesForBootstrap({
+      offset: 0,
+      limit: 1,
+      employeeUuid: "emp-self",
+      assignmentRange: { startDate: "2026-04-01", endDate: "2026-06-30" },
+    });
+
+    const [sql, params] = db.query.mock.calls[0] as unknown as [string, unknown[]];
+    // A user always sees their own row regardless of status — no active filter.
+    expect(sql).not.toContain("e.employment_status = 'active'");
+    expect(params).toEqual(["emp-self", 1, 0]);
   });
 
   it("queries local projects and brands for bootstrap without touching Timetrack", async () => {
