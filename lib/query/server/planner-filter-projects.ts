@@ -37,7 +37,7 @@ function randomColor(seed: string): string {
   return `#${hash.toString(16).padStart(6, "0")}`;
 }
 
-function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
+export function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
   return {
     id: project.sourceProjectId,
     name: project.name,
@@ -51,6 +51,8 @@ function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
         ? project.status
         : "planning",
     projectType: project.sourceType,
+    startDate: project.startDate,
+    endDate: project.endDate,
     brandId: project.brandId,
     brandName: project.brandName ?? null,
     brandCompanyName: project.brandCompanyName ?? null,

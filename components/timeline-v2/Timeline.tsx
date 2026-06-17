@@ -21,6 +21,8 @@ import {
   getTimelineVisibleWidth,
 } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
+import { useAddProjectStore } from "@/lib/timeline-v2/add-project-store";
+import { AddProjectDialog } from "@/components/timeline-v2/AddProjectDialog";
 import { TimelineToolbar } from "@/components/timeline-v2/TimelineToolbar";
 import { DataStatus } from "@/components/timeline-v2/DataStatus";
 import { TimelineHeader } from "@/components/timeline-v2/TimelineHeader";
@@ -291,6 +293,7 @@ export function Timeline({
     [brandId, department, projectId, searchQuery]
   );
   const previousRowStateResetKeyRef = useRef(rowStateResetKey);
+  const canEditAssignmentsRef = useRef(false);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleIds.length,
@@ -308,6 +311,7 @@ export function Timeline({
       return getTimelineEstimatedRowHeight({
         isExpanded,
         laneCount: model?.projectLanes.length ?? 0,
+        canEditAssignments: canEditAssignmentsRef.current,
       });
     },
     overscan: 10,
@@ -406,7 +410,12 @@ export function Timeline({
   }, [hasBootstrapData, isBootstrapRefetchError, isFetchingBootstrap, metadataFreshness]);
 
   const canEditAssignments = rowLoadingState.canEditAssignments && !!session?.access?.can_view_all;
+  useEffect(() => {
+    canEditAssignmentsRef.current = canEditAssignments;
+    rowVirtualizer.measure();
+  }, [canEditAssignments, rowVirtualizer]);
   const hasEditorTarget = useAssignmentEditorStore((state) => state.target !== null);
+  const hasAddProjectTarget = useAddProjectStore((state) => state.target !== null);
 
   return (
     <div
@@ -461,6 +470,10 @@ export function Timeline({
           createdByUuid={session?.employee?.uuid ?? null}
           isFullAccess={!!session?.access?.can_view_all}
         />
+      ) : null}
+
+      {hasAddProjectTarget ? (
+        <AddProjectDialog createdByUuid={session?.employee?.uuid ?? null} />
       ) : null}
     </div>
   );

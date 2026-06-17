@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import { CapacityStrip } from "@/components/timeline-v2/CapacityStrip";
 import { ProjectLane } from "@/components/timeline-v2/ProjectLane";
+import { AddProjectLaneRow } from "@/components/timeline-v2/AddProjectLaneRow";
 import { ResourceIdentityCell } from "@/components/timeline-v2/ResourceIdentityCell";
 import { TimelineExpandedSkeleton, TimelineRowLoadingCells } from "@/components/timeline-v2/LoadingStates";
 import { useIsRowExpanded, useTimelineExpansionStore } from "@/lib/timeline-v2/expansion-store";
@@ -51,6 +52,20 @@ export const ResourceRow = React.memo(function ResourceRow({
     [brandId, isExpanded, projectDays, projectId, row.assignments, row.projectLanes]
   );
 
+  // Project ids this employee already has assignments on — used to disable them
+  // in the Add-project picker. Same id space as ProjectOption.id.
+  const assignedProjectIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          row.assignments
+            .filter((assignment) => assignment.projectId && !assignment.isTimeOff)
+            .map((assignment) => assignment.projectId as string)
+        )
+      ),
+    [row.assignments]
+  );
+
   return (
     <div className="relative z-0 border-b" data-testid="resource-row-v2" data-resource-id={row.resource.id}>
       <div className="flex h-timeline-row hover:bg-accent/5 transition-colors group">
@@ -73,17 +88,25 @@ export const ResourceRow = React.memo(function ResourceRow({
           {showExpandedLoading ? (
             <TimelineExpandedSkeleton />
           ) : (
-            orderedLanes.map((lane) => (
-              <ProjectLane
-                key={lane.projectId}
-                lane={lane}
-                resourceId={row.resource.id}
-                resourceAssignments={row.assignments}
-                columns={columns}
-                viewMode={viewMode}
-                canEditAssignments={canEditAssignments}
-              />
-            ))
+            <>
+              {orderedLanes.map((lane) => (
+                <ProjectLane
+                  key={lane.projectId}
+                  lane={lane}
+                  resourceId={row.resource.id}
+                  resourceAssignments={row.assignments}
+                  columns={columns}
+                  viewMode={viewMode}
+                  canEditAssignments={canEditAssignments}
+                />
+              ))}
+              {canEditAssignments ? (
+                <AddProjectLaneRow
+                  resourceId={row.resource.id}
+                  assignedProjectIds={assignedProjectIds}
+                />
+              ) : null}
+            </>
           )}
         </div>
       ) : null}

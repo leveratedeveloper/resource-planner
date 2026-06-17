@@ -43,4 +43,19 @@ describe("timeline-v2 layout", () => {
       TIMELINE_DIMENSIONS.row + TIMELINE_DIMENSIONS.lane
     );
   });
+
+  it("reserves an extra lane for the add-project row when expanded and editable", () => {
+    // Editable + lanes: row + laneCount lanes + 1 add-project lane.
+    expect(
+      getTimelineEstimatedRowHeight({ isExpanded: true, laneCount: 3, canEditAssignments: true })
+    ).toBe(TIMELINE_DIMENSIONS.row + 4 * TIMELINE_DIMENSIONS.lane);
+    // Editable + zero lanes: row + the single add-project lane.
+    expect(
+      getTimelineEstimatedRowHeight({ isExpanded: true, laneCount: 0, canEditAssignments: true })
+    ).toBe(TIMELINE_DIMENSIONS.row + TIMELINE_DIMENSIONS.lane);
+    // Collapsed ignores canEditAssignments.
+    expect(
+      getTimelineEstimatedRowHeight({ isExpanded: false, laneCount: 5, canEditAssignments: true })
+    ).toBe(TIMELINE_DIMENSIONS.row);
+  });
 });
