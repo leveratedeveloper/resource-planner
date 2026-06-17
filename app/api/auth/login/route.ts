@@ -134,10 +134,17 @@ export async function POST(request: NextRequest) {
       timing.phase("uuid_fallback", { found: !!employeeUuid });
     }
 
-    // 4. Determine access level
+    // 4. Determine access level (by stable nik + dept_id, not name)
+    if (!employee.dept_id) {
+      console.warn(
+        '[Login API] Employee has no dept_id; access relies on NIK allowlist only. nik:',
+        employee.nik
+      );
+    }
     const accessLevel = determineAccessLevel({
-      department_name,
-      position: employee.position
+      nik: employee.nik,
+      dept_id: employee.dept_id,
+      position: employee.position,
     });
     console.log('[Login API] Access level determined:', accessLevel);
 
