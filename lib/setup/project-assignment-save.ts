@@ -152,7 +152,7 @@ export function buildPendingAssignmentPayloads(params: {
   });
 }
 
-function countWeekdaysInclusive(start: Date, end: Date) {
+export function countWeekdaysInclusive(start: Date, end: Date) {
   let count = 0;
   const cursor = startOfDay(start);
   const final = startOfDay(end);

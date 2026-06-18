@@ -775,11 +775,17 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
   // repository's default db IS assignmentsDb).
   function buildAssignmentExistsClause(
     table: "assignments" | "actual",
-    projectIds: string[],
+    projectIds: string[] | null,
     range: { startDate: string; endDate: string },
     params: unknown[]
   ): string {
-    const inClause = buildInClause("x.project_uuid", projectIds, dialect, params);
+    // projectIds null/empty → no project scoping: matches any of the employee's
+    // assignments in range (used by the active-employee filter, which only
+    // cares whether work exists, not on which project).
+    const projectClause =
+      projectIds && projectIds.length > 0
+        ? ` AND ${buildInClause("x.project_uuid", projectIds, dialect, params)}`
+        : "";
     params.push(range.startDate);
     const startPlaceholder = dialect === "postgresql" ? `$${params.length}` : "?";
     params.push(range.endDate);
@@ -792,7 +798,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         ? "COALESCE(x.is_time_off::integer, 0) = 0"
         : "COALESCE(x.is_time_off, 0) = 0";
 
-    return `EXISTS (SELECT 1 FROM ${table} x WHERE x.employee_uuid = e.employee_uuid AND ${inClause} AND x.end_date >= ${startPlaceholder} AND x.start_date <= ${endPlaceholder} AND ${timeOffExclusion})`;
+    return `EXISTS (SELECT 1 FROM ${table} x WHERE x.employee_uuid = e.employee_uuid${projectClause} AND x.end_date >= ${startPlaceholder} AND x.start_date <= ${endPlaceholder} AND ${timeOffExclusion})`;
   }
 
   async function listEmployeesForBootstrap(args: {
@@ -822,6 +828,19 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     if (args.department) {
       params.push(args.department);
       whereClauses.push(`e.department_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    // Active-employee filter: active employees always show; an inactive
+    // employee surfaces only when they still have a planned (non-time-off)
+    // assignment overlapping the visible range. Because the timeline's view
+    // ranges are calendar-aligned, a yearly view (Jan–Dec) can resurface
+    // someone who left mid-year, while a quarter view that no longer contains
+    // their work hides them — the range does the work, no per-view logic.
+    // Skipped for the self-scoped fetch (employeeUuid) so a user always sees
+    // their own row regardless of status.
+    if (!args.employeeUuid && args.assignmentRange) {
+      const plannedInRange = buildAssignmentExistsClause("assignments", null, args.assignmentRange, params);
+      whereClauses.push(`(e.employment_status = 'active' OR ${plannedInRange})`);
     }
 
     // Brand/project filters get the same treatment: only employees with a

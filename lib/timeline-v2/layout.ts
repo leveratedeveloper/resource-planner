@@ -44,10 +44,20 @@ export function getTimelineRangePosition({
 export function getTimelineEstimatedRowHeight({
   isExpanded,
   laneCount,
+  canEditAssignments = false,
 }: {
   isExpanded: boolean;
   laneCount: number;
+  canEditAssignments?: boolean;
 }): number {
   if (!isExpanded) return TIMELINE_DIMENSIONS.row;
-  return TIMELINE_DIMENSIONS.row + Math.max(laneCount, 1) * TIMELINE_DIMENSIONS.lane;
+  // Expanded content = one lane per project + (when editable) the
+  // "+ Add project" row, which renders below the lanes (ResourceRow). Reserve at
+  // least one lane so an empty expanded row is never zero-height (legacy floor).
+  const lanesHeight = laneCount * TIMELINE_DIMENSIONS.lane;
+  const addProjectRowHeight = canEditAssignments ? TIMELINE_DIMENSIONS.lane : 0;
+  return (
+    TIMELINE_DIMENSIONS.row +
+    Math.max(lanesHeight + addProjectRowHeight, TIMELINE_DIMENSIONS.lane)
+  );
 }
