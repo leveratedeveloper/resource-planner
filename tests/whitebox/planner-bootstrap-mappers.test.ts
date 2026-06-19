@@ -106,9 +106,11 @@ describe("planner bootstrap wire mappers", () => {
     expect(Object.keys(minimal).sort()).toEqual([
       "department",
       "departmentId",
+      "employmentStatus",
       "fullName",
       "id",
       "position",
+      "sourceEmployeeId",
       "weeklyCapacity",
     ]);
     expect(minimal.departmentId).toBe("dept-1");

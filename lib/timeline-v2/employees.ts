@@ -28,6 +28,72 @@ export type TimelineEmployeeFilterInput = {
   filters: TimelineEmployeeFilters;
 };
 
+function normalizeEmployeeName(name: string | null | undefined): string {
+  return (name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getEmployeeIdsWithWork(
+  dateFilteredAssignments: Assignment[],
+  visibleActualAssignments: ActualAssignment[]
+): Set<string> {
+  const ids = new Set<string>();
+  for (const assignment of dateFilteredAssignments) ids.add(assignment.employeeId);
+  for (const assignment of visibleActualAssignments) ids.add(assignment.employeeUuid);
+  return ids;
+}
+
+// Same name AND same source id collapse together. A null source id falls back to
+// the unique employee id, so source-less rows never merge with anything.
+function getEmployeeDedupeKey(employee: Employee): string {
+  const sourceKey = employee.sourceEmployeeId ?? employee.id;
+  return `${normalizeEmployeeName(employee.fullName)}|${sourceKey}`;
+}
+
+// Tie-break: a record with visible work beats one without; among equals an active
+// record wins; otherwise the incumbent (already alphabetical) stays.
+function isBetterEmployeeRepresentative(
+  candidate: Employee,
+  current: Employee,
+  idsWithWork: Set<string>
+): boolean {
+  const candidateHasWork = idsWithWork.has(candidate.id);
+  const currentHasWork = idsWithWork.has(current.id);
+  if (candidateHasWork !== currentHasWork) return candidateHasWork;
+
+  const candidateActive = candidate.employmentStatus === "active";
+  const currentActive = current.employmentStatus === "active";
+  if (candidateActive !== currentActive) return candidateActive;
+
+  return false;
+}
+
+// The planner directory holds the same person under many employee uuids (a sync
+// inserts instead of upserts), so a single name renders dozens of times. Collapse
+// to one representative per name+source so each resource appears exactly once.
+// Input must already be alphabetically sorted — first-appearance order is kept.
+export function dedupeTimelineEmployeesByNameAndSource(
+  employees: Employee[],
+  idsWithWork: Set<string>
+): Employee[] {
+  const representativeByKey = new Map<string, Employee>();
+  const keyOrder: string[] = [];
+
+  for (const employee of employees) {
+    const key = getEmployeeDedupeKey(employee);
+    const current = representativeByKey.get(key);
+    if (!current) {
+      representativeByKey.set(key, employee);
+      keyOrder.push(key);
+      continue;
+    }
+    if (isBetterEmployeeRepresentative(employee, current, idsWithWork)) {
+      representativeByKey.set(key, employee);
+    }
+  }
+
+  return keyOrder.map((key) => representativeByKey.get(key)!);
+}
+
 export function sortTimelineEmployees(employees: Employee[]): Employee[] {
   return sortEmployeeRecordsByName(employees);
 }
@@ -90,5 +156,7 @@ export function filterTimelineEmployees({
     filtered = filtered.filter((employee) => matchesSearch(employee, query));
   }
 
-  return sortTimelineEmployees(filtered);
+  const sorted = sortTimelineEmployees(filtered);
+  const idsWithWork = getEmployeeIdsWithWork(dateFilteredAssignments, visibleActualAssignments);
+  return dedupeTimelineEmployeesByNameAndSource(sorted, idsWithWork);
 }
