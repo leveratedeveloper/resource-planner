@@ -20,7 +20,14 @@ import type {
 // the timeline's ONLY employee rows since the complete-list path was retired.
 export type MinimalTimelineEmployee = Pick<
   Employee,
-  "id" | "fullName" | "position" | "weeklyCapacity" | "department" | "departmentId"
+  | "id"
+  | "fullName"
+  | "position"
+  | "weeklyCapacity"
+  | "department"
+  | "departmentId"
+  | "sourceEmployeeId"
+  | "employmentStatus"
 >;
 
 // Wire-shapes for the reference maps: exactly the fields the client mappers
@@ -119,6 +126,8 @@ export function toMinimalEmployee(
 
   return {
     id: employee.employeeUuid,
+    sourceEmployeeId: employee.sourceEmployeeId,
+    employmentStatus: employee.employmentStatus as Employee["employmentStatus"],
     fullName: employee.fullName,
     position: employee.position ?? "",
     weeklyCapacity: employee.weeklyCapacity,

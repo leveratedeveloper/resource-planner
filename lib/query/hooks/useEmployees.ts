@@ -19,6 +19,7 @@ interface EmployeeBrandAssignment {
 export interface Employee {
   id: string;
   employeeNumber: string | null;
+  sourceEmployeeId?: string | null;
   fullName: string;
   nickname: string | null;
   email: string | null;
