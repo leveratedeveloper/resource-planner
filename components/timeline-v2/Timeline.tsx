@@ -7,7 +7,6 @@ import { useAuth } from "@/context/AuthContext";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { getResourceRowLoadingState } from "@/lib/timeline-v2/resource-row-loading";
-import { getTimelineRowStateResetKey } from "@/lib/timeline-v2/row-state";
 import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/planner/initial-load";
 import { getTimelineColumns, getTimelineResolution } from "@/lib/timeline-v2/date-range";
 import { buildEmployeeRowModels } from "@/lib/timeline-v2/row-model";
@@ -189,34 +188,22 @@ export function Timeline({
     if (!assignmentDateRange || !shouldEnableTimelineAssignments(assignmentDateRange)) {
       return undefined;
     }
-
     return {
       viewMode,
       resolution: getTimelineResolution(viewMode),
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
-      filters: {
-        category: null,
-        status: null,
-      },
-      // One bootstrap page fills the viewport with headroom; the route clamps
-      // to 100. Small pages made first load crawl the directory request by
-      // request, rebuilding row models on every arrival. The offset is the
-      // infinite-query page param, not part of the request.
-      employeeLimit: 60,
-      brandId,
-      department,
-      projectId,
-      search: searchQuery?.trim() || null,
+      filters: { category: null, status: null },
     };
-  }, [assignmentDateRange, brandId, department, projectId, searchQuery, viewMode]);
+  }, [assignmentDateRange, viewMode]);
 
   const timelineFilters = useMemo(
     () => ({ brandId, department, projectId, searchQuery }),
     [brandId, department, projectId, searchQuery]
   );
-  // ONE data source: infinite bootstrap pages. Each page carries an employee
-  // slice with its own assignments; the hook returns the merged unions.
+  // ONE data source: a single windowed bootstrap query. It carries every
+  // employee with their assignments for the date window; filters re-slice it
+  // client-side via visibleIds, so changing a filter never refetches.
   const {
     employees,
     assignments: dateFilteredAssignments,
@@ -229,9 +216,6 @@ export function Timeline({
     isFetchingBootstrap,
     isShowingPreviousBootstrap,
     isBootstrapRefetchError,
-    hasNextEmployeePage,
-    isFetchingNextEmployeePage,
-    fetchNextEmployeePage,
   } = useTimelineEmployees({
     request: bootstrapRequest,
     initialBootstrap,
@@ -282,17 +266,6 @@ export function Timeline({
     [dateFilteredAssignments, employees, projectById, selectedBrandProjectIds, timelineFilters, visibleActualAssignments]
   );
 
-  const rowStateResetKey = useMemo(
-    () =>
-      getTimelineRowStateResetKey({
-        brandId,
-        department,
-        projectId,
-        searchQuery,
-      }),
-    [brandId, department, projectId, searchQuery]
-  );
-  const previousRowStateResetKeyRef = useRef(rowStateResetKey);
   const canEditAssignmentsRef = useRef(false);
 
   const rowVirtualizer = useVirtualizer({
@@ -327,39 +300,10 @@ export function Timeline({
     [rowVirtualizer]
   );
 
-  useEffect(() => {
-    if (previousRowStateResetKeyRef.current === rowStateResetKey) return;
-    previousRowStateResetKeyRef.current = rowStateResetKey;
-    useTimelineExpansionStore.getState().collapseAll();
-    rowVirtualizer.scrollToOffset(0);
-  }, [rowStateResetKey, rowVirtualizer]);
-
   // Skeletons (and the edit lock) engage only while OLD-request data is shown
-  // for a NEW request (filter/date change). Same-key background refetches —
+  // for a NEW request (date/view change). Same-key background refetches —
   // e.g. the invalidation after every save/drag — keep rendering current data.
   const isApplyingNewRequest = isShowingPreviousBootstrap && isFetchingBootstrap;
-
-  useEffect(() => {
-    // While a new request is applying, placeholder rows are the OLD key's —
-    // fetching "next" here cancels and restarts the new key's page-0 fetch.
-    if (isApplyingNewRequest || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
-    const lastVirtualRow = virtualRows[virtualRows.length - 1];
-    const shouldPrefetchInitialRows = !isLoadingBootstrap && visibleIds.length < 20;
-    const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleIds.length - 10;
-
-    if (shouldPrefetchInitialRows || shouldPrefetchNearEnd) {
-      // Dedupe onto any in-flight fetch instead of cancel-restarting it.
-      fetchNextEmployeePage({ cancelRefetch: false });
-    }
-  }, [
-    fetchNextEmployeePage,
-    hasNextEmployeePage,
-    isApplyingNewRequest,
-    isFetchingNextEmployeePage,
-    isLoadingBootstrap,
-    virtualRows,
-    visibleIds.length,
-  ]);
 
   const rowLoadingState = getResourceRowLoadingState({
     hasPlannerData: hasBootstrapData,
@@ -459,7 +403,6 @@ export function Timeline({
             canEditAssignments={canEditAssignments}
             brandId={brandId}
             projectId={projectId}
-            isFetchingNextEmployeePage={isFetchingNextEmployeePage}
           />
         </div>
       )}

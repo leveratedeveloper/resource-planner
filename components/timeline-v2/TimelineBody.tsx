@@ -3,7 +3,6 @@
 import React from "react";
 import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { ResourceRow } from "@/components/timeline-v2/ResourceRow";
-import { TimelineLoadingMore } from "@/components/timeline-v2/LoadingStates";
 import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
 
@@ -19,7 +18,6 @@ type TimelineBodyProps = {
   canEditAssignments: boolean;
   brandId: string | null;
   projectId: string | null;
-  isFetchingNextEmployeePage?: boolean;
 };
 
 // Virtualized rows region. Lives inside the single scroll container owned by
@@ -37,7 +35,6 @@ export function TimelineBody({
   canEditAssignments,
   brandId,
   projectId,
-  isFetchingNextEmployeePage,
 }: TimelineBodyProps) {
   return (
     <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
@@ -67,7 +64,6 @@ export function TimelineBody({
           </div>
         );
       })}
-      {isFetchingNextEmployeePage ? <TimelineLoadingMore /> : null}
     </div>
   );
 }

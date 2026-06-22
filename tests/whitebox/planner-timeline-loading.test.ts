@@ -135,7 +135,7 @@ describe("planner timeline loading contract", () => {
 
     expect(timelineSource).toContain("Object.values(projectsById).map(toProjectOption)");
     expect(timelineSource).toContain("request: bootstrapRequest");
-    expect(employeesHookSource).toContain("mergeBootstrapPages");
+    expect(employeesHookSource).toContain("usePlannerHomeBootstrapWindow");
     expect(timelineSource).toContain("selectedBrandProjectIds");
     expect(timelineSource).not.toContain("useProjectsByBrand(brandId ?? \"\")");
     expect(timelineSource).not.toContain("isLoadingSelectedBrandProjects");
@@ -316,13 +316,16 @@ describe("planner timeline loading contract", () => {
     expect(resourceRowSource).toContain("TimelineRowLoadingCells");
   });
 
-  it("keeps infinite employee expansion active after bootstrap seeds the first page", () => {
+  it("seeds the single windowed bootstrap query and drops employee pagination", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const employeesHookSource = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
 
     expect(employeesHookSource).toContain("initialData: initialBootstrap ?? undefined");
-    expect(timelineSource).toContain("hasNextEmployeePage");
-    expect(timelineSource).toContain("fetchNextEmployeePage({ cancelRefetch: false })");
+    expect(employeesHookSource).toContain("usePlannerHomeBootstrapWindow");
+    // Pagination is gone: no next-page handles or viewport prefetch effect.
+    expect(timelineSource).not.toContain("hasNextEmployeePage");
+    expect(timelineSource).not.toContain("fetchNextEmployeePage");
+    expect(employeesHookSource).not.toContain("fetchNextPage");
     expect(timelineSource).not.toContain("if (shouldUseHomeBootstrap || !!plannerHomeBootstrap");
   });
 });

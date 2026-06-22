@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Timeline bootstrap integration", () => {
-  it("uses the paged bootstrap hook as the only timeline data source", () => {
+  it("uses the windowed bootstrap hook as the only timeline data source", () => {
     const source = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
     expect(source).toContain("useTimelineEmployees({");
@@ -22,14 +22,30 @@ describe("Timeline bootstrap integration", () => {
     expect(hookSource).toContain("/api/planner/home-bootstrap");
   });
 
-  it("merges loaded pages and seeds page 0 from the server bootstrap", () => {
+  it("reads the single windowed response and seeds it from the server bootstrap", () => {
     const employeesHookSource = readFileSync("lib/timeline-v2/use-timeline-employees.ts", "utf8");
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
-    expect(employeesHookSource).toContain("mergeBootstrapPages");
+    expect(employeesHookSource).toContain("usePlannerHomeBootstrapWindow");
+    expect(employeesHookSource).toContain("data.plannerTimeline.assignments");
     expect(employeesHookSource).toContain("initialData: initialBootstrap ?? undefined");
     expect(employeesHookSource).toContain("initialDataUpdatedAt: initialBootstrap");
+    // The infinite-page merge / depth-refill machinery is gone.
+    expect(employeesHookSource).not.toContain("mergeBootstrapPages");
+    expect(employeesHookSource).not.toContain("usePlannerHomeBootstrapPages");
     expect(timelineSource).toContain("initialBootstrap?: PlannerHomeBootstrapResponse | null");
     expect(timelineSource).toContain("initialBootstrap,");
+  });
+
+  it("does not refetch on filter changes: the request is unscoped to brand/project/department/search", () => {
+    const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
+
+    // The window request keys only on view/date — no filter fields feed the fetch.
+    expect(timelineSource).not.toContain("employeeLimit");
+    expect(timelineSource).not.toContain("fetchNextEmployeePage");
+    expect(timelineSource).not.toContain("hasNextEmployeePage");
+    expect(timelineSource).not.toContain("isFetchingNextEmployeePage");
+    // Client-side filtering remains the source of visible rows.
+    expect(timelineSource).toContain("getVisibleEmployeeIds");
   });
 });

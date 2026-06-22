@@ -46,14 +46,17 @@ describe("timeline row state helpers", () => {
     expect(base).not.toBe(filtered);
   });
 
-  it("resets expanded timeline row state from the global filter signature", () => {
+  it("persists expansion and scroll across filter changes (no filter-key reset)", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
-    expect(timelineSource).toContain("rowStateResetKey");
-    expect(timelineSource).toContain("useTimelineExpansionStore.getState().collapseAll()");
+    // Client-side filtering re-slices the in-memory window; expansion and
+    // scroll position must survive a filter change, so the old filter-key
+    // row-state reset is gone.
+    expect(timelineSource).not.toContain("rowStateResetKey");
+    expect(timelineSource).not.toContain("useTimelineExpansionStore.getState().collapseAll()");
+    expect(timelineSource).not.toContain("rowVirtualizer.scrollToOffset(0)");
     expect(timelineSource).not.toContain("setSelectedProjectIdsByEmployee");
     expect(timelineSource).not.toContain("setInitializedProjectFiltersByEmployee");
     expect(timelineSource).not.toContain("setOpenProjectFilterEmployeeIds");
-    expect(timelineSource).toContain("rowVirtualizer.scrollToOffset(0)");
   });
 });
