@@ -3,6 +3,7 @@ import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
 import type { EmployeeDayMap } from "@/lib/timeline-v2/allocation-day-map";
 import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 import { toLocalDateString } from "@/lib/utils";
+import { formatAssignmentDisplayHours } from "@/lib/timeline-v2/assignment-display-hours";
 
 export type AllocationCellModel =
   | { kind: "empty" }
@@ -10,8 +11,12 @@ export type AllocationCellModel =
       kind: "allocation";
       planPct: number;
       actualPct: number;
+      planHours: number;
+      actualHours: number;
       planLabel: string;
       actualLabel: string;
+      planHoursLabel: string;
+      actualHoursLabel: string;
     };
 
 export type AllocationCellModelInput = {
@@ -93,11 +98,17 @@ export function getAllocationCellModel({
 
   if (planPct <= 0 && actualPct <= 0) return { kind: "empty" };
 
+  const roundHours = (hours: number) => Math.round(hours * 10) / 10;
+
   return {
     kind: "allocation",
     planPct,
     actualPct,
+    planHours: roundHours(totalPlanHours),
+    actualHours: roundHours(totalActualHours),
     planLabel: `${Math.round(planPct * 100)}%`,
     actualLabel: `${Math.round(actualPct * 100)}%`,
+    planHoursLabel: formatAssignmentDisplayHours(totalPlanHours),
+    actualHoursLabel: formatAssignmentDisplayHours(totalActualHours),
   };
 }
