@@ -21,28 +21,3 @@ export function setEmployeeFlag(
   return next;
 }
 
-type TimelineRowStateResetInput = {
-  brandId: string | null;
-  department: string | null;
-  projectId: string | null;
-  searchQuery?: string;
-};
-
-function filterValue(value: string | null | undefined): string {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed.toLowerCase() : "all";
-}
-
-export function getTimelineRowStateResetKey({
-  brandId,
-  department,
-  projectId,
-  searchQuery,
-}: TimelineRowStateResetInput): string {
-  return [
-    `brand=${filterValue(brandId)}`,
-    `department=${filterValue(department)}`,
-    `project=${filterValue(projectId)}`,
-    `search=${filterValue(searchQuery)}`,
-  ].join("|");
-}
