@@ -917,23 +917,34 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     referencedProjectIds?: string[];
   }): Promise<PlannerDirectoryProjectRow[]> {
     const params: unknown[] = [];
-    const whereClauses = ["p.archived_at IS NULL"];
 
+    // The "scoped" set is the brand/search catalog subset. The "referenced"
+    // set is every project the visible assignments touch and must ALWAYS be
+    // present, or the timeline drops lanes for an employee's other-brand work.
+    // So referenced is UNIONed with scoped, never intersected.
+    const scopedConds: string[] = [];
     if (args.brandId) {
       params.push(args.brandId);
-      whereClauses.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+      scopedConds.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
     }
-
     const searchClause = buildLikeSearchClause(["p.name", "b.name", "b.company_name"], args.search, dialect, params);
     if (searchClause) {
-      whereClauses.push(searchClause);
+      scopedConds.push(searchClause);
     }
 
+    let referencedCond: string | null = null;
     if (args.referencedProjectIds && args.referencedProjectIds.length > 0) {
-      const referencedClause = buildInClause("p.source_project_id", args.referencedProjectIds, dialect, params);
-      if (referencedClause) {
-        whereClauses.push(referencedClause);
-      }
+      referencedCond = buildInClause("p.source_project_id", args.referencedProjectIds, dialect, params);
+    }
+
+    const scoped = scopedConds.length > 0 ? `(${scopedConds.join(" AND ")})` : null;
+    const whereClauses = ["p.archived_at IS NULL"];
+    if (scoped && referencedCond) {
+      whereClauses.push(`(${scoped} OR ${referencedCond})`);
+    } else if (scoped) {
+      whereClauses.push(scoped);
+    } else if (referencedCond) {
+      whereClauses.push(referencedCond);
     }
 
     const result = await db.query(

@@ -74,4 +74,5 @@ describe("bootstrap employee page scoping", () => {
     expect(bootstrapSource).toContain("assignmentProjectIds: scopedProjectIds");
     expect(bootstrapSource).toContain("scopedProjectIds && scopedProjectIds.length === 0");
   });
+
 });

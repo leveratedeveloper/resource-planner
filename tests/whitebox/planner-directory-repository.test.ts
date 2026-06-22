@@ -376,6 +376,67 @@ describe("planner directory repository", () => {
     );
   });
 
+  it("OR-combines brand scope with referenced projects so both sets appear", async () => {
+    let capturedSql = "";
+    let capturedParams: unknown[] = [];
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
+        capturedSql = sql;
+        capturedParams = params;
+        return [[]];
+      }),
+    };
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listProjectsForBootstrap({
+      brandId: "brand-1",
+      referencedProjectIds: ["proj-x"],
+    });
+
+    // The WHERE clause must use OR between the brand scope and the referenced-
+    // projects IN clause — not AND — so an employee's other-brand campaigns
+    // are never dropped when a brand filter is active.
+    expect(capturedSql).toContain(" OR ");
+    expect(capturedSql).toContain("p.brand_id");
+    expect(capturedSql).toContain("source_project_id");
+    // Both values must be bound as params.
+    expect(capturedParams).toContain("brand-1");
+    expect(capturedParams).toContain("proj-x");
+  });
+
+  it("includes referenced projects even when they fall outside the brand scope", async () => {
+    let capturedSql = "";
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
+        capturedSql = sql;
+        return [[]];
+      }),
+    };
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listProjectsForBootstrap({
+      brandId: "brand-1",
+      referencedProjectIds: ["proj-x"],
+    });
+
+    // The brand condition and the referenced IN clause must be separated by OR,
+    // not AND. If they were AND-ed inside a single parenthesised group the
+    // referenced projects would only surface when they also match the brand —
+    // which defeats the whole purpose. We confirm OR appears between them by
+    // checking that the SQL has OR between the brand clause and the
+    // source_project_id IN clause (they share the same combined condition block).
+    const brandPos = capturedSql.indexOf("p.brand_id");
+    const refPos = capturedSql.indexOf("source_project_id");
+    const orPos = capturedSql.indexOf(" OR ");
+    // Both conditions exist and OR appears somewhere between them.
+    expect(brandPos).toBeGreaterThan(-1);
+    expect(refPos).toBeGreaterThan(-1);
+    expect(orPos).toBeGreaterThan(-1);
+    // OR must sit between the brand placeholder and the referenced IN clause.
+    expect(orPos).toBeGreaterThan(brandPos);
+    expect(orPos).toBeLessThan(refPos);
+  });
+
   it("queries a paginated, searchable brand slice for filter options", async () => {
     const db = createMockDb();
     const repository = createPlannerDirectoryRepository({ db });
