@@ -3,11 +3,11 @@ import { getAllocationCellModel } from "@/lib/timeline-v2/allocation-model";
 import { toLocalDateString } from "@/lib/utils";
 
 describe("getAllocationCellModel — hours surfaced for display", () => {
-  it("returns plan hours and an h-suffixed label alongside the percentage (day view)", () => {
+  it("returns plan hours and an h-suffixed label alongside the percentage (single-day cell)", () => {
     const day = new Date(2026, 5, 15);
     const dayMap = new Map([[toLocalDateString(day), { planHours: 6, actualHours: 0 }]]);
 
-    const model = getAllocationCellModel({ dayMap, day, viewMode: "day", capacity: 40 });
+    const model = getAllocationCellModel({ dayMap, day, viewMode: "month", capacity: 40 });
 
     expect(model.kind).toBe("allocation");
     if (model.kind !== "allocation") return;
@@ -20,7 +20,7 @@ describe("getAllocationCellModel — hours surfaced for display", () => {
     const day = new Date(2026, 5, 15);
     const dayMap = new Map([[toLocalDateString(day), { planHours: 7.5, actualHours: 0 }]]);
 
-    const model = getAllocationCellModel({ dayMap, day, viewMode: "day", capacity: 40 });
+    const model = getAllocationCellModel({ dayMap, day, viewMode: "month", capacity: 40 });
 
     expect(model.kind).toBe("allocation");
     if (model.kind !== "allocation") return;
