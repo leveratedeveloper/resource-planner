@@ -13,13 +13,13 @@ describe("Timeline bootstrap integration", () => {
     expect(source).not.toContain("useCompleteEmployeeList");
   });
 
-  it("pages the bootstrap by employee offset with assignments riding each page", () => {
+  it("fetches the bootstrap in a single windowed query with keepPreviousData", () => {
     const hookSource = readFileSync("lib/query/hooks/usePlannerHomeBootstrap.ts", "utf8");
 
-    expect(hookSource).toContain("useInfiniteQuery");
-    expect(hookSource).toContain("employeeOffset: pageParam");
-    expect(hookSource).toContain("employeeHasMore");
+    expect(hookSource).toContain("useQuery");
+    expect(hookSource).toContain("usePlannerHomeBootstrapWindow");
     expect(hookSource).toContain("keepPreviousData");
+    expect(hookSource).toContain("/api/planner/home-bootstrap");
   });
 
   it("merges loaded pages and seeds page 0 from the server bootstrap", () => {
