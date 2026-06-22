@@ -801,6 +801,30 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     return `EXISTS (SELECT 1 FROM ${table} x WHERE x.employee_uuid = e.employee_uuid${projectClause} AND x.end_date >= ${startPlaceholder} AND x.start_date <= ${endPlaceholder} AND ${timeOffExclusion})`;
   }
 
+  function mapEmployeeReadRow(row: DbRow): PlannerDirectoryEmployeeRow {
+    return {
+      employeeUuid: String(row.employee_uuid),
+      sourceEmployeeId: row.source_employee_id ? String(row.source_employee_id) : null,
+      employeeNumber: row.employee_number ? String(row.employee_number) : null,
+      nik: row.nik ? String(row.nik) : null,
+      fullName: String(row.full_name ?? ""),
+      nickname: row.nickname ? String(row.nickname) : null,
+      email: row.email ? String(row.email) : null,
+      photo: row.photo ? String(row.photo) : null,
+      position: row.position ? String(row.position) : null,
+      departmentId: row.department_id ? String(row.department_id) : null,
+      weeklyCapacity: Number(row.weekly_capacity ?? 40),
+      employmentStatus: String(row.employment_status ?? "active"),
+      visibility: String(row.visibility ?? "active"),
+      workStartDate: row.work_start_date ? String(row.work_start_date) : null,
+      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+      sourceHash: String(row.source_hash ?? ""),
+      syncedAt: String(row.synced_at ?? ""),
+      lastSeenAt: String(row.last_seen_at ?? ""),
+      archivedAt: row.archived_at ? String(row.archived_at) : null,
+    };
+  }
+
   async function listEmployeesForBootstrap(args: {
     offset: number;
     limit: number;
@@ -885,30 +909,43 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
 
     return {
-      data: rows.map((row) => ({
-      employeeUuid: String(row.employee_uuid),
-      sourceEmployeeId: row.source_employee_id ? String(row.source_employee_id) : null,
-      employeeNumber: row.employee_number ? String(row.employee_number) : null,
-      nik: row.nik ? String(row.nik) : null,
-      fullName: String(row.full_name ?? ""),
-      nickname: row.nickname ? String(row.nickname) : null,
-      email: row.email ? String(row.email) : null,
-      photo: row.photo ? String(row.photo) : null,
-      position: row.position ? String(row.position) : null,
-      departmentId: row.department_id ? String(row.department_id) : null,
-      weeklyCapacity: Number(row.weekly_capacity ?? 40),
-      employmentStatus: String(row.employment_status ?? "active"),
-      visibility: String(row.visibility ?? "active"),
-      workStartDate: row.work_start_date ? String(row.work_start_date) : null,
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-      })),
+      data: rows.map(mapEmployeeReadRow),
       total,
       hasMore: total > args.offset + rows.length,
     };
+  }
+
+  async function listTimelineEmployees(args: {
+    employeeUuid?: string | null;
+    assignmentRange?: { startDate: string; endDate: string } | null;
+  }): Promise<PlannerDirectoryEmployeeRow[]> {
+    const params: unknown[] = [];
+    const whereClauses = ["e.archived_at IS NULL"];
+
+    if (args.employeeUuid) {
+      params.push(args.employeeUuid);
+      whereClauses.push(`e.employee_uuid = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    // Active employees always show; an inactive employee surfaces only when they
+    // still have a planned (non-time-off) assignment overlapping the visible
+    // range. Skipped for the self-scoped fetch so a user always sees their own row.
+    if (!args.employeeUuid && args.assignmentRange) {
+      const plannedInRange = buildAssignmentExistsClause("assignments", null, args.assignmentRange, params);
+      whereClauses.push(`(e.employment_status = 'active' OR ${plannedInRange})`);
+    }
+
+    const result = await db.query(
+      `
+        SELECT e.*
+        FROM planner_employees e
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY e.full_name ASC
+      `,
+      params
+    );
+
+    return readRows<DbRow>(result).map(mapEmployeeReadRow);
   }
 
   async function listProjectsForBootstrap(args: {
@@ -1127,6 +1164,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     listProjects,
     listEmployees,
     listEmployeesForBootstrap,
+    listTimelineEmployees,
     listProjectsForBootstrap,
     getProjectForFilterOption,
     listProjectsForFilterOptions,

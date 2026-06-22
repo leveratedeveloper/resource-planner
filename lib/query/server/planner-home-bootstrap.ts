@@ -77,20 +77,12 @@ export function toBootstrapDepartment(row: PlannerDirectoryDepartmentRow): Boots
   };
 }
 
-export type PlannerHomeBootstrapRequest = PlannerTimelineRequest & {
-  employeeLimit: number;
-  employeeOffset: number;
-  brandId?: string | null;
-  department?: string | null;
-  projectId?: string | null;
-  search?: string | null;
-};
+export type PlannerHomeBootstrapRequest = PlannerTimelineRequest;
 
 export type PlannerHomeBootstrapResponse = {
   request: PlannerHomeBootstrapRequest;
   employees: MinimalTimelineEmployee[];
   employeeTotal: number;
-  employeeHasMore: boolean;
   departmentsById: Record<string, BootstrapDepartment>;
   brandsById: Record<string, BootstrapBrand>;
   projectsById: Record<string, BootstrapProject>;
@@ -142,10 +134,7 @@ export function toMinimalEmployee(
   };
 }
 
-function getReferencedProjectIds(
-  plannerTimeline: PlannerTimelineResponse,
-  request: PlannerHomeBootstrapRequest
-): Set<string> {
+function getReferencedProjectIds(plannerTimeline: PlannerTimelineResponse): Set<string> {
   const projectIds = new Set<string>();
 
   for (const assignment of plannerTimeline.assignments) {
@@ -154,10 +143,6 @@ function getReferencedProjectIds(
 
   for (const actual of plannerTimeline.actualAssignments) {
     if (actual.projectUuid) projectIds.add(actual.projectUuid);
-  }
-
-  if (request.projectId) {
-    projectIds.add(request.projectId);
   }
 
   return projectIds;
@@ -202,49 +187,14 @@ export async function fetchPlannerHomeBootstrap(
 ): Promise<PlannerHomeBootstrapResponse> {
   const directoryFetchedAt = new Date().toISOString();
 
-  // The employee page resolves FIRST so the timeline query is scoped to the
-  // employees this response actually renders — unscoped, a quarter view shipped
-  // every assignment in the company (measured: 4,908 blocks / 7.9 MB / 4.5 s
-  // for 60 rendered employees). One serial hop buys a bounded payload.
-  // Brand/project filters scope the employee page server-side (Phase 8 8B):
-  // pages carry their own assignments, so a client-only filter would reveal a
-  // brand's members progressively as pages crawl in. Resolving the brand's
-  // project ids first costs one indexed query, only when the filter is active.
-  let scopedProjectIds: string[] | undefined;
-  if (session.access.can_view_all && (request.projectId || request.brandId)) {
-    // Brand+project intersect on the client. When both are set, the project
-    // must belong to the brand or the intersection is empty — scope to the
-    // project only if it is one of the brand's, otherwise to an empty set so
-    // the page matches what the client will render.
-    if (request.projectId && request.brandId) {
-      const brandProjectIds = (
-        await plannerDirectoryRepository.listProjectsForBootstrap({ brandId: request.brandId })
-      ).map((project) => project.sourceProjectId);
-      scopedProjectIds = brandProjectIds.includes(request.projectId) ? [request.projectId] : [];
-    } else if (request.projectId) {
-      scopedProjectIds = [request.projectId];
-    } else {
-      scopedProjectIds = (
-        await plannerDirectoryRepository.listProjectsForBootstrap({ brandId: request.brandId })
-      ).map((project) => project.sourceProjectId);
-    }
-  }
-
-  const employeeSliceResult =
-    scopedProjectIds && scopedProjectIds.length === 0
-      ? // A brand with no projects can have no matching employees — skip the
-        // query rather than letting an empty IN-list fall through.
-        { data: [], total: 0, hasMore: false }
-      : await plannerDirectoryRepository.listEmployeesForBootstrap({
-          offset: session.access.can_view_all ? request.employeeOffset : 0,
-          limit: session.access.can_view_all ? request.employeeLimit : 1,
-          search: session.access.can_view_all ? request.search?.trim() || undefined : undefined,
-          department: session.access.can_view_all ? request.department?.trim() || undefined : undefined,
-          employeeUuid: session.access.can_view_all ? undefined : session.employee.uuid,
-          assignmentProjectIds: scopedProjectIds,
-          assignmentRange: { startDate: request.startDate, endDate: request.endDate },
-        });
-  const pageEmployeeUuids = employeeSliceResult.data.map((employee) => employee.employeeUuid);
+  // Load ALL employees for the visible window once; the client filters by
+  // brand/project/department/search. Restricted users still see only their own
+  // row, and the active-in-range rule still gates inactive employees.
+  const employeeRows = await plannerDirectoryRepository.listTimelineEmployees({
+    employeeUuid: session.access.can_view_all ? null : session.employee.uuid,
+    assignmentRange: { startDate: request.startDate, endDate: request.endDate },
+  });
+  const pageEmployeeUuids = employeeRows.map((employee) => employee.employeeUuid);
 
   const [latestSuccessfulSync, latestInFlightSync, departments, plannerTimeline] = await Promise.all([
     plannerDirectoryRepository.getLatestSuccessfulSync(),
@@ -268,10 +218,8 @@ export async function fetchPlannerHomeBootstrap(
 
   const departmentsById = indexById(departments.map(toBootstrapDepartment), (department) => department.departmentId);
 
-  const referencedProjectIds = getReferencedProjectIds(plannerTimeline, request);
+  const referencedProjectIds = getReferencedProjectIds(plannerTimeline);
   const projects = await plannerDirectoryRepository.listProjectsForBootstrap({
-    brandId: request.brandId || undefined,
-    search: request.search?.trim() || undefined,
     referencedProjectIds: Array.from(referencedProjectIds),
   });
   const projectsById = indexById(projects.map(toBootstrapProject), (project) => project.sourceProjectId);
@@ -283,7 +231,7 @@ export async function fetchPlannerHomeBootstrap(
   const missingReferencedBrandIds = getMissingIds(new Set(brandIds), brandsById);
 
   const missingDepartmentIds = getMissingIds(
-    new Set(getDepartmentIdsFromEmployees(employeeSliceResult.data)),
+    new Set(getDepartmentIdsFromEmployees(employeeRows)),
     departmentsById
   );
 
@@ -342,9 +290,8 @@ export async function fetchPlannerHomeBootstrap(
 
   return {
     request,
-    employees: employeeSliceResult.data.map((employee) => toMinimalEmployee(employee, departmentsById)),
-    employeeTotal: employeeSliceResult.total,
-    employeeHasMore: employeeSliceResult.hasMore,
+    employees: employeeRows.map((employee) => toMinimalEmployee(employee, departmentsById)),
+    employeeTotal: employeeRows.length,
     departmentsById,
     brandsById,
     projectsById,

@@ -51,28 +51,4 @@ describe("bootstrap employee page scoping", () => {
       )?.length
     ).toBe(3);
   });
-
-  // Bootstrap pages are the timeline's only employee source; department must
-  // narrow the page server-side or filtered views reveal members progressively
-  // page by page instead of completely.
-  it("filters the employee page by department on the server", () => {
-    const repositorySource = readFileSync("lib/planner-directory/repository.ts", "utf8");
-    const bootstrapSource = readFileSync("lib/query/server/planner-home-bootstrap.ts", "utf8");
-
-    expect(repositorySource).toContain("e.department_id = ${dialect");
-    expect(bootstrapSource).toContain("department: session.access.can_view_all");
-  });
-
-  // Same completeness rule for brand/project filters: the bootstrap resolves
-  // the scoped project ids first (can_view_all only) and the employee page is
-  // narrowed by assignment EXISTS; an empty brand short-circuits to an empty
-  // slice instead of an unfiltered company-wide page.
-  it("scopes the employee page to brand/project assignments on the server", () => {
-    const bootstrapSource = readFileSync("lib/query/server/planner-home-bootstrap.ts", "utf8");
-
-    expect(bootstrapSource).toContain("session.access.can_view_all && (request.projectId || request.brandId)");
-    expect(bootstrapSource).toContain("assignmentProjectIds: scopedProjectIds");
-    expect(bootstrapSource).toContain("scopedProjectIds && scopedProjectIds.length === 0");
-  });
-
 });
