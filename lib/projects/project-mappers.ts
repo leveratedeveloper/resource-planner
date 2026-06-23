@@ -213,6 +213,7 @@ export function mapPitchToProject(pitch: PitchApiRecord): ProjectApiResponse {
 export function mapCampaignToProjectSummary(campaign: CampaignApiRecord): ProjectOption {
   return {
     id: text(campaign.uuid),
+    projectKey: `campaign:${text(campaign.uuid)}`,
     name: text(campaign.campaign_name),
     brandId: nullableText(campaign.brand_id),
     color: projectColor(campaign.uuid ?? campaign.io_number ?? campaign.campaign_name),
@@ -226,6 +227,7 @@ export function mapCampaignToProjectSummary(campaign: CampaignApiRecord): Projec
 export function mapPitchToProjectSummary(pitch: PitchApiRecord): ProjectOption {
   return {
     id: text(pitch.uuid),
+    projectKey: `pitch:${text(pitch.uuid)}`,
     name: text(pitch.pitch_name),
     brandId: nullableText(pitch.brand_id),
     color: projectColor(pitch.uuid ?? pitch.pitch_number ?? pitch.pitch_name),

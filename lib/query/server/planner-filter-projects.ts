@@ -29,6 +29,7 @@ function randomColor(seed: string): string {
 export function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
   return {
     id: project.sourceProjectId,
+    projectKey: `${project.sourceType}:${project.sourceProjectId}`,
     name: project.name,
     color: project.color ?? randomColor(project.sourceProjectId),
     status:

@@ -83,6 +83,7 @@ function toBrandOption(brand: PlannerHomeBootstrapResponse["brandsById"][string]
 function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][string]): ProjectOption {
   return {
     id: project.sourceProjectId,
+    projectKey: `${project.sourceType}:${project.sourceProjectId}`,
     name: project.name,
     color: project.color ?? "#64748b",
     status:
