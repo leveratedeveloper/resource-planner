@@ -46,7 +46,7 @@ function stitchAssignments(engagements: RawEngagement[], allocations: RawAllocat
   const allocationsByUuid = new Map<string, MonthlyAllocation[]>();
   for (const alloc of allocations) {
     const list = allocationsByUuid.get(alloc.assignment_uuid) ?? [];
-    list.push({ month: alloc.month, plannedHours: alloc.planned_hours, kind: alloc.kind });
+    list.push({ month: alloc.month, plannedHours: Number(alloc.planned_hours), kind: alloc.kind });
     allocationsByUuid.set(alloc.assignment_uuid, list);
   }
   return engagements.map((eng) => ({
