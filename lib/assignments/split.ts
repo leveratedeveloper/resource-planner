@@ -1,4 +1,5 @@
-import { eachMonthOfInterval, format, startOfMonth } from "date-fns";
+import { eachMonthOfInterval, format, isValid, startOfDay, startOfMonth } from "date-fns";
+import type { DateRange } from "react-day-picker";
 
 export type MonthHours = { month: string /* yyyy-MM-01 */; plannedHours: number };
 
@@ -13,4 +14,133 @@ export function splitTotalAcrossMonths(total: number, startDate: string, endDate
   if (months.length === 0) return [];
   const per = round2(total / months.length);
   return months.map((m) => ({ month: format(m, "yyyy-MM-01"), plannedHours: per }));
+}
+
+/** Parse a whole-number man-hours string. Returns null when the value is blank or non-integer. */
+export function parseManHoursInput(value: string | number | null | undefined): number | null {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  return Number(text);
+}
+
+// ─── Date-range utilities used by project assignment forms ───────────────────
+
+export type ProjectAssignmentProjectType = "pitch" | "campaign";
+export type MissingAssignmentPlanningDateReason = "campaign_date_range" | "pitch_submit_date";
+
+/** Coerce a stored date value (ISO, "yyyy-MM-dd HH:mm:ss", verbose) to the strict
+ *  "yyyy-MM-dd" form that <input type="date"> requires. Returns "" on failure. */
+export function toDateInputValue(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const trimmed = String(raw).trim();
+  const leading = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (leading) return `${leading[1]}-${leading[2]}-${leading[3]}`;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function parseDateLike(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return new Date(value);
+  return new Date(year, month - 1, day);
+}
+
+export function countWeekdaysInclusive(start: Date, end: Date): number {
+  let count = 0;
+  const cursor = startOfDay(start);
+  const final = startOfDay(end);
+  while (cursor.getTime() <= final.getTime()) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+/** Number of working (Mon–Fri) days between two "yyyy-MM-dd" strings inclusive. */
+export function countAssignmentWorkingDays(range: { startDate: string; endDate: string }): number {
+  return countWeekdaysInclusive(parseDateLike(range.startDate), parseDateLike(range.endDate));
+}
+
+/** Default span for enrolling someone on a project: the project's own start/end when
+ *  both are known, otherwise today through one month out. */
+export function getDefaultAssignmentRange(
+  project: { startDate?: string | null; endDate?: string | null },
+  today: Date = new Date(),
+): { startDate: string; endDate: string } {
+  const startDate = toDateInputValue(project.startDate);
+  const endDate = toDateInputValue(project.endDate);
+  if (startDate && endDate) return { startDate, endDate };
+  const start = startOfDay(today);
+  const oneMonthOut = new Date(start);
+  oneMonthOut.setMonth(oneMonthOut.getMonth() + 1);
+  return {
+    startDate: format(start, "yyyy-MM-dd"),
+    endDate: format(oneMonthOut, "yyyy-MM-dd"),
+  };
+}
+
+export function getAssignmentDateStrings(dateRange: DateRange | undefined, fallbackDate = new Date()): { startDate: string; endDate: string } {
+  const start = dateRange?.from ?? fallbackDate;
+  const end = dateRange?.to ?? start;
+  return {
+    startDate: format(startOfDay(start), "yyyy-MM-dd"),
+    endDate: format(startOfDay(end), "yyyy-MM-dd"),
+  };
+}
+
+export function getFallbackAssignmentDateRange(
+  assignments: Array<{ startDate: string | Date; endDate: string | Date }>,
+): DateRange | undefined {
+  const startDates = assignments
+    .map((a) => parseDateLike(a.startDate).getTime())
+    .filter(Number.isFinite);
+  const endDates = assignments
+    .map((a) => parseDateLike(a.endDate).getTime())
+    .filter(Number.isFinite);
+  if (startDates.length === 0 || endDates.length === 0) return undefined;
+  return {
+    from: startOfDay(new Date(Math.min(...startDates))),
+    to: startOfDay(new Date(Math.max(...endDates))),
+  };
+}
+
+export function getProjectAssignmentDateRange(project: {
+  startDate?: string | Date | null;
+  endDate?: string | Date | null;
+  submitDate?: string | Date | null;
+}): DateRange | undefined {
+  if (project.startDate && project.endDate) {
+    return {
+      from: startOfDay(parseDateLike(project.startDate)),
+      to: startOfDay(parseDateLike(project.endDate)),
+    };
+  }
+  if (project.submitDate) {
+    const d = startOfDay(parseDateLike(project.submitDate));
+    return { from: d, to: d };
+  }
+  return undefined;
+}
+
+export function getMissingAssignmentPlanningDateReason(
+  projectType: ProjectAssignmentProjectType,
+  dateRange: DateRange | undefined,
+): MissingAssignmentPlanningDateReason | null {
+  if (projectType === "pitch") {
+    return dateRange?.from && dateRange?.to ? null : "pitch_submit_date";
+  }
+  return dateRange?.from && dateRange?.to ? null : "campaign_date_range";
+}
+
+export function formatProjectDateForDisplay(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  const parsed = parseDateLike(value instanceof Date ? value : String(value));
+  if (!isValid(parsed)) return "";
+  return format(parsed, "MMM d, yyyy");
 }
