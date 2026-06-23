@@ -1,5 +1,4 @@
 import { endOfMonth, format, startOfMonth } from "date-fns";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
@@ -26,19 +25,20 @@ export function groupTimelineAssignmentsByEmployee(assignments: Assignment[]) {
 
 function getPlanCampaignProjects(
   assignments: Assignment[],
-  projectById: Map<string, ProjectOption>
+  projectByKey: Map<string, ProjectOption>
 ): ProjectOption[] {
-  const seenProjectIds = new Set<string>();
+  const seenProjectKeys = new Set<string>();
   const campaignProjects: ProjectOption[] = [];
 
   for (const assignment of assignments) {
-    if (assignment.isTimeOff || !assignment.projectId) continue;
-    if (seenProjectIds.has(assignment.projectId)) continue;
+    if (!assignment.projectKey) continue;
+    if (seenProjectKeys.has(assignment.projectKey)) continue;
 
-    const project = projectById.get(assignment.projectId);
+    const project = projectByKey.get(assignment.projectKey);
     if (!project) continue;
+    if (project.projectType !== "campaign") continue;
 
-    seenProjectIds.add(project.id);
+    seenProjectKeys.add(assignment.projectKey);
     campaignProjects.push(project);
   }
 
@@ -54,7 +54,7 @@ function isTimelineMonthRangeView(viewMode: TimelineViewMode) {
 // expansion-store) so changing them never rebuilds these models.
 
 export type ProjectLaneModel = {
-  projectId: string;
+  projectKey: string;
   project: ProjectOption;
   brand?: Brand;
   planAssignments: Assignment[];
@@ -72,7 +72,6 @@ export type EmployeeRowModel = {
 export function buildEmployeeRowModels({
   employees,
   assignments,
-  actualAssignments,
   projects,
   brandById,
   days,
@@ -80,7 +79,6 @@ export function buildEmployeeRowModels({
 }: {
   employees: Employee[];
   assignments: Assignment[];
-  actualAssignments: ActualAssignment[];
   projects: ProjectOption[];
   brandById: Map<string, Brand>;
   days: Date[];
@@ -90,21 +88,18 @@ export function buildEmployeeRowModels({
   if (days.length === 0) return models;
 
   const isMonthRangeView = isTimelineMonthRangeView(viewMode);
-  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const projectByKey = new Map(projects.map((project) => [project.projectKey, project]));
   const assignmentsByEmployee = groupTimelineAssignmentsByEmployee(assignments);
   // Month-resolution cells aggregate full calendar months, so the day map must
   // cover the month bounds, not just the visible column dates.
   const dayMaps = buildAllocationDayMaps({
     assignments,
-    actualAssignments,
     rangeStart: isMonthRangeView ? startOfMonth(days[0]) : days[0],
     rangeEnd: isMonthRangeView ? endOfMonth(days[days.length - 1]) : days[days.length - 1],
   });
 
   for (const employee of employees) {
-    const resourceAssignments = (assignmentsByEmployee.get(employee.id) ?? []).filter(
-      (assignment) => !assignment.isTimeOff
-    );
+    const resourceAssignments = assignmentsByEmployee.get(employee.id) ?? [];
     const resource: TimelineResource = {
       id: employee.id,
       name: employee.fullName,
@@ -116,9 +111,9 @@ export function buildEmployeeRowModels({
     const dayMap = dayMaps.get(employee.id);
 
     const projectLanes: ProjectLaneModel[] = [];
-    for (const project of getPlanCampaignProjects(resourceAssignments, projectById)) {
+    for (const project of getPlanCampaignProjects(resourceAssignments, projectByKey)) {
       const planAssignments = resourceAssignments.filter(
-        (assignment) => assignment.projectId === project.id && !assignment.isTimeOff
+        (assignment) => assignment.projectKey === project.projectKey
       );
       const planDisplaySegments = buildTimelinePlanDisplaySegments({
         assignments: planAssignments,
@@ -131,7 +126,7 @@ export function buildEmployeeRowModels({
       if (planDisplaySegments.length === 0) continue;
 
       projectLanes.push({
-        projectId: project.id,
+        projectKey: project.projectKey,
         project,
         brand: project.brandId ? brandById.get(project.brandId) : undefined,
         planAssignments,
@@ -153,7 +148,6 @@ export function buildEmployeeRowModels({
             dayMap,
             day,
             viewMode,
-            capacity: resource.capacity,
           }),
         };
       }),
