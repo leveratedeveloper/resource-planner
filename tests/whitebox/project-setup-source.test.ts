@@ -33,4 +33,11 @@ describe("ProjectSetup source", () => {
     expect(source).toContain("showEmptyBrands || brandProjects.length > 0");
     expect(source).toContain('data-testid="toggle-empty-brands"');
   });
+
+  it("waits for brands before showing the no-brands empty state", () => {
+    expect(source).toContain("isLoading: brandsLoading");
+    expect(source).toContain("const isProjectListLoading = projectsLoading || brandsLoading");
+    expect(source).toContain("projectsByBrand.length === 0 && !isProjectListLoading");
+    expect(source).not.toContain("projectsByBrand.length === 0 && !projectsLoading");
+  });
 });
