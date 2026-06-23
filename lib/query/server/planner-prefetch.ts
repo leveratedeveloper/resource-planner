@@ -48,38 +48,22 @@ function stitchEngagements(
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Public fetch — sources plan assignments from getEngagements.
-//
-// PERF NOTE: getEngagements does not accept employee_uuids (a set); when the
-// caller supplies a set, we fetch unscoped (all engagements) and filter in JS.
-// For large orgs this is a table-scan. A future optimisation is to add an
-// employee_uuids IN-clause to getEngagements — tracked in assignment-reads.
-// ---------------------------------------------------------------------------
-
 export async function fetchPlannerAssignments(
   session: SessionData,
-  _dateRange: { startDate: string; endDate: string },
+  dateRange: { startDate: string; endDate: string },
   _filters: PlannerTimelineRequest["filters"] = {},
   employeeUuids?: string[]
 ): Promise<Assignment[]> {
-  // Restricted users are always scoped to their own employee uuid.
   const ownUuid = !session.access.can_view_all ? session.employee?.uuid : undefined;
 
-  const { engagements, allocations } = await getEngagements(
-    ownUuid ? { employee_uuid: ownUuid } : {}
-  );
+  const { engagements, allocations } = await getEngagements({
+    employee_uuid: ownUuid,
+    employee_uuids: session.access.can_view_all ? employeeUuids : undefined,
+    rangeStart: dateRange.startDate,
+    rangeEnd: dateRange.endDate,
+  });
 
-  let assignments = stitchEngagements(engagements, allocations);
-
-  // If the caller supplied an explicit set of employee uuids (view-all only),
-  // narrow the stitched results in JS.
-  if (session.access.can_view_all && employeeUuids && employeeUuids.length > 0) {
-    const set = new Set(employeeUuids);
-    assignments = assignments.filter((a) => set.has(a.employeeId));
-  }
-
-  return assignments;
+  return stitchEngagements(engagements, allocations);
 }
 
 export async function fetchPlannerTimeline(
