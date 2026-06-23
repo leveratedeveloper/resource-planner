@@ -4,7 +4,6 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -212,8 +211,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                 No projects found for this brand.
               </p>
             ) : (
-              <ScrollArea className="max-h-[200px]">
-                <div className="space-y-1 pr-2">
+              <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1">
                   {brandProjects.map((p) => {
                     const isSelected = selectedProjectIds.has(p.id);
                     const span = deriveSpan(p);
@@ -259,8 +257,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                       </div>
                     );
                   })}
-                </div>
-              </ScrollArea>
+              </div>
             )}
           </section>
 
