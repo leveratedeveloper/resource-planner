@@ -28,14 +28,17 @@ type AssignmentBarProps = {
   project: ProjectOption;
   columns: TimelineColumn[];
   resolution: TimelineResolution;
-  // Retained for API compatibility with ProjectLane; inline editing is
-  // temporarily disabled during the monthly-allocation migration, so bars are
-  // render-only (no drag/resize/click-to-edit).
+  // Retained for API compatibility with ProjectLane. Drag/resize stay OFF on
+  // the monthly model; the only re-enabled interaction is click-to-edit, which
+  // opens the month editor via onOpenMonth.
   interactive: boolean;
   memberAssignments: Assignment[];
   draggable: boolean;
   isHighlighted: boolean;
   disabled: boolean;
+  // Opens the month editor for this bar's month. Undefined when editing is
+  // disabled (render-only).
+  onOpenMonth?: () => void;
 };
 
 export const AssignmentBar = React.memo(function AssignmentBar({
@@ -44,6 +47,7 @@ export const AssignmentBar = React.memo(function AssignmentBar({
   columns,
   resolution,
   isHighlighted,
+  onOpenMonth,
 }: AssignmentBarProps) {
   const position = useMemo(
     () =>
@@ -71,9 +75,30 @@ export const AssignmentBar = React.memo(function AssignmentBar({
 
   return (
     <div
+      role={onOpenMonth ? "button" : undefined}
+      tabIndex={onOpenMonth ? 0 : undefined}
+      onClick={
+        onOpenMonth
+          ? (event) => {
+              event.stopPropagation();
+              onOpenMonth();
+            }
+          : undefined
+      }
+      onKeyDown={
+        onOpenMonth
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpenMonth();
+              }
+            }
+          : undefined
+      }
       className={cn(
         "absolute inset-y-0.5 flex items-center overflow-hidden rounded-md border border-black/10 text-xs shadow-sm",
         textClass,
+        onOpenMonth && "cursor-pointer",
         isHighlighted && "ring-2 ring-amber-400 border-amber-200 shadow-md"
       )}
       style={{

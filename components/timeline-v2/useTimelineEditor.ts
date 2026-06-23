@@ -1,55 +1,58 @@
 "use client";
 
-import type { AssignmentCategory } from "@/types";
-import type { Assignment } from "@/lib/query/hooks/useAssignments";
+import { endOfMonth, format, startOfMonth } from "date-fns";
+import { useAssignmentCommands } from "@/lib/query/hooks/useAssignmentCommands";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
+import type { Assignment } from "@/lib/query/hooks/useAssignments";
 
-// TEMPORARY: inline in-timeline editing (create / edit / month-distribution)
-// is DISABLED during the monthly-allocation migration. The editor store no
-// longer opens (see editor-store.ts), so these handlers are inert no-ops kept
-// only to preserve this hook's surface for AssignmentEditor. All assignment
-// writes currently go through useAssignmentCommands (Add Project, Manage Team,
-// Bulk Assign). Re-implementing the monthly in-timeline editor on top of
-// upsertAssignment(setMonthHours) is the next planned piece of work.
+export type MonthSaveData = { planHours: number; adjustmentHours?: number | null };
 
-export type MonthSaveData = {
-  totalHours: number;
-  startDate: Date;
-  endDate: Date;
-  distributions: Array<{ date: Date; hours: number }>;
-  category: AssignmentCategory;
-  isBillable: boolean;
-  note?: string;
-  adjustmentDistributions?: Array<{ date: Date; hours: number }>;
-  adjustmentStartDate?: Date;
-  adjustmentEndDate?: Date;
-  removeAdjustment?: boolean;
-  planHoursChanged?: boolean;
-};
+function unionSpan(monthStart: Date, existing?: Assignment) {
+  const monthFrom = format(startOfMonth(monthStart), "yyyy-MM-dd");
+  const monthTo = format(endOfMonth(monthStart), "yyyy-MM-dd");
+  if (!existing) return { startDate: monthFrom, endDate: monthTo };
+  return {
+    startDate: existing.startDate < monthFrom ? existing.startDate : monthFrom,
+    endDate: existing.endDate > monthTo ? existing.endDate : monthTo,
+  };
+}
 
-export type CreateSaveData = {
-  hoursPerDay: number;
-  category: AssignmentCategory;
-  isBillable: boolean;
-  note?: string;
-};
+export function useTimelineEditor(_opts: { canEditAssignments: boolean; createdByUuid: string | null }) {
+  const target = useAssignmentEditorStore((s) => s.target);
+  const close = useAssignmentEditorStore((s) => s.close);
+  const { upsert, remove } = useAssignmentCommands();
 
-export function useTimelineEditor(_opts: {
-  canEditAssignments: boolean;
-  createdByUuid: string | null;
-}) {
-  const target = useAssignmentEditorStore((state) => state.target);
-  const close = useAssignmentEditorStore((state) => state.close);
+  const saveMonth = async (data: MonthSaveData) => {
+    if (target?.mode !== "month") return;
+    const monthKey = format(startOfMonth(target.monthStart), "yyyy-MM-01");
+    const span = unionSpan(target.monthStart, target.clickedAssignment);
+    const projectKey = `${target.project.projectType}:${target.project.id}`;
+    await upsert.mutateAsync({
+      employeeUuid: target.resourceId, projectKey, span,
+      monthlyHours: { [monthKey]: data.planHours }, kind: "plan", mode: "merge", status: "draft",
+    });
+    if (data.adjustmentHours != null) {
+      await upsert.mutateAsync({
+        employeeUuid: target.resourceId, projectKey, span,
+        monthlyHours: { [monthKey]: data.adjustmentHours }, kind: "adjustment", mode: "merge", status: "draft",
+      });
+    }
+    close();
+  };
+
+  const deleteMonth = async () => {
+    if (target?.mode === "month" && target.clickedAssignment) { await remove.mutateAsync(target.clickedAssignment.id); close(); }
+  };
+
+  const deleteSingle = async () => {
+    if (target?.mode === "edit") { await remove.mutateAsync(target.assignment.id); close(); }
+  };
 
   return {
-    target,
-    close,
-    monthContext: null,
-    saveCreate: (_data: CreateSaveData) => {},
-    saveEdit: (_updates: Partial<Assignment>) => {},
-    deleteSingle: () => {},
-    saveMonth: async (_data: MonthSaveData) => {},
-    deleteMonth: async () => {},
-    isSavingMonth: false,
+    target, close, monthContext: null,
+    saveCreate: (_d: unknown) => {},
+    saveEdit: (_u: Partial<Assignment>) => {},
+    deleteSingle, saveMonth, deleteMonth,
+    isSavingMonth: upsert.isPending,
   };
 }

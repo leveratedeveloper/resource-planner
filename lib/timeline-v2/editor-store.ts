@@ -35,9 +35,6 @@ type AssignmentEditorState = {
 
 export const useAssignmentEditorStore = create<AssignmentEditorState>((set) => ({
   target: null,
-  // TEMPORARY: inline editing is disabled during the monthly-allocation
-  // migration, so opening the editor is a no-op. Re-enable once the in-timeline
-  // month editor is reimplemented on the monthly model.
-  open: () => set({ target: null }),
+  open: (target) => set({ target }),
   close: () => set({ target: null }),
 }));
