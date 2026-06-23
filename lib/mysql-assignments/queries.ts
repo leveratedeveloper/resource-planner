@@ -3,7 +3,7 @@
  * CRUD operations for assignments with validation and security
  */
 
-import { assignmentsDb, getDbClient } from './db';
+import { assignmentsDb } from './db';
 import { randomUUID } from 'crypto';
 
 // Whitelist untuk update - mencegah SQL injection
@@ -23,56 +23,6 @@ const ALLOWED_UPDATE_COLUMNS = [
 ] as const;
 
 type AllowedUpdateColumn = typeof ALLOWED_UPDATE_COLUMNS[number];
-
-const TIMELINE_ASSIGNMENT_COLUMNS = [
-  'uuid',
-  'employee_uuid',
-  'project_uuid',
-  'task_uuid',
-  'start_date',
-  'end_date',
-  'hours_per_day',
-  'total_hours',
-  'allocation_percentage',
-  'is_time_off',
-  'is_adjustment',
-  'time_off_type_uuid',
-  'category',
-  'is_billable',
-  'status',
-  'note',
-  'created_by_uuid',
-  'created_at',
-  'updated_at',
-].join(', ');
-
-
-type TimelineAssignmentFilters = {
-  employee_uuid?: string;
-  employee_uuids?: string[];
-  project_uuid?: string;
-  project_uuids?: string[];
-  start_date: string;
-  end_date: string;
-  status?: string | null;
-  category?: string | null;
-};
-
-// Employee scoping for timeline queries. A uuid list (the bootstrap's employee
-// page) supersedes the single-uuid restricted-user filter; empty inputs add no
-// clause. Pure so the SQL/params contract is unit-testable.
-export function buildEmployeeScopeClause(
-  filters: Pick<TimelineAssignmentFilters, "employee_uuid" | "employee_uuids">
-): { sql: string; params: string[] } {
-  if (filters.employee_uuids && filters.employee_uuids.length > 0) {
-    const placeholders = filters.employee_uuids.map(() => "?").join(",");
-    return { sql: ` AND employee_uuid IN (${placeholders})`, params: [...filters.employee_uuids] };
-  }
-  if (filters.employee_uuid) {
-    return { sql: " AND employee_uuid = ?", params: [filters.employee_uuid] };
-  }
-  return { sql: "", params: [] };
-}
 
 /**
  * Get assignments with optional filters
@@ -116,37 +66,6 @@ export async function getAssignments(filters?: {
   }
 
   query += ' ORDER BY created_at DESC';
-
-  const [rows] = await assignmentsDb.execute(query, params);
-  return rows;
-}
-
-export async function getTimelineAssignments(filters: TimelineAssignmentFilters) {
-  let query = `SELECT ${TIMELINE_ASSIGNMENT_COLUMNS} FROM assignments WHERE end_date >= ? AND start_date <= ? AND COALESCE(is_time_off, 0) = 0`;
-  const params: any[] = [filters.start_date, filters.end_date];
-
-  const employeeScope = buildEmployeeScopeClause(filters);
-  query += employeeScope.sql;
-  params.push(...employeeScope.params);
-  if (filters.project_uuid) {
-    query += ' AND project_uuid = ?';
-    params.push(filters.project_uuid);
-  }
-  if (filters.project_uuids && filters.project_uuids.length > 0) {
-    const placeholders = filters.project_uuids.map(() => '?').join(',');
-    query += ` AND project_uuid IN (${placeholders})`;
-    params.push(...filters.project_uuids);
-  }
-  if (filters.status) {
-    query += ' AND status = ?';
-    params.push(filters.status);
-  }
-  if (filters.category) {
-    query += ' AND category = ?';
-    params.push(filters.category);
-  }
-
-  query += ' ORDER BY employee_uuid, start_date, project_uuid';
 
   const [rows] = await assignmentsDb.execute(query, params);
   return rows;
@@ -344,145 +263,5 @@ export async function getAssignmentsByDateRange(startDate: string, endDate: stri
   `;
 
   const [rows] = await assignmentsDb.execute(query, [endDate, startDate]);
-  return rows;
-}
-
-// ---------------------------------------------------------------------------
-// Month aggregation (Phase 8). Month-resolution views collapse day-level rows
-// into per-month blocks; doing the collapse in SQL avoids pulling ~26k rows
-// per quarter just to summarize them server-side (measured 825 ms of the
-// bootstrap TTFB). The arithmetic mirrors summarizeMonthly* in
-// lib/planner/planner-loading.ts: weekday-only day counts (Sat/Sun excluded,
-// floored at 1), per-row hours = total_hours / weekdays(full span) when
-// total_hours is set, else hours_per_day.
-//
-// Dialect note: these queries bypass convertMySQLToPostgreSQL's intent (it
-// only rewrites backticks/placeholders/DDL keywords), so each dialect gets
-// native SQL with `?` placeholders — the converter renumbers them for
-// Postgres. The MySQL branch is untested in this environment (both dev and
-// prod resolve DATABASE_URL → Postgres) and exists for the no-DATABASE_URL
-// fallback only.
-
-type SqlDialect = 'postgresql' | 'mysql';
-
-// Time-off exclusion predicate that survives `is_time_off` being declared
-// either integer (live DB) or boolean (schema.postgres.sql). `boolean::integer`
-// yields 0/1 in Postgres and a no-op cast on an integer column, so COALESCE
-// keeps NULL → not-time-off → included. MySQL's TINYINT(1) already coalesces
-// against 0. (Pre-existing day-resolution queries keep the integer-only form;
-// this hardens only the Phase 8 SQL.)
-export function buildTimeOffExclusionPredicate(dialect: SqlDialect, columnRef: string): string {
-  return dialect === 'postgresql'
-    ? `COALESCE(${columnRef}::integer, 0) = 0`
-    : `COALESCE(${columnRef}, 0) = 0`;
-}
-
-// Integer days since 1900-01-01 (a Monday).
-function daysSinceMondayEpochExpr(dialect: SqlDialect, dateExpr: string): string {
-  return dialect === 'postgresql'
-    ? `((${dateExpr})::date - DATE '1900-01-01')`
-    : `DATEDIFF(${dateExpr}, '1900-01-01')`;
-}
-
-// Weekdays in [1900-01-01 .. dateExpr]: for m days starting a Monday,
-// weekdays = 5*floor(m/7) + least(m mod 7, 5).
-function weekdaysFromEpochExpr(dialect: SqlDialect, dateExpr: string): string {
-  const m = `(${daysSinceMondayEpochExpr(dialect, dateExpr)} + 1)`;
-  return `(5 * FLOOR(${m} / 7.0) + LEAST(MOD(${m}, 7), 5))`;
-}
-
-// Inclusive weekday count between two date expressions, floored at 1 —
-// the SQL twin of countWeekdays in lib/planner/planner-loading.ts.
-export function buildWeekdayCountExpr(dialect: SqlDialect, startExpr: string, endExpr: string): string {
-  const dayBeforeStart = dialect === 'postgresql'
-    ? `((${startExpr})::date - 1)`
-    : `DATE_SUB(${startExpr}, INTERVAL 1 DAY)`;
-  return `GREATEST(${weekdaysFromEpochExpr(dialect, endExpr)} - ${weekdaysFromEpochExpr(dialect, dayBeforeStart)}, 1)`;
-}
-
-export type MonthlyAggregateQuery = { sql: string; params: unknown[] };
-
-function buildSharedAggregateFilters(filters: TimelineAssignmentFilters): { sql: string; params: unknown[] } {
-  const scope = buildEmployeeScopeClause(filters);
-  let sql = scope.sql;
-  const params: unknown[] = [...scope.params];
-
-  if (filters.status) {
-    sql += ' AND a.status = ?';
-    params.push(filters.status);
-  }
-  if (filters.category) {
-    sql += ' AND a.category = ?';
-    params.push(filters.category);
-  }
-
-  return { sql: sql.replace(/ AND employee_uuid/g, ' AND a.employee_uuid'), params };
-}
-
-// Month slices clamped to the request range, as a CTE named `m` with columns
-// month_start / slice_start / slice_end. Range params appear in the order
-// [start, end, start, end] in BOTH dialects.
-function buildMonthSlicesCte(dialect: SqlDialect): string {
-  if (dialect === 'postgresql') {
-    return `WITH m AS (
-      SELECT gs::date AS month_start,
-             GREATEST(gs::date, (?)::date) AS slice_start,
-             LEAST((gs + interval '1 month' - interval '1 day')::date, (?)::date) AS slice_end
-      FROM generate_series(date_trunc('month', (?)::date), date_trunc('month', (?)::date), interval '1 month') AS gs
-    )`;
-  }
-  return `WITH RECURSIVE month_starts AS (
-      SELECT DATE_FORMAT(?, '%Y-%m-01') AS month_start
-      UNION ALL
-      SELECT DATE_FORMAT(DATE_ADD(month_start, INTERVAL 1 MONTH), '%Y-%m-01') FROM month_starts
-      WHERE month_start < DATE_FORMAT(?, '%Y-%m-01')
-    ), m AS (
-      SELECT DATE(month_start) AS month_start,
-             GREATEST(DATE(month_start), DATE(?)) AS slice_start,
-             LEAST(LAST_DAY(month_start), DATE(?)) AS slice_end
-      FROM month_starts
-    )`;
-}
-
-export function buildMonthlyAssignmentAggregateQuery(
-  dialect: SqlDialect,
-  filters: TimelineAssignmentFilters
-): MonthlyAggregateQuery {
-  const wdFullSpan = buildWeekdayCountExpr(dialect, 'a.start_date', 'a.end_date');
-  const overlapStart = dialect === 'postgresql' ? 'GREATEST((a.start_date)::date, m.slice_start)' : 'GREATEST(DATE(a.start_date), m.slice_start)';
-  const overlapEnd = dialect === 'postgresql' ? 'LEAST((a.end_date)::date, m.slice_end)' : 'LEAST(DATE(a.end_date), m.slice_end)';
-  const wdOverlap = buildWeekdayCountExpr(dialect, overlapStart, overlapEnd);
-  const startCol = dialect === 'postgresql' ? '(a.start_date)::date' : 'DATE(a.start_date)';
-  const endCol = dialect === 'postgresql' ? '(a.end_date)::date' : 'DATE(a.end_date)';
-  const shared = buildSharedAggregateFilters(filters);
-
-  const sql = `${buildMonthSlicesCte(dialect)}
-    SELECT a.employee_uuid, a.project_uuid, m.month_start,
-           a.note, a.category, a.status, a.is_billable, a.is_adjustment,
-           SUM((CASE WHEN a.total_hours IS NOT NULL
-                 THEN a.total_hours / ${wdFullSpan}
-                 ELSE a.hours_per_day END) * ${wdOverlap}) AS total_hours,
-           COUNT(*) AS detail_count,
-           MIN(a.created_at) AS created_at,
-           MAX(a.updated_at) AS updated_at
-    FROM assignments a
-    JOIN m ON ${startCol} <= m.slice_end AND ${endCol} >= m.slice_start
-    WHERE a.end_date >= ? AND a.start_date <= ? AND ${buildTimeOffExclusionPredicate(dialect, 'a.is_time_off')}${shared.sql}
-    GROUP BY a.employee_uuid, a.project_uuid, m.month_start, a.note, a.category, a.status, a.is_billable, a.is_adjustment`;
-
-  return {
-    sql,
-    params: [
-      filters.start_date, filters.end_date,
-      filters.start_date, filters.end_date,
-      filters.start_date, filters.end_date,
-      ...shared.params,
-    ],
-  };
-}
-
-export async function getTimelineMonthlyAssignmentAggregates(filters: TimelineAssignmentFilters) {
-  const { sql, params } = buildMonthlyAssignmentAggregateQuery(getDbClient(), filters);
-  const [rows] = await assignmentsDb.execute(sql, params);
   return rows;
 }
