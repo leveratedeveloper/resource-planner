@@ -5,50 +5,48 @@ import {
 } from "@/lib/timeline-v2/assignment-display-hours";
 
 describe("assignment display hours", () => {
-  it("calculates full assignment totals from hoursPerDay and weekdays", () => {
+  it("sums all allocation months when no range is given", () => {
     expect(
       calculateAssignmentDisplayTotalHours({
-        startDate: "2026-06-01",
-        endDate: "2026-06-07",
-        hoursPerDay: "8",
+        allocations: [
+          { month: "2026-06-01", plannedHours: 80 },
+          { month: "2026-07-01", plannedHours: 40 },
+        ],
       })
-    ).toBe(40);
+    ).toBe(120);
   });
 
-  it("ignores totalHours even when totalHours disagrees with hoursPerDay", () => {
-    expect(
-      calculateAssignmentDisplayTotalHours({
-        startDate: "2026-06-01",
-        endDate: "2026-06-05",
-        hoursPerDay: "4",
-        totalHours: 200,
-      })
-    ).toBe(20);
+  it("returns zero when allocations are empty", () => {
+    expect(calculateAssignmentDisplayTotalHours({ allocations: [] })).toBe(0);
   });
 
-  it("calculates visible overlap totals for a specific timeline range", () => {
+  it("returns zero when allocations are missing", () => {
+    expect(calculateAssignmentDisplayTotalHours({})).toBe(0);
+  });
+
+  it("sums only months whose calendar span overlaps the visible range", () => {
+    // Jun overlaps Jun 1-30 range; May does not.
     expect(
       calculateAssignmentDisplayTotalHours(
         {
-          startDate: "2026-05-28",
-          endDate: "2026-06-03",
-          hoursPerDay: "4",
+          allocations: [
+            { month: "2026-05-01", plannedHours: 160 },
+            { month: "2026-06-01", plannedHours: 80 },
+          ],
         },
         {
           startDate: new Date("2026-06-01T00:00:00"),
           endDate: new Date("2026-06-30T00:00:00"),
         }
       )
-    ).toBe(12);
+    ).toBe(80);
   });
 
-  it("returns zero when the assignment does not overlap the visible range", () => {
+  it("returns zero when no allocation month overlaps the visible range", () => {
     expect(
       calculateAssignmentDisplayTotalHours(
         {
-          startDate: "2026-05-01",
-          endDate: "2026-05-08",
-          hoursPerDay: "8",
+          allocations: [{ month: "2026-05-01", plannedHours: 160 }],
         },
         {
           startDate: new Date("2026-06-01T00:00:00"),
@@ -58,24 +56,35 @@ describe("assignment display hours", () => {
     ).toBe(0);
   });
 
-  it("returns zero for invalid or missing hoursPerDay", () => {
+  it("includes partial-overlap months at full value (monthly grain, no proration)", () => {
+    // The range starts mid-June; June month still fully counts.
     expect(
-      calculateAssignmentDisplayTotalHours({
-        startDate: "2026-06-01",
-        endDate: "2026-06-05",
-        hoursPerDay: "",
-      })
-    ).toBe(0);
+      calculateAssignmentDisplayTotalHours(
+        {
+          allocations: [{ month: "2026-06-01", plannedHours: 120 }],
+        },
+        {
+          startDate: new Date("2026-06-15T00:00:00"),
+          endDate: new Date("2026-06-30T00:00:00"),
+        }
+      )
+    ).toBe(120);
   });
 
-  it("accepts numeric actual-assignment hoursPerDay values", () => {
+  it("rounds to one decimal place", () => {
     expect(
       calculateAssignmentDisplayTotalHours({
-        startDate: "2026-06-01",
-        endDate: "2026-06-03",
-        hoursPerDay: 2.5,
+        allocations: [{ month: "2026-06-01", plannedHours: 7.55 }],
       })
-    ).toBe(7.5);
+    ).toBe(7.6);
+  });
+
+  it("accepts numeric plannedHours (not string)", () => {
+    expect(
+      calculateAssignmentDisplayTotalHours({
+        allocations: [{ month: "2026-06-01", plannedHours: 2.5 }],
+      })
+    ).toBe(2.5);
   });
 
   it("formats whole and decimal hours compactly", () => {
