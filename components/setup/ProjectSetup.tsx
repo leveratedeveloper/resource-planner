@@ -139,7 +139,7 @@ export const ProjectSetup = () => {
 
   const isProjectDetailOpen = isDialogOpen && !!viewingProject;
   // useAssignmentsByProject now accepts projectKey (string)
-  const projectKey = viewingProject?.projectKey ?? "";
+  const projectKey = viewingProject ? `${viewingProject.projectType}:${viewingProject.id}` : "";
   const { data: projectAssignments = [] } = useAssignmentsByProject(projectKey, {
     enabled: isProjectDetailOpen && !!projectKey,
   });
@@ -483,7 +483,7 @@ export const ProjectSetup = () => {
 
   // Handler for saving pending team assignments and man-hours changes
   const handleSaveTeamAssignments = async (closeAfterSave = false) => {
-    if (!viewingProject?.projectKey) return;
+    if (!viewingProject || !projectKey) return;
     setIsSaving(true);
     try {
       if (hasAssignmentChanges && missingAssignmentPlanningDateReason) {
@@ -496,7 +496,7 @@ export const ProjectSetup = () => {
 
       const assignmentDates = getAssignmentDateStrings(dateRange);
       const { startDate: spanStart, endDate: spanEnd } = assignmentDates;
-      const currentProjectKey = viewingProject.projectKey;
+      const currentProjectKey = projectKey;
 
       // 1. Create new assignments for pending employees
       const createOps = pendingAssignments.map((pending) => {
@@ -1304,7 +1304,7 @@ export const ProjectSetup = () => {
           <AssignEmployeesDialog
             open={isAssignEmployeesOpen}
             onOpenChange={setIsAssignEmployeesOpen}
-            projectId={viewingProject.id}
+            projectId={projectKey}
             projectName={viewingProject.name}
             projectColor={viewingProject.color}
             onAssignPending={(employeeIds) => {
