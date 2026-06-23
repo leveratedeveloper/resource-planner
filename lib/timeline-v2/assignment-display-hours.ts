@@ -1,9 +1,9 @@
-import { startOfDay } from "date-fns";
+import { endOfMonth, startOfDay } from "date-fns";
+
+type MonthlyAllocationLike = { month: string; plannedHours: number };
 
 type AssignmentDisplayHoursInput = {
-  startDate: string | Date;
-  endDate: string | Date;
-  hoursPerDay: string | number | null | undefined;
+  allocations?: MonthlyAllocationLike[];
 };
 
 type DisplayRange = {
@@ -11,56 +11,42 @@ type DisplayRange = {
   endDate: Date;
 };
 
-function parseLocalDate(value: string | Date): Date {
-  if (value instanceof Date) {
-    return startOfDay(value);
-  }
-
-  const [year, month, day] = value.split("-").map(Number);
-  return startOfDay(new Date(year, month - 1, day));
-}
-
-function countWeekdays(startDate: Date, endDate: Date): number {
-  let count = 0;
-  const current = startOfDay(startDate);
-  const end = startOfDay(endDate);
-
-  while (current <= end) {
-    const day = current.getDay();
-    if (day !== 0 && day !== 6) {
-      count += 1;
-    }
-    current.setDate(current.getDate() + 1);
-  }
-
-  return Math.max(0, count);
+// Allocation month is stored as 'yyyy-MM-01'.
+function parseMonth(value: string): Date {
+  const [year, month] = value.split("-").map(Number);
+  return startOfDay(new Date(year, (month || 1) - 1, 1));
 }
 
 function roundHours(hours: number): number {
   return Math.round(hours * 10) / 10;
 }
 
-function parseHoursPerDay(value: AssignmentDisplayHoursInput["hoursPerDay"]): number {
-  const parsed = Number.parseFloat(String(value ?? "").replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
+/**
+ * Total planned hours for an engagement within the visible range, summed from
+ * its monthly allocations. A month counts when its calendar span overlaps the
+ * range (monthly grain — no sub-month proration). With no range, sums all.
+ */
 export function calculateAssignmentDisplayTotalHours(
   assignment: AssignmentDisplayHoursInput,
   range?: DisplayRange
 ): number {
-  const assignmentStart = parseLocalDate(assignment.startDate);
-  const assignmentEnd = parseLocalDate(assignment.endDate);
-  const rangeStart = range ? startOfDay(range.startDate) : assignmentStart;
-  const rangeEnd = range ? startOfDay(range.endDate) : assignmentEnd;
-  const overlapStart = assignmentStart > rangeStart ? assignmentStart : rangeStart;
-  const overlapEnd = assignmentEnd < rangeEnd ? assignmentEnd : rangeEnd;
+  const allocations = assignment.allocations ?? [];
+  if (allocations.length === 0) return 0;
 
-  if (overlapStart > overlapEnd) {
-    return 0;
+  const rangeStart = range ? startOfDay(range.startDate) : null;
+  const rangeEnd = range ? startOfDay(range.endDate) : null;
+
+  let total = 0;
+  for (const allocation of allocations) {
+    if (rangeStart && rangeEnd) {
+      const monthStart = parseMonth(allocation.month);
+      const monthEnd = endOfMonth(monthStart);
+      // Skip months whose calendar span does not overlap the visible range.
+      if (!(monthStart <= rangeEnd && monthEnd >= rangeStart)) continue;
+    }
+    total += Number(allocation.plannedHours) || 0;
   }
-
-  return roundHours(parseHoursPerDay(assignment.hoursPerDay) * countWeekdays(overlapStart, overlapEnd));
+  return roundHours(total);
 }
 
 export function formatAssignmentDisplayHours(hours: number): string {
