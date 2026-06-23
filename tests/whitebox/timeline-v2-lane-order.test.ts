@@ -72,16 +72,16 @@ describe("timeline-v2 lane order", () => {
     const expectedOrder = sortResourceProjects({
       projects,
       resourceAssignments,
-      brandId: "brand-2",
-      selectedProjectId: null,
+      brandIds: ["brand-2"],
+      selectedProjectIds: [],
       days,
     }).map((item) => item.id);
 
     const ordered = orderProjectLanes({
       lanes: projects.map((item) => lane(item)),
       resourceAssignments,
-      brandId: "brand-2",
-      projectId: null,
+      brandIds: ["brand-2"],
+      projectIds: [],
       days,
     });
 
@@ -97,8 +97,8 @@ describe("timeline-v2 lane order", () => {
         lane(project("project-b", "brand-2")),
       ],
       resourceAssignments: [],
-      brandId: "brand-1",
-      projectId: null,
+      brandIds: ["brand-1"],
+      projectIds: [],
       days: dateRange(1, 5),
     });
 
@@ -114,8 +114,8 @@ describe("timeline-v2 lane order", () => {
         lane(project("project-b", "brand-1")),
       ],
       resourceAssignments: [],
-      brandId: null,
-      projectId: "project-b",
+      brandIds: [],
+      projectIds: ["project-b"],
       days: dateRange(1, 5),
     });
 
@@ -135,8 +135,8 @@ describe("timeline-v2 lane order", () => {
     const ordered = orderProjectLanes({
       lanes,
       resourceAssignments: [],
-      brandId: null,
-      projectId: null,
+      brandIds: [],
+      projectIds: [],
       days: dateRange(1, 5),
     });
 
@@ -153,8 +153,8 @@ describe("timeline-v2 lane order", () => {
         },
       ],
       resourceAssignments: [],
-      brandId: null,
-      projectId: null,
+      brandIds: [],
+      projectIds: [],
       days: dateRange(1, 5),
     });
 

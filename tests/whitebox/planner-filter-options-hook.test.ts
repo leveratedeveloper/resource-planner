@@ -22,7 +22,6 @@ describe("planner filter options hook", () => {
     expect(projectHookSource).toContain("usePlannerFilterProjects");
     expect(projectHookSource).toContain("useInfiniteQuery");
     expect(projectHookSource).toContain("getNextPageParam");
-    expect(projectHookSource).toContain("brandId");
     expect(projectHookSource).toContain("sourceType");
     expect(projectHookSource).not.toContain("keepPreviousData");
 
@@ -38,5 +37,6 @@ describe("planner filter options hook", () => {
 
     expect(projectHookSource).toContain("hasProjectCriteria");
     expect(projectHookSource).toContain("enabled:");
+    expect(projectHookSource).toContain("brandIds");
   });
 });

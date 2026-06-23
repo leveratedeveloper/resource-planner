@@ -25,10 +25,10 @@ export type TimelineColumnSet = {
 };
 
 export type TimelineFilters = {
-  brandId: string | null;
-  department: string | null;
+  brandIds: string[];
+  departments: string[];
+  projectIds: string[];
   searchQuery?: string;
-  projectId: string | null;
 };
 
 export type TimelineResource = Resource & {

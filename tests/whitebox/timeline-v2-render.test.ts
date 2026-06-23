@@ -93,10 +93,10 @@ describe("timeline-v2 render smoke test", () => {
     const html = renderToStaticMarkup(
       React.createElement(Timeline, {
         initialTimelineAnchor: "2026-06-04",
-        brandId: null,
-        department: null,
+        brandIds: [],
+        departments: [],
         searchQuery: "",
-        projectId: null,
+        projectIds: [],
       })
     );
 

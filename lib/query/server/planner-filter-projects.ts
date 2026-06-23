@@ -3,7 +3,7 @@ import type { PlannerDirectoryProjectRow } from "@/lib/planner-directory/types";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
 export type PlannerFilterProjectsRequest = {
-  brandId?: string | null;
+  brandIds?: string[] | null;
   status?: ProjectOption["status"] | null;
   sourceType?: ProjectOption["projectType"] | null;
   search?: string | null;
@@ -15,17 +15,6 @@ export type PlannerFilterProjectsResponse = {
   projects: ProjectOption[];
   total: number;
   hasMore: boolean;
-  scope: {
-    brandId: string | null;
-    brandName: string | null;
-    status: ProjectOption["status"] | null;
-    sourceType: ProjectOption["projectType"] | null;
-  };
-  availableStatuses: ProjectOption["status"][];
-  availableTypes: ProjectOption["projectType"][];
-  freshness: {
-    fetchedAt: string;
-  };
 };
 
 function randomColor(seed: string): string {
@@ -62,11 +51,10 @@ export function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOpt
 export async function fetchPlannerFilterProjects(
   request: PlannerFilterProjectsRequest = {}
 ): Promise<PlannerFilterProjectsResponse> {
-  const fetchedAt = new Date().toISOString();
   const limit = request.limit ?? 50;
   const offset = request.offset ?? 0;
   const { data, total, hasMore } = await plannerDirectoryRepository.listProjectsForFilterOptions({
-    brandId: request.brandId ?? null,
+    brandIds: request.brandIds ?? null,
     status: request.status ?? null,
     sourceType: request.sourceType ?? null,
     search: request.search ?? null,
@@ -78,16 +66,5 @@ export async function fetchPlannerFilterProjects(
     projects: data.map(toProjectOption),
     total,
     hasMore,
-    scope: {
-      brandId: request.brandId ?? null,
-      brandName: null,
-      status: request.status ?? null,
-      sourceType: request.sourceType ?? null,
-    },
-    availableStatuses: ["planning", "active", "on_hold", "completed", "cancelled"],
-    availableTypes: ["campaign", "pitch"],
-    freshness: {
-      fetchedAt,
-    },
   };
 }

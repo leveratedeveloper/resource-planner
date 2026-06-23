@@ -5,16 +5,19 @@ describe("timeline-v2 source parity", () => {
   it("preserves page-level filters in HomeClient", () => {
     const source = readFileSync("app/HomeClient.tsx", "utf8");
 
-    expect(source).toContain("<FilterBar");
+    expect(source).toContain("<FilterPanel");
     expect(source).toContain("Timeline");
     expect(source).not.toContain("components/timeline/Timeline");
-    expect(source).toContain("searchQuery={searchQuery}");
-    // Brand change goes through a handler that clears an incompatible project
-    // selection (brand∩project would otherwise intersect to an empty timeline).
-    expect(source).toContain("onBrandChange={handleBrandChange}");
-    expect(source).toContain("setSelectedBrandId(brand?.id ?? null)");
-    expect(source).toContain("onDepartmentChange={setSelectedDepartment}");
-    expect(source).toContain("onProjectChange={handleProjectChange}");
+    // Live people search is independent of the filter panel and feeds the
+    // applied filters straight through to the timeline context.
+    expect(source).toContain("value={searchQuery}");
+    expect(source).toContain("setSearchQuery(event.target.value)");
+    // Draft selections only reach the timeline once Apply commits them to the
+    // applied id arrays the planner context consumes.
+    expect(source).toContain("onToggleBrand={handleToggleBrandId}");
+    expect(source).toContain("onToggleProject={handleToggleProjectId}");
+    expect(source).toContain("onToggleDepartment={handleToggleDepartment}");
+    expect(source).toContain("onApply={handleApplyFilters}");
   });
 
   it("keeps brand and project ids out of planner assignment request filters", () => {

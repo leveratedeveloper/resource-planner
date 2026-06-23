@@ -23,8 +23,8 @@ export type DeliverableGroup = {
 };
 
 export type ProjectHighlightFilters = {
-  selectedProjectId: string | null;
-  selectedBrandId: string | null;
+  selectedProjectIds: string[];
+  selectedBrandIds: string[];
 };
 
 export function getResourceProjects(
@@ -53,14 +53,8 @@ export function isProjectHighlighted(
   project: ProjectOption,
   filters: ProjectHighlightFilters
 ): boolean {
-  if (filters.selectedProjectId && project.id === filters.selectedProjectId) {
-    return true;
-  }
-
-  if (filters.selectedBrandId && project.brandId === filters.selectedBrandId) {
-    return true;
-  }
-
+  if (filters.selectedProjectIds.includes(project.id)) return true;
+  if (project.brandId !== null && filters.selectedBrandIds.includes(project.brandId)) return true;
   return false;
 }
 
@@ -74,30 +68,30 @@ export function isDeliverableGroupHighlighted(
 export function sortResourceProjects({
   projects,
   resourceAssignments,
-  brandId,
-  selectedProjectId,
+  brandIds,
+  selectedProjectIds = [],
   days,
 }: {
   projects: ProjectOption[];
   resourceAssignments: Assignment[];
-  brandId: string | null;
-  selectedProjectId?: string | null;
+  brandIds: string[];
+  selectedProjectIds?: string[];
   days: Date[];
 }): ProjectOption[] {
   const timelineStart = days[0] ? startOfDay(days[0]) : null;
   const timelineEnd = days[days.length - 1] ? startOfDay(days[days.length - 1]) : null;
 
   return [...projects].sort((a, b) => {
-    if (selectedProjectId) {
-      const aProjectMatch = a.id === selectedProjectId;
-      const bProjectMatch = b.id === selectedProjectId;
-      if (aProjectMatch !== bProjectMatch) return aProjectMatch ? -1 : 1;
+    if (selectedProjectIds.length) {
+      const aMatch = selectedProjectIds.includes(a.id);
+      const bMatch = selectedProjectIds.includes(b.id);
+      if (aMatch !== bMatch) return aMatch ? -1 : 1;
     }
 
-    if (brandId) {
-      const aBrandMatch = a.brandId === brandId;
-      const bBrandMatch = b.brandId === brandId;
-      if (aBrandMatch !== bBrandMatch) return aBrandMatch ? -1 : 1;
+    if (brandIds.length) {
+      const aMatch = a.brandId !== null && brandIds.includes(a.brandId);
+      const bMatch = b.brandId !== null && brandIds.includes(b.brandId);
+      if (aMatch !== bMatch) return aMatch ? -1 : 1;
     }
 
     const aHasActive = hasActiveTimelineAssignment(a.id, resourceAssignments, timelineStart, timelineEnd);

@@ -113,7 +113,7 @@ describe("resource project model", () => {
         assignment({ id: "a1", projectId: "project-1" }),
         assignment({ id: "a2", projectId: "project-2" }),
       ],
-      brandId: "brand-a",
+      brandIds: ["brand-a"],
       days: [new Date("2026-05-18T00:00:00")],
     });
 
@@ -132,8 +132,8 @@ describe("resource project model", () => {
         assignment({ id: "a2", projectId: "project-2" }),
         assignment({ id: "a3", projectId: "project-3" }),
       ],
-      brandId: "brand-a",
-      selectedProjectId: "project-2",
+      brandIds: ["brand-a"],
+      selectedProjectIds: ["project-2"],
       days: [new Date("2026-05-18T00:00:00")],
     });
 
@@ -143,22 +143,70 @@ describe("resource project model", () => {
   it("highlights projects by selected project or selected brand", () => {
     expect(
       isProjectHighlighted(project({ id: "project-1", brandId: "brand-a" }), {
-        selectedProjectId: "project-1",
-        selectedBrandId: null,
+        selectedProjectIds: ["project-1"],
+        selectedBrandIds: [],
       })
     ).toBe(true);
 
     expect(
       isProjectHighlighted(project({ id: "project-2", brandId: "brand-a" }), {
-        selectedProjectId: null,
-        selectedBrandId: "brand-a",
+        selectedProjectIds: [],
+        selectedBrandIds: ["brand-a"],
       })
     ).toBe(true);
 
     expect(
       isProjectHighlighted(project({ id: "project-3", brandId: "brand-b" }), {
-        selectedProjectId: "project-1",
-        selectedBrandId: "brand-a",
+        selectedProjectIds: ["project-1"],
+        selectedBrandIds: ["brand-a"],
+      })
+    ).toBe(false);
+  });
+
+  it("highlights projects when project id is in a multi-value selectedProjectIds", () => {
+    expect(
+      isProjectHighlighted(project({ id: "project-2", brandId: null }), {
+        selectedProjectIds: ["project-1", "project-2", "project-3"],
+        selectedBrandIds: [],
+      })
+    ).toBe(true);
+
+    expect(
+      isProjectHighlighted(project({ id: "project-99", brandId: null }), {
+        selectedProjectIds: ["project-1", "project-2", "project-3"],
+        selectedBrandIds: [],
+      })
+    ).toBe(false);
+  });
+
+  it("highlights projects when project.brandId is in a multi-value selectedBrandIds", () => {
+    expect(
+      isProjectHighlighted(project({ id: "project-1", brandId: "brand-b" }), {
+        selectedProjectIds: [],
+        selectedBrandIds: ["brand-a", "brand-b", "brand-c"],
+      })
+    ).toBe(true);
+
+    expect(
+      isProjectHighlighted(project({ id: "project-2", brandId: null }), {
+        selectedProjectIds: [],
+        selectedBrandIds: ["brand-a", "brand-b"],
+      })
+    ).toBe(false);
+
+    expect(
+      isProjectHighlighted(project({ id: "project-3", brandId: "brand-z" }), {
+        selectedProjectIds: [],
+        selectedBrandIds: ["brand-a", "brand-b"],
+      })
+    ).toBe(false);
+  });
+
+  it("does not highlight when neither project id nor brand id matches", () => {
+    expect(
+      isProjectHighlighted(project({ id: "project-99", brandId: "brand-z" }), {
+        selectedProjectIds: ["project-1", "project-2"],
+        selectedBrandIds: ["brand-a", "brand-b"],
       })
     ).toBe(false);
   });
@@ -180,8 +228,8 @@ describe("resource project model", () => {
     expect(bannerGroup).toBeDefined();
     expect(
       isDeliverableGroupHighlighted(bannerGroup!, {
-        selectedProjectId: null,
-        selectedBrandId: "brand-a",
+        selectedProjectIds: [],
+        selectedBrandIds: ["brand-a"],
       })
     ).toBe(true);
   });
@@ -228,8 +276,8 @@ describe("resource project model", () => {
     expect(
       groups.some((group) =>
         isDeliverableGroupHighlighted(group, {
-          selectedProjectId: "project-selected",
-          selectedBrandId: null,
+          selectedProjectIds: ["project-selected"],
+          selectedBrandIds: [],
         })
       )
     ).toBe(true);

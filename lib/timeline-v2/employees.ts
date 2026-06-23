@@ -13,9 +13,9 @@ type EmployeeNameRecord = {
 };
 
 type TimelineEmployeeFilters = {
-  brandId: string | null;
-  department: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  departments: string[];
+  projectIds: string[];
   searchQuery?: string;
 };
 
@@ -132,23 +132,25 @@ export function filterTimelineEmployees({
 }: TimelineEmployeeFilterInput): Employee[] {
   let filtered = employees;
 
-  if (hasActiveTimelineScopeFilter(filters)) {
+  if (hasActiveTimelineScopeFilter({ brandIds: filters.brandIds, projectIds: filters.projectIds })) {
     const matchingEmployeeIds = getMatchingTimelineEmployeeIds({
       dateFilteredAssignments,
       visibleActualAssignments,
       projectById,
       selectedBrandProjectIds,
       filters: {
-        brandId: filters.brandId,
-        projectId: filters.projectId,
+        brandIds: filters.brandIds,
+        projectIds: filters.projectIds,
       },
     });
 
     filtered = filtered.filter((employee) => matchingEmployeeIds?.has(employee.id));
   }
 
-  if (filters.department) {
-    filtered = filtered.filter((employee) => employee.departmentId === filters.department);
+  if (filters.departments.length > 0) {
+    filtered = filtered.filter(
+      (employee) => employee.departmentId !== null && filters.departments.includes(employee.departmentId)
+    );
   }
 
   const query = filters.searchQuery?.toLowerCase().trim();

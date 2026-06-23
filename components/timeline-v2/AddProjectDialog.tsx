@@ -78,7 +78,7 @@ export function AddProjectDialog({ createdByUuid }: AddProjectDialogProps) {
 
   const projectHasQuery = hasProjectCriteria({
     search: projectSearch,
-    brandId: null,
+    brandIds: [],
     status: null,
     sourceType: null,
   });

@@ -77,7 +77,7 @@ const baseInput = {
   visibleActualAssignments: [] as ActualAssignment[],
   projectById: new Map<string, ProjectOption>(),
   selectedBrandProjectIds: new Set<string>(),
-  filters: { brandId: null, projectId: null, department: null, searchQuery: undefined },
+  filters: { brandIds: [], projectIds: [], departments: [], searchQuery: undefined },
 };
 
 describe("filterTimelineEmployees dedup", () => {

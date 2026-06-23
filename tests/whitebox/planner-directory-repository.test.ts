@@ -490,31 +490,28 @@ describe("planner directory repository", () => {
   });
 
   it("queries a paginated, searchable, scoped project slice for filter options", async () => {
-    const db = createMockDb();
+    let capturedSql = "";
+    let capturedParams: unknown[] = [];
+    const db = { query: async (sql: string, params: unknown[]) => { capturedSql = sql; capturedParams = params; return { rows: [] }; } };
     const repository = createPlannerDirectoryRepository({ db });
 
     await repository.listProjectsForFilterOptions({
-      brandId: "brand-9", status: "active", sourceType: "campaign",
+      brandIds: ["brand-9"], status: "active", sourceType: "campaign",
       search: "launch", limit: 50, offset: 0,
     });
 
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("COUNT(*) OVER() AS total_count"),
-      expect.arrayContaining(["brand-9", "active", "campaign", "%launch%", 50, 0])
-    );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("LEFT JOIN planner_brands"),
-      expect.any(Array)
-    );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("b.name AS brand_name"),
-      expect.any(Array)
-    );
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("LIMIT"), expect.any(Array));
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("p.archived_at IS NULL"),
-      expect.any(Array)
-    );
+    expect(capturedSql).toContain("COUNT(*) OVER() AS total_count");
+    expect(capturedParams).toContain("brand-9");
+    expect(capturedParams).toContain("active");
+    expect(capturedParams).toContain("campaign");
+    expect(capturedParams).toContain("%launch%");
+    expect(capturedParams).toContain(50);
+    expect(capturedParams).toContain(0);
+    expect(capturedSql).toContain("p.brand_id IN");
+    expect(capturedSql).toContain("LEFT JOIN planner_brands");
+    expect(capturedSql).toContain("b.name AS brand_name");
+    expect(capturedSql).toContain("LIMIT");
+    expect(capturedSql).toContain("p.archived_at IS NULL");
   });
 
   it("queries a selected project for filter option preservation", async () => {
@@ -527,5 +524,17 @@ describe("planner directory repository", () => {
       expect.stringContaining("p.source_project_id"),
       expect.arrayContaining(["campaign-123"])
     );
+  });
+
+  it("filters filter-option projects by an IN list of brand ids", async () => {
+    let capturedSql = "";
+    let capturedParams: unknown[] = [];
+    const repo = createPlannerDirectoryRepository({
+      db: { query: async (sql: string, params: unknown[]) => { capturedSql = sql; capturedParams = params; return { rows: [] }; } },
+    });
+    await repo.listProjectsForFilterOptions({ brandIds: ["b1", "b2"], limit: 50, offset: 0 });
+    expect(capturedSql).toContain("p.brand_id IN");
+    expect(capturedParams).toContain("b1");
+    expect(capturedParams).toContain("b2");
   });
 });

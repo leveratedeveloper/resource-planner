@@ -12,21 +12,21 @@ export function orderProjectLanes<
 >({
   lanes,
   resourceAssignments,
-  brandId,
-  projectId,
+  brandIds,
+  projectIds,
   days,
 }: {
   lanes: L[];
   resourceAssignments: Assignment[];
-  brandId: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  projectIds: string[];
   days: Date[];
 }): OrderedProjectLane<L>[] {
   const sortedProjects = sortResourceProjects({
     projects: lanes.map((lane) => lane.project),
     resourceAssignments,
-    brandId,
-    selectedProjectId: projectId,
+    brandIds,
+    selectedProjectIds: projectIds,
     days,
   });
 
@@ -37,8 +37,8 @@ export function orderProjectLanes<
   });
 
   const highlightFilters = {
-    selectedBrandId: brandId,
-    selectedProjectId: projectId,
+    selectedBrandIds: brandIds,
+    selectedProjectIds: projectIds,
   };
 
   // Stable sort keeps insertion order for ties and for lanes missing from

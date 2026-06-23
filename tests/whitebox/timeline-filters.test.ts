@@ -65,9 +65,9 @@ const makeProject = (overrides: Partial<ProjectOption>): ProjectOption => ({
 
 describe("timeline scope filters", () => {
   it("reports whether a brand or project resource filter is active", () => {
-    expect(hasActiveTimelineScopeFilter({ brandId: null, projectId: null })).toBe(false);
-    expect(hasActiveTimelineScopeFilter({ brandId: "brand-1", projectId: null })).toBe(true);
-    expect(hasActiveTimelineScopeFilter({ brandId: null, projectId: "project-1" })).toBe(true);
+    expect(hasActiveTimelineScopeFilter({ brandIds: [], projectIds: [] })).toBe(false);
+    expect(hasActiveTimelineScopeFilter({ brandIds: ["brand-1"], projectIds: [] })).toBe(true);
+    expect(hasActiveTimelineScopeFilter({ brandIds: [], projectIds: ["project-1"] })).toBe(true);
   });
 
   it("returns null when no brand or project filter is active", () => {
@@ -76,7 +76,7 @@ describe("timeline scope filters", () => {
       visibleActualAssignments: [],
       projectById: new Map([["project-1", makeProject({ id: "project-1", brandId: "brand-1" })]]),
       selectedBrandProjectIds: new Set(),
-      filters: { brandId: null, projectId: null },
+      filters: { brandIds: [], projectIds: [] },
     });
 
     expect(employeeIds).toBeNull();
@@ -97,7 +97,7 @@ describe("timeline scope filters", () => {
         ["project-other", makeProject({ id: "project-other", brandId: "brand-2" })],
       ]),
       selectedBrandProjectIds: new Set(),
-      filters: { brandId: "brand-1", projectId: null },
+      filters: { brandIds: ["brand-1"], projectIds: [] },
     });
 
     expect(Array.from(employeeIds ?? []).sort()).toEqual(["employee-actual", "employee-planned"]);
@@ -121,7 +121,7 @@ describe("timeline scope filters", () => {
       ],
       projectById: new Map(),
       selectedBrandProjectIds: new Set(["project-from-brand-summary"]),
-      filters: { brandId: "brand-1", projectId: null },
+      filters: { brandIds: ["brand-1"], projectIds: [] },
     });
 
     expect(Array.from(employeeIds ?? []).sort()).toEqual(["employee-actual", "employee-planned"]);
@@ -139,7 +139,7 @@ describe("timeline scope filters", () => {
       ],
       projectById: new Map(),
       selectedBrandProjectIds: new Set(),
-      filters: { brandId: null, projectId: "project-1" },
+      filters: { brandIds: [], projectIds: ["project-1"] },
     });
 
     expect(Array.from(employeeIds ?? []).sort()).toEqual(["employee-actual", "employee-planned"]);
@@ -165,7 +165,7 @@ describe("timeline scope filters", () => {
       ],
       projectById: new Map([["project-1", makeProject({ id: "project-1", brandId: "brand-1" })]]),
       selectedBrandProjectIds: new Set(),
-      filters: { brandId: "brand-1", projectId: "project-1" },
+      filters: { brandIds: ["brand-1"], projectIds: ["project-1"] },
     });
 
     expect(Array.from(employeeIds ?? [])).toEqual([]);
@@ -185,9 +185,67 @@ describe("timeline scope filters", () => {
         ["project-3", makeProject({ id: "project-3", brandId: "brand-2" })],
       ]),
       selectedBrandProjectIds: new Set(["project-1", "project-2"]),
-      filters: { brandId: "brand-1", projectId: "project-1" },
+      filters: { brandIds: ["brand-1"], projectIds: ["project-1"] },
     });
 
     expect(Array.from(employeeIds ?? [])).toEqual(["employee-match"]);
+  });
+
+  // --- Multi-select new tests ---
+
+  it("multi-brand union: returns employees from either selected brand", () => {
+    const employeeIds = getMatchingTimelineEmployeeIds({
+      dateFilteredAssignments: [
+        makeAssignment({ id: "a1", employeeId: "employee-a", projectId: "project-brand1" }),
+        makeAssignment({ id: "a2", employeeId: "employee-b", projectId: "project-brand2" }),
+        makeAssignment({ id: "a3", employeeId: "employee-c", projectId: "project-other" }),
+      ],
+      visibleActualAssignments: [],
+      projectById: new Map([
+        ["project-brand1", makeProject({ id: "project-brand1", brandId: "brand-1" })],
+        ["project-brand2", makeProject({ id: "project-brand2", brandId: "brand-2" })],
+        ["project-other", makeProject({ id: "project-other", brandId: "brand-3" })],
+      ]),
+      selectedBrandProjectIds: new Set(),
+      filters: { brandIds: ["brand-1", "brand-2"], projectIds: [] },
+    });
+
+    expect(Array.from(employeeIds ?? []).sort()).toEqual(["employee-a", "employee-b"]);
+  });
+
+  it("multi-project union: returns employees from either selected project", () => {
+    const employeeIds = getMatchingTimelineEmployeeIds({
+      dateFilteredAssignments: [
+        makeAssignment({ id: "p1", employeeId: "employee-a", projectId: "project-1" }),
+        makeAssignment({ id: "p2", employeeId: "employee-b", projectId: "project-2" }),
+        makeAssignment({ id: "p3", employeeId: "employee-c", projectId: "project-3" }),
+      ],
+      visibleActualAssignments: [],
+      projectById: new Map(),
+      selectedBrandProjectIds: new Set(),
+      filters: { brandIds: [], projectIds: ["project-1", "project-2"] },
+    });
+
+    expect(Array.from(employeeIds ?? []).sort()).toEqual(["employee-a", "employee-b"]);
+  });
+
+  it("brand∩project intersection: only returns employee on both a selected brand AND selected project", () => {
+    // employee-match is on brand-1 via project-1 and also on project-1 directly → in intersection
+    // employee-brand-only is on brand-1 via project-2 but NOT on project-1 → excluded
+    const employeeIds = getMatchingTimelineEmployeeIds({
+      dateFilteredAssignments: [
+        makeAssignment({ id: "both", employeeId: "employee-match", projectId: "project-1" }),
+        makeAssignment({ id: "brand-only", employeeId: "employee-brand-only", projectId: "project-2" }),
+      ],
+      visibleActualAssignments: [],
+      projectById: new Map([
+        ["project-1", makeProject({ id: "project-1", brandId: "brand-1" })],
+        ["project-2", makeProject({ id: "project-2", brandId: "brand-1" })],
+      ]),
+      selectedBrandProjectIds: new Set(),
+      filters: { brandIds: ["brand-1"], projectIds: ["project-1"] },
+    });
+
+    expect(Array.from(employeeIds ?? []).sort()).toEqual(["employee-match"]);
   });
 });

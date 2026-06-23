@@ -1016,7 +1016,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
   }
 
   async function listProjectsForFilterOptions(args: {
-    brandId?: string | null;
+    brandIds?: string[] | null;
     status?: string | null;
     sourceType?: string | null;
     search?: string | null;
@@ -1030,9 +1030,9 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     const params: unknown[] = [];
     const whereClauses = ["p.archived_at IS NULL"];
 
-    if (args.brandId) {
-      params.push(args.brandId);
-      whereClauses.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    if (args.brandIds && args.brandIds.length > 0) {
+      const inClause = buildInClause("p.brand_id", args.brandIds, dialect, params);
+      if (inClause) whereClauses.push(inClause);
     }
 
     if (args.status) {

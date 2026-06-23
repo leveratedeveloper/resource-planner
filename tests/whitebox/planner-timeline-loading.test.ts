@@ -110,11 +110,11 @@ describe("planner timeline loading contract", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
     const routeSource = readFileSync("app/api/planner/timeline/route.ts", "utf8");
 
-    expect(timelineSource).not.toContain("filters: {\n        projectId,");
-    expect(timelineSource).not.toContain("filters: {\n        brandId,");
+    expect(timelineSource).not.toContain("filters: {\n        projectIds,");
+    expect(timelineSource).not.toContain("filters: {\n        brandIds,");
     expect(timelineSource).toContain("filters: {");
-    expect(timelineSource).toContain("projectId,");
-    expect(timelineSource).toContain("brandId,");
+    expect(timelineSource).toContain("projectIds,");
+    expect(timelineSource).toContain("brandIds,");
     expect(timelineSource).toContain("getVisibleEmployeeIds");
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("projectId")');
     expect(routeSource).not.toContain('request.nextUrl.searchParams.get("brandId")');
@@ -123,9 +123,9 @@ describe("planner timeline loading contract", () => {
   it("does not use brandId as a destructive planner assignment payload filter", () => {
     const timelineSource = readFileSync("components/timeline-v2/Timeline.tsx", "utf8");
 
-    expect(timelineSource).not.toContain("filters: {\n        brandId:");
-    expect(timelineSource).not.toContain("request.filters.brandId");
-    expect(timelineSource).toContain("brandId,");
+    expect(timelineSource).not.toContain("filters: {\n        brandIds:");
+    expect(timelineSource).not.toContain("request.filters.brandIds");
+    expect(timelineSource).toContain("brandIds,");
     expect(timelineSource).toContain("getVisibleEmployeeIds");
   });
 

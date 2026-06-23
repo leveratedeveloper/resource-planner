@@ -18,8 +18,8 @@ type ResourceRowProps = {
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
-  brandId: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  projectIds: string[];
 };
 
 export const ResourceRow = React.memo(function ResourceRow({
@@ -29,8 +29,8 @@ export const ResourceRow = React.memo(function ResourceRow({
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
-  brandId,
-  projectId,
+  brandIds,
+  projectIds,
 }: ResourceRowProps) {
   const isExpanded = useIsRowExpanded(row.id);
   const toggleExpanded = useTimelineExpansionStore((state) => state.toggle);
@@ -44,12 +44,12 @@ export const ResourceRow = React.memo(function ResourceRow({
         ? orderProjectLanes({
             lanes: row.projectLanes,
             resourceAssignments: row.assignments,
-            brandId,
-            projectId,
+            brandIds,
+            projectIds,
             days: projectDays,
           })
         : [],
-    [brandId, isExpanded, projectDays, projectId, row.assignments, row.projectLanes]
+    [brandIds, isExpanded, projectDays, projectIds, row.assignments, row.projectLanes]
   );
 
   // Project ids this employee already has assignments on — used to disable them

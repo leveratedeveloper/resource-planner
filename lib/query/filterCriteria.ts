@@ -11,7 +11,7 @@ export function hasBrandCriteria(search: string): boolean {
 
 export type ProjectCriteria = {
   search: string;
-  brandId: string | null;
+  brandIds: string[];
   status: ProjectOption["status"] | null;
   sourceType: ProjectOption["projectType"] | null;
 };
@@ -24,7 +24,7 @@ export type ProjectCriteria = {
 export function hasProjectCriteria(criteria: ProjectCriteria): boolean {
   return (
     criteria.search.trim().length > 0 ||
-    !!criteria.brandId ||
+    criteria.brandIds.length > 0 ||
     !!criteria.status ||
     !!criteria.sourceType
   );

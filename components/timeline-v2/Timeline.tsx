@@ -21,6 +21,7 @@ import {
 } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import { useAddProjectStore } from "@/lib/timeline-v2/add-project-store";
+import { useFilterPreviewStore } from "@/lib/timeline-v2/filter-preview-store";
 import { AddProjectDialog } from "@/components/timeline-v2/AddProjectDialog";
 import { TimelineToolbar } from "@/components/timeline-v2/TimelineToolbar";
 import { DataStatus } from "@/components/timeline-v2/DataStatus";
@@ -39,10 +40,10 @@ const AssignmentEditor = dynamic(
 type TimelineProps = {
   initialTimelineAnchor: string;
   initialBootstrap?: PlannerHomeBootstrapResponse | null;
-  brandId: string | null;
-  department: string | null;
+  brandIds: string[];
+  departments: string[];
   searchQuery?: string;
-  projectId: string | null;
+  projectIds: string[];
 };
 
 function getInitialDate(anchor: string) {
@@ -102,10 +103,10 @@ function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][s
 export function Timeline({
   initialTimelineAnchor,
   initialBootstrap,
-  brandId,
-  department,
+  brandIds,
+  departments,
   searchQuery,
-  projectId,
+  projectIds,
 }: TimelineProps) {
   const { session } = useAuth();
   const timelineRootRef = useRef<HTMLDivElement>(null);
@@ -198,8 +199,8 @@ export function Timeline({
   }, [assignmentDateRange, viewMode]);
 
   const timelineFilters = useMemo(
-    () => ({ brandId, department, projectId, searchQuery }),
-    [brandId, department, projectId, searchQuery]
+    () => ({ brandIds, departments, projectIds, searchQuery }),
+    [brandIds, departments, projectIds, searchQuery]
   );
   // ONE data source: a single windowed bootstrap query. It carries every
   // employee with their assignments for the date window; filters re-slice it
@@ -226,13 +227,23 @@ export function Timeline({
     () =>
       new Set(
         timelineProjects
-          .filter((project) => !brandId || project.brandId === brandId)
+          .filter((project) => brandIds.length === 0 || (project.brandId !== null && brandIds.includes(project.brandId)))
           .map((project) => project.id)
       ),
-    [brandId, timelineProjects]
+    [brandIds, timelineProjects]
   );
   const projectById = useMemo(() => new Map(timelineProjects.map((project) => [project.id, project])), [timelineProjects]);
   const brandById = useMemo(() => new Map(timelineBrands.map((brand) => [brand.id, brand])), [timelineBrands]);
+
+  const setFilterPreviewDataset = useFilterPreviewStore((state) => state.setDataset);
+  useEffect(() => {
+    setFilterPreviewDataset({
+      employees,
+      assignments: dateFilteredAssignments,
+      actualAssignments: visibleActualAssignments,
+      projectById,
+    });
+  }, [employees, dateFilteredAssignments, visibleActualAssignments, projectById, setFilterPreviewDataset]);
 
   const days = useMemo(() => columns.columns.map((column) => column.date), [columns.columns]);
 
@@ -401,8 +412,8 @@ export function Timeline({
             showTimelineLoading={rowLoadingState.showTimelineLoading}
             showExpandedLoading={rowLoadingState.showExpandedLoading}
             canEditAssignments={canEditAssignments}
-            brandId={brandId}
-            projectId={projectId}
+            brandIds={brandIds}
+            projectIds={projectIds}
           />
         </div>
       )}

@@ -118,7 +118,7 @@ describe("timeline employee loading helpers", () => {
       dateFilteredAssignments: [],
       visibleActualAssignments: [],
       projectById: new Map(),
-      filters: { brandId: null, department: "department-1", projectId: null },
+      filters: { brandIds: [], departments: ["department-1"], projectIds: [] },
     });
 
     expect(visible.map((employee) => employee.id)).toEqual(["employee-1"]);
@@ -142,9 +142,9 @@ describe("timeline employee loading helpers", () => {
       ],
       projectById: new Map(),
       filters: {
-        brandId: null,
-        department: null,
-        projectId: "project-1",
+        brandIds: [],
+        departments: [],
+        projectIds: ["project-1"],
         searchQuery: "",
       },
     });
@@ -166,9 +166,9 @@ describe("timeline employee loading helpers", () => {
       ],
       projectById: new Map(),
       filters: {
-        brandId: null,
-        department: null,
-        projectId: "project-1",
+        brandIds: [],
+        departments: [],
+        projectIds: ["project-1"],
         searchQuery: "",
       },
     });
@@ -186,9 +186,9 @@ describe("timeline employee loading helpers", () => {
       visibleActualAssignments: [],
       projectById: new Map(),
       filters: {
-        brandId: "brand-empty",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-empty"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -224,9 +224,9 @@ describe("timeline employee loading helpers", () => {
       visibleActualAssignments: [],
       projectById,
       filters: {
-        brandId: "brand-1",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-1"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -258,9 +258,9 @@ describe("timeline employee loading helpers", () => {
       ]),
       selectedBrandProjectIds: new Set(["project-brand-not-in-generic-map"]),
       filters: {
-        brandId: "brand-1",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-1"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -294,9 +294,9 @@ describe("timeline employee loading helpers", () => {
       ],
       projectById,
       filters: {
-        brandId: "brand-1",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-1"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -335,9 +335,9 @@ describe("timeline employee loading helpers", () => {
       visibleActualAssignments: [],
       projectById,
       filters: {
-        brandId: "brand-1",
-        department: "department-1",
-        projectId: "project-1",
+        brandIds: ["brand-1"],
+        departments: ["department-1"],
+        projectIds: ["project-1"],
         searchQuery: "designer",
       },
     });
@@ -412,9 +412,9 @@ describe("timeline employee loading helpers", () => {
       visibleActualAssignments: [],
       projectById: new Map(),
       filters: {
-        brandId: null,
-        department: null,
-        projectId: "project-1",
+        brandIds: [],
+        departments: [],
+        projectIds: ["project-1"],
         searchQuery: "",
       },
     });

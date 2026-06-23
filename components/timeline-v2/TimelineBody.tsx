@@ -16,8 +16,8 @@ type TimelineBodyProps = {
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
-  brandId: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  projectIds: string[];
 };
 
 // Virtualized rows region. Lives inside the single scroll container owned by
@@ -33,8 +33,8 @@ export function TimelineBody({
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
-  brandId,
-  projectId,
+  brandIds,
+  projectIds,
 }: TimelineBodyProps) {
   return (
     <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
@@ -58,8 +58,8 @@ export function TimelineBody({
               showTimelineLoading={showTimelineLoading}
               showExpandedLoading={showExpandedLoading}
               canEditAssignments={canEditAssignments}
-              brandId={brandId}
-              projectId={projectId}
+              brandIds={brandIds}
+              projectIds={projectIds}
             />
           </div>
         );

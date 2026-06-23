@@ -3,8 +3,8 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
 export type TimelineScopeFilters = {
-  brandId: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  projectIds: string[];
 };
 
 type TimelineScopeFilterInput = {
@@ -16,7 +16,7 @@ type TimelineScopeFilterInput = {
 };
 
 export function hasActiveTimelineScopeFilter(filters: TimelineScopeFilters): boolean {
-  return !!filters.brandId || !!filters.projectId;
+  return filters.brandIds.length > 0 || filters.projectIds.length > 0;
 }
 
 function addEmployeesForProjectIds({
@@ -42,11 +42,11 @@ function addEmployeesForProjectIds({
 }
 
 function getProjectEmployeeIds({
-  projectId,
+  projectIds,
   dateFilteredAssignments,
   visibleActualAssignments,
 }: {
-  projectId: string;
+  projectIds: string[];
   dateFilteredAssignments: Assignment[];
   visibleActualAssignments: ActualAssignment[];
 }): Set<string> {
@@ -54,7 +54,7 @@ function getProjectEmployeeIds({
 
   addEmployeesForProjectIds({
     employeeIds,
-    projectIds: new Set([projectId]),
+    projectIds: new Set(projectIds),
     dateFilteredAssignments,
     visibleActualAssignments,
   });
@@ -64,32 +64,35 @@ function getProjectEmployeeIds({
 
 function assignmentMatchesBrand({
   projectId,
-  brandId,
+  brandIds,
   projectById,
   selectedBrandProjectIds,
   assignmentProjectBrandId,
 }: {
   projectId: string;
-  brandId: string;
+  brandIds: string[];
   projectById: Map<string, ProjectOption>;
   selectedBrandProjectIds?: Set<string>;
   assignmentProjectBrandId?: string | null;
 }): boolean {
+  const projectBrandId = projectById.get(projectId)?.brandId;
   return (
-    assignmentProjectBrandId === brandId ||
-    projectById.get(projectId)?.brandId === brandId ||
+    (assignmentProjectBrandId !== null &&
+      assignmentProjectBrandId !== undefined &&
+      brandIds.includes(assignmentProjectBrandId)) ||
+    (projectBrandId != null && brandIds.includes(projectBrandId)) ||
     !!selectedBrandProjectIds?.has(projectId)
   );
 }
 
 function getBrandEmployeeIds({
-  brandId,
+  brandIds,
   dateFilteredAssignments,
   visibleActualAssignments,
   projectById,
   selectedBrandProjectIds,
 }: {
-  brandId: string;
+  brandIds: string[];
   dateFilteredAssignments: Assignment[];
   visibleActualAssignments: ActualAssignment[];
   projectById: Map<string, ProjectOption>;
@@ -103,7 +106,7 @@ function getBrandEmployeeIds({
     if (
       assignmentMatchesBrand({
         projectId: assignment.projectId,
-        brandId,
+        brandIds,
         projectById,
         selectedBrandProjectIds,
         assignmentProjectBrandId: assignment.project?.brand?.id,
@@ -119,7 +122,7 @@ function getBrandEmployeeIds({
     if (
       assignmentMatchesBrand({
         projectId: assignment.projectUuid,
-        brandId,
+        brandIds,
         projectById,
         selectedBrandProjectIds,
       })
@@ -150,10 +153,10 @@ export function getMatchingTimelineEmployeeIds({
 }: TimelineScopeFilterInput): Set<string> | null {
   const activeMatches: Set<string>[] = [];
 
-  if (filters.brandId) {
+  if (filters.brandIds.length > 0) {
     activeMatches.push(
       getBrandEmployeeIds({
-        brandId: filters.brandId,
+        brandIds: filters.brandIds,
         dateFilteredAssignments,
         visibleActualAssignments,
         projectById,
@@ -162,10 +165,10 @@ export function getMatchingTimelineEmployeeIds({
     );
   }
 
-  if (filters.projectId) {
+  if (filters.projectIds.length > 0) {
     activeMatches.push(
       getProjectEmployeeIds({
-        projectId: filters.projectId,
+        projectIds: filters.projectIds,
         dateFilteredAssignments,
         visibleActualAssignments,
       })
