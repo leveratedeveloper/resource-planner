@@ -21,6 +21,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { SetupSectionHeader } from "./SetupSectionHeader";
+import { BulkAssignDialog } from "@/components/brands/BulkAssignDialog";
 const INDUSTRY_CATEGORIES = [
   "Agriculture",
   "Airline",
@@ -118,6 +119,8 @@ export const BrandSetup = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [isLoadingBrandDetails, setIsLoadingBrandDetails] = useState(false);
+
+  const [bulkAssignBrand, setBulkAssignBrand] = useState<{ id: string; name: string } | null>(null);
 
   // Form State - Basic Information
   const [companyName, setCompanyName] = useState("");
@@ -307,6 +310,18 @@ export const BrandSetup = () => {
                            {brand.name}
                          </CardTitle>
                       </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 gap-1.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBulkAssignBrand({ id: brand.id, name: brand.name });
+                        }}
+                      >
+                        <Icon icon="lucide:users" className="h-3.5 w-3.5" />
+                        Bulk Assign
+                      </Button>
                     </div>
                     <CardDescription className="text-muted-foreground mt-2">
                       {brand.companyName || "No company name"}
@@ -364,6 +379,15 @@ export const BrandSetup = () => {
             </div>
           </InfiniteScrollTrigger>
         </>
+      )}
+
+      {bulkAssignBrand && (
+        <BulkAssignDialog
+          open={!!bulkAssignBrand}
+          onOpenChange={(open) => { if (!open) setBulkAssignBrand(null); }}
+          brandId={bulkAssignBrand.id}
+          brandName={bulkAssignBrand.name}
+        />
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
