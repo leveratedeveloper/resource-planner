@@ -52,18 +52,11 @@ export const ResourceRow = React.memo(function ResourceRow({
     [brandIds, isExpanded, projectDays, projectIds, row.assignments, row.projectLanes]
   );
 
-  // Project ids this employee already has assignments on — used to disable them
-  // in the Add-project picker. Same id space as ProjectOption.id.
+  // Project IDs (ProjectOption.id) this employee already has lanes for — used
+  // to disable them in the Add-project picker.
   const assignedProjectIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          row.assignments
-            .filter((assignment) => assignment.projectId && !assignment.isTimeOff)
-            .map((assignment) => assignment.projectId as string)
-        )
-      ),
-    [row.assignments]
+    () => row.projectLanes.map((lane) => lane.project.id),
+    [row.projectLanes]
   );
 
   return (
@@ -91,7 +84,7 @@ export const ResourceRow = React.memo(function ResourceRow({
             <>
               {orderedLanes.map((lane) => (
                 <ProjectLane
-                  key={lane.projectId}
+                  key={lane.projectKey}
                   lane={lane}
                   resourceId={row.resource.id}
                   resourceAssignments={row.assignments}

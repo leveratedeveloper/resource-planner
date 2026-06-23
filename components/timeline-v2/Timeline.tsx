@@ -209,7 +209,6 @@ export function Timeline({
   const {
     employees,
     assignments: dateFilteredAssignments,
-    actualAssignments: visibleActualAssignments,
     brandsById,
     projectsById,
     metadataFreshness,
@@ -224,16 +223,16 @@ export function Timeline({
   });
   const timelineBrands = useMemo(() => Object.values(brandsById).map(toBrandOption), [brandsById]);
   const timelineProjects = useMemo(() => Object.values(projectsById).map(toProjectOption), [projectsById]);
-  const selectedBrandProjectIds = useMemo(
+  const selectedBrandProjectKeys = useMemo(
     () =>
       new Set(
         timelineProjects
           .filter((project) => brandIds.length === 0 || (project.brandId !== null && brandIds.includes(project.brandId)))
-          .map((project) => project.id)
+          .map((project) => project.projectKey)
       ),
     [brandIds, timelineProjects]
   );
-  const projectById = useMemo(() => new Map(timelineProjects.map((project) => [project.id, project])), [timelineProjects]);
+  const projectByKey = useMemo(() => new Map(timelineProjects.map((project) => [project.projectKey, project])), [timelineProjects]);
   const brandById = useMemo(() => new Map(timelineBrands.map((brand) => [brand.id, brand])), [timelineBrands]);
 
   const setFilterPreviewDataset = useFilterPreviewStore((state) => state.setDataset);
@@ -241,10 +240,9 @@ export function Timeline({
     setFilterPreviewDataset({
       employees,
       assignments: dateFilteredAssignments,
-      actualAssignments: visibleActualAssignments,
-      projectById,
+      projectByKey,
     });
-  }, [employees, dateFilteredAssignments, visibleActualAssignments, projectById, setFilterPreviewDataset]);
+  }, [employees, dateFilteredAssignments, projectByKey, setFilterPreviewDataset]);
 
   const days = useMemo(() => columns.columns.map((column) => column.date), [columns.columns]);
 
@@ -255,13 +253,12 @@ export function Timeline({
       buildEmployeeRowModels({
         employees,
         assignments: dateFilteredAssignments,
-        actualAssignments: visibleActualAssignments,
         projects: timelineProjects,
         brandById,
         days,
         viewMode,
       }),
-    [brandById, dateFilteredAssignments, days, employees, timelineProjects, viewMode, visibleActualAssignments]
+    [brandById, dateFilteredAssignments, days, employees, timelineProjects, viewMode]
   );
 
   // Filters only decide WHICH rows are visible — an ordered id list, not a rebuild.
@@ -270,12 +267,11 @@ export function Timeline({
       getVisibleEmployeeIds({
         employees,
         assignments: dateFilteredAssignments,
-        actualAssignments: visibleActualAssignments,
-        projectById,
-        selectedBrandProjectIds,
+        projectByKey,
+        selectedBrandProjectKeys,
         filters: timelineFilters,
       }),
-    [dateFilteredAssignments, employees, projectById, selectedBrandProjectIds, timelineFilters, visibleActualAssignments]
+    [dateFilteredAssignments, employees, projectByKey, selectedBrandProjectKeys, timelineFilters]
   );
 
   const canEditAssignmentsRef = useRef(false);

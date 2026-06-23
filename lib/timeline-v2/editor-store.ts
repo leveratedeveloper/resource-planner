@@ -3,8 +3,7 @@ import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
 // The single editing surface's target. Exactly one editor can be open at a
-// time — opening a new target replaces the previous one, which is what kills
-// the old stacked-modal failure mode.
+// time — opening a new target replaces the previous one.
 export type AssignmentEditorTarget =
   | {
       mode: "create";
@@ -24,11 +23,8 @@ export type AssignmentEditorTarget =
       project: ProjectOption;
       monthStart: Date;
       monthEnd: Date;
-      resourceAssignments: Assignment[];
+      // The existing assignment for this employee+project in this month, if any.
       clickedAssignment?: Assignment;
-      monthlyTotalHours?: number;
-      planTotalHours?: number;
-      adjustmentTotalHours?: number;
     };
 
 type AssignmentEditorState = {
