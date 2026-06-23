@@ -7,44 +7,80 @@ export type EngagementRow = {
 };
 export type AllocationRow = { assignment_uuid: string; month: string; planned_hours: number; kind: string };
 
-/** Fetch engagements (optionally filtered) plus all their monthly allocation rows. */
+/** Fetch engagements (+ monthly allocations) in one windowed query.
+ *  - employee_uuid / employee_uuids: scope by employee
+ *  - project_key / project_keys: scope by project
+ *  - rangeStart/rangeEnd (YYYY-MM-DD): keep only engagements overlapping the range
+ *    and only allocations whose month falls in the range (omit for full set). */
 export async function getEngagements(filters: {
-  employee_uuid?: string; project_key?: string; project_keys?: string[];
+  employee_uuid?: string;
+  employee_uuids?: string[];
+  project_key?: string;
+  project_keys?: string[];
+  rangeStart?: string;
+  rangeEnd?: string;
 }): Promise<{ engagements: EngagementRow[]; allocations: AllocationRow[] }> {
-  const where: string[] = [];
   const params: unknown[] = [];
-  if (filters.employee_uuid) { params.push(filters.employee_uuid); where.push(`employee_uuid = $${params.length}`); }
-  if (filters.project_key) { params.push(filters.project_key); where.push(`project_key = $${params.length}`); }
-  if (filters.project_keys?.length) {
-    const start = params.length;
-    filters.project_keys.forEach((k) => params.push(k));
-    where.push(`project_key IN (${filters.project_keys.map((_, i) => `$${start + i + 1}`).join(",")})`);
+  const add = (v: unknown) => { params.push(v); return `$${params.length}`; };
+
+  const where: string[] = [];
+  if (filters.employee_uuid) where.push(`e.employee_uuid = ${add(filters.employee_uuid)}`);
+  if (filters.employee_uuids?.length) where.push(`e.employee_uuid IN (${filters.employee_uuids.map((u) => add(u)).join(",")})`);
+  if (filters.project_key) where.push(`e.project_key = ${add(filters.project_key)}`);
+  if (filters.project_keys?.length) where.push(`e.project_key IN (${filters.project_keys.map((k) => add(k)).join(",")})`);
+  if (filters.rangeStart && filters.rangeEnd) {
+    where.push(`e.end_date >= ${add(filters.rangeStart)}::date AND e.start_date <= ${add(filters.rangeEnd)}::date`);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  // Dates are returned as YYYY-MM-DD text (not Date/ISO) so the client never has
-  // to fight timezone-shifted timestamps; planned_hours is cast to float so it
-  // arrives as a real number (Postgres numeric otherwise serializes as a string).
-  const [engagements] = await assignmentsDb.execute(
-    `SELECT assignment_uuid, employee_uuid, project_key,
-            to_char(start_date, 'YYYY-MM-DD') AS start_date,
-            to_char(end_date, 'YYYY-MM-DD') AS end_date,
-            status, note, created_by, updated_by
-     FROM planner_assignments ${clause}`,
-    params
-  );
-  const ids = (engagements as EngagementRow[]).map((e) => e.assignment_uuid);
-  let allocations: AllocationRow[] = [];
-  if (ids.length) {
-    const ph = ids.map((_, i) => `$${i + 1}`).join(",");
-    const [allocs] = await assignmentsDb.execute(
-      `SELECT assignment_uuid,
-              to_char(month, 'YYYY-MM-DD') AS month,
-              planned_hours::float AS planned_hours,
-              kind
-       FROM planner_assignment_allocations WHERE assignment_uuid IN (${ph}) ORDER BY month`,
-      ids
-    );
-    allocations = allocs as AllocationRow[];
+
+  // Allocation window lives in the JOIN condition (LEFT JOIN keeps engagements
+  // with no allocation inside the window). Postgres binds $N positionally, so
+  // these params being appended after the WHERE params is fine.
+  const allocWindow = filters.rangeStart && filters.rangeEnd
+    ? `AND a.month >= date_trunc('month', ${add(filters.rangeStart)}::date) AND a.month <= ${add(filters.rangeEnd)}::date`
+    : "";
+
+  const sql = `
+    SELECT e.assignment_uuid, e.employee_uuid, e.project_key,
+           to_char(e.start_date,'YYYY-MM-DD') AS start_date,
+           to_char(e.end_date,'YYYY-MM-DD')   AS end_date,
+           e.status, e.note, e.created_by, e.updated_by,
+           to_char(a.month,'YYYY-MM-DD')       AS month,
+           a.planned_hours::float              AS planned_hours,
+           a.kind
+    FROM planner_assignments e
+    LEFT JOIN planner_assignment_allocations a
+      ON a.assignment_uuid = e.assignment_uuid ${allocWindow}
+    ${clause}
+    ORDER BY e.assignment_uuid, a.month`;
+
+  const [rows] = await assignmentsDb.execute(sql, params);
+
+  const engagementsById = new Map<string, EngagementRow>();
+  const allocations: AllocationRow[] = [];
+  for (const r of rows as Array<Record<string, unknown>>) {
+    const id = r.assignment_uuid as string;
+    if (!engagementsById.has(id)) {
+      engagementsById.set(id, {
+        assignment_uuid: id,
+        employee_uuid: r.employee_uuid as string,
+        project_key: r.project_key as string,
+        start_date: r.start_date as string,
+        end_date: r.end_date as string,
+        status: r.status as string,
+        note: (r.note as string | null) ?? null,
+        created_by: (r.created_by as string | null) ?? null,
+        updated_by: (r.updated_by as string | null) ?? null,
+      });
+    }
+    if (r.month != null) {
+      allocations.push({
+        assignment_uuid: id,
+        month: r.month as string,
+        planned_hours: r.planned_hours as number,
+        kind: r.kind as string,
+      });
+    }
   }
-  return { engagements: engagements as EngagementRow[], allocations };
+  return { engagements: [...engagementsById.values()], allocations };
 }
