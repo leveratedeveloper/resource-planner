@@ -1,21 +1,30 @@
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { UpsertBody } from "@/lib/query/hooks/useAssignmentCommands";
-import { parseManHoursInput, splitTotalAcrossMonths } from "./split";
+import { parseManHoursInput, splitTotalAcrossMonths, toDateInputValue } from "./split";
 
 export type AssignSpan = { startDate: string; endDate: string };
 
 /** Derive a date span from a project.
  *  - campaign: use startDate + endDate when BOTH are present, else null.
  *  - pitch: ProjectOption carries no submitDate, so use startDate as a single-day
- *    span when present, else null. */
+ *    span when present, else null.
+ *
+ *  Both dates are coerced through toDateInputValue so verbose driver strings
+ *  ("Wed Jun 18 2025 00:00:00 GMT+0700 (...)") become strict "yyyy-MM-dd". The
+ *  downstream splitTotalAcrossMonths parses with `new Date(`${date}T00:00:00`)`,
+ *  which yields Invalid Date — and therefore zero allocations — on the verbose
+ *  form. The single-assign path coerces the same way; the bulk path must too. */
 export function deriveProjectSpan(
   p: Pick<ProjectOption, "projectType" | "startDate" | "endDate">,
 ): AssignSpan | null {
   if (p.projectType === "campaign") {
-    if (p.startDate && p.endDate) return { startDate: p.startDate, endDate: p.endDate };
+    const startDate = toDateInputValue(p.startDate);
+    const endDate = toDateInputValue(p.endDate);
+    if (startDate && endDate) return { startDate, endDate };
     return null;
   }
-  if (p.startDate) return { startDate: p.startDate, endDate: p.startDate };
+  const startDate = toDateInputValue(p.startDate);
+  if (startDate) return { startDate, endDate: startDate };
   return null;
 }
 

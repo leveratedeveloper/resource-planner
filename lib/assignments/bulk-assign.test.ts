@@ -22,6 +22,48 @@ describe("deriveProjectSpan", () => {
   it("returns null for a pitch with no startDate", () => {
     expect(deriveProjectSpan({ projectType: "pitch", startDate: null, endDate: null })).toBeNull();
   });
+
+  it("coerces verbose driver date strings to strict yyyy-MM-dd", () => {
+    // ProjectOption.startDate/endDate arrive as String(Date) from the planner DB
+    // driver, e.g. "Wed Jun 18 2025 00:00:00 GMT+0700 (...)". Passing these
+    // straight to splitTotalAcrossMonths yields Invalid Date -> zero allocations.
+    expect(
+      deriveProjectSpan({
+        projectType: "campaign",
+        startDate: "Wed Apr 01 2026 00:00:00 GMT+0700 (Western Indonesia Time)",
+        endDate: "Mon Aug 31 2026 00:00:00 GMT+0700 (Western Indonesia Time)",
+      }),
+    ).toEqual({ startDate: "2026-04-01", endDate: "2026-08-31" });
+  });
+
+  it("coerces 'yyyy-MM-dd HH:mm:ss' timestamps to date-only", () => {
+    expect(
+      deriveProjectSpan({ projectType: "campaign", startDate: "2026-04-01 00:00:00", endDate: "2026-08-31 00:00:00" }),
+    ).toEqual({ startDate: "2026-04-01", endDate: "2026-08-31" });
+  });
+});
+
+describe("buildBulkAssignOperations with verbose driver dates (regression)", () => {
+  it("produces non-empty monthlyHours for verbose campaign dates", () => {
+    const ops = buildBulkAssignOperations({
+      members: [{ id: "m1" }],
+      projects: [
+        {
+          projectKey: "campaign:1",
+          projectType: "campaign",
+          startDate: "Wed Apr 01 2026 00:00:00 GMT+0700 (Western Indonesia Time)",
+          endDate: "Wed Jun 30 2026 00:00:00 GMT+0700 (Western Indonesia Time)",
+        },
+      ],
+      hoursByMember: { m1: "30" },
+    });
+    expect(ops).toHaveLength(1);
+    // Before the fix this was {} (Invalid Date -> no months) and hours were lost.
+    expect(Object.keys(ops[0].monthlyHours)).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
+    const sum = Object.values(ops[0].monthlyHours).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(30, 5);
+    expect(ops[0].span).toEqual({ startDate: "2026-04-01", endDate: "2026-06-30" });
+  });
 });
 
 describe("summarizeBulkAssign", () => {
