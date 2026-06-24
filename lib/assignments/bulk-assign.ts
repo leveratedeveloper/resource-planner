@@ -36,3 +36,9 @@ export function summarizeBulkAssign(
     totalAssignments: memberCount * assignableProjectCount,
   };
 }
+
+/** One-shot fill: produce a hours-by-member record assigning `value` to every id.
+ *  The caller merges this into existing state, so rows stay individually editable after. */
+export function applyHoursToAll(memberIds: string[], value: string): Record<string, string> {
+  return Object.fromEntries(memberIds.map((id) => [id, value]));
+}

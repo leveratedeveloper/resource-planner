@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveProjectSpan, summarizeBulkAssign } from "./bulk-assign";
+import { deriveProjectSpan, summarizeBulkAssign, applyHoursToAll } from "./bulk-assign";
 
 describe("deriveProjectSpan", () => {
   it("returns start/end for a campaign that has both dates", () => {
@@ -50,5 +50,15 @@ describe("summarizeBulkAssign", () => {
       skippedCount: 0,
       totalAssignments: 0,
     });
+  });
+});
+
+describe("applyHoursToAll", () => {
+  it("maps every member id to the given value", () => {
+    expect(applyHoursToAll(["a", "b", "c"], "8")).toEqual({ a: "8", b: "8", c: "8" });
+  });
+
+  it("returns an empty record when there are no members", () => {
+    expect(applyHoursToAll([], "8")).toEqual({});
   });
 });
