@@ -11,6 +11,7 @@ import type {
   PlannerSyncStatus,
 } from "@/lib/planner-directory/types";
 import { chunkRowsForBatching, getPlannerDirectoryBatchSize } from "@/lib/planner-directory/write-batches";
+import { shouldSkipArchive } from "./archive-guard";
 
 type PlannerDirectoryDb = {
   query(sql: string, params?: unknown[]): Promise<unknown>;
@@ -393,6 +394,8 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     seenIds: string[];
     archivedAt?: string;
   }): Promise<number> {
+    // Never archive the whole table when a sync saw nothing — see archive-guard.ts.
+    if (shouldSkipArchive(args.seenIds)) return 0;
     const archivedAt = args.archivedAt ?? now();
     const tableMap = {
       department: { table: "planner_departments", key: "department_id" },
