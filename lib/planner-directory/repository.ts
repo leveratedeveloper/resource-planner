@@ -724,7 +724,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         SELECT *, COUNT(*) OVER() AS total_count
         FROM planner_brands
         WHERE ${whereClauses.join(" AND ")}
-        ORDER BY name ASC
+        ORDER BY name ASC, brand_id ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
@@ -898,7 +898,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         FROM planner_employees e
         LEFT JOIN planner_departments d ON d.department_id = e.department_id
         WHERE ${whereClauses.join(" AND ")}
-        ORDER BY e.full_name ASC
+        ORDER BY e.full_name ASC, e.employee_uuid ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
@@ -1062,7 +1062,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         FROM planner_projects p
         LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
         WHERE ${whereClauses.join(" AND ")}
-        ORDER BY p.name ASC
+        ORDER BY p.name ASC, p.project_key ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
