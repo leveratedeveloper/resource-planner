@@ -1,4 +1,6 @@
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import type { UpsertBody } from "@/lib/query/hooks/useAssignmentCommands";
+import { parseManHoursInput, splitTotalAcrossMonths } from "./split";
 
 export type AssignSpan = { startDate: string; endDate: string };
 
@@ -41,4 +43,43 @@ export function summarizeBulkAssign(
  *  The caller merges this into existing state, so rows stay individually editable after. */
 export function applyHoursToAll(memberIds: string[], value: string): Record<string, string> {
   return Object.fromEntries(memberIds.map((id) => [id, value]));
+}
+
+/** Project shape the operation builder needs — structural subset of ProjectOption. */
+export type BulkAssignProject = Pick<
+  ProjectOption,
+  "projectKey" | "projectType" | "startDate" | "endDate"
+>;
+
+/** Member shape the operation builder needs. */
+export type BulkAssignMember = { id: string };
+
+/** Build the draft upsert payloads for a member×project selection.
+ *  A member's hours number is applied IN FULL to each assignable project (split across
+ *  that project's own month span); projects with no usable dates are skipped. */
+export function buildBulkAssignOperations(input: {
+  members: BulkAssignMember[];
+  projects: BulkAssignProject[];
+  hoursByMember: Record<string, string>;
+}): UpsertBody[] {
+  const ops: UpsertBody[] = [];
+  for (const m of input.members) {
+    const total = parseManHoursInput(input.hoursByMember[m.id]) ?? 0;
+    for (const p of input.projects) {
+      const span = deriveProjectSpan(p);
+      if (!span) continue;
+      const monthlyHours = Object.fromEntries(
+        splitTotalAcrossMonths(total, span.startDate, span.endDate).map((x) => [x.month, x.plannedHours]),
+      );
+      ops.push({
+        employeeUuid: m.id,
+        projectKey: p.projectKey,
+        span,
+        monthlyHours,
+        status: "draft",
+        mode: "merge",
+      });
+    }
+  }
+  return ops;
 }
