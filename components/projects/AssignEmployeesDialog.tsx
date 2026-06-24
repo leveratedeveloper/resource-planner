@@ -64,35 +64,21 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
 
   // Refs for infinite scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-
-  // Intersection observer for infinite scroll
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    const loadMoreElement = loadMoreRef.current;
-
-    if (!scrollContainer || !loadMoreElement) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (first.isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage();
-        }
-      },
-      {
-        root: scrollContainer,
-        threshold: 0.1,
-        rootMargin: "100px",
-      }
-    );
-
-    observer.observe(loadMoreElement);
-
-    return () => {
-      observer.unobserve(loadMoreElement);
-    };
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const setLoadMoreRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      observerRef.current?.disconnect();
+      if (!node) return;
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+        },
+        { root: scrollContainerRef.current, threshold: 0.1, rootMargin: "100px" },
+      );
+      observerRef.current.observe(node);
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
 
   // Toggle employee selection
   const handleToggleEmployee = (employeeId: string) => {
@@ -254,7 +240,7 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
                 })}
 
                 {/* Load more trigger / loading indicator */}
-                <div ref={loadMoreRef} className="py-4 text-center">
+                <div ref={setLoadMoreRef} className="py-4 text-center">
                   {isFetchingNextPage ? (
                     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                       <Icon icon="lucide:loader-2" className="h-4 w-4 animate-spin" />

@@ -63,7 +63,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
 
   const employees = useMemo(() => {
     if (!employeesData?.pages) return [];
-    return employeesData.pages.flatMap((page) => page.data);
+    return employeesData.pages.flatMap((page) => page.data).filter((e) => e.employmentStatus === "active");
   }, [employeesData]);
 
   // ── Member selection — full objects, independent of the current search ─────
@@ -106,22 +106,21 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
 
   // ── Infinite scroll sentinel ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    const loadMoreElement = loadMoreRef.current;
-    if (!scrollContainer || !loadMoreElement) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
-      },
-      { root: scrollContainer, threshold: 0.1, rootMargin: "100px" },
-    );
-    observer.observe(loadMoreElement);
-    return () => observer.unobserve(loadMoreElement);
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const setLoadMoreRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      observerRef.current?.disconnect();
+      if (!node) return;
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+        },
+        { root: scrollContainerRef.current, threshold: 0.1, rootMargin: "100px" },
+      );
+      observerRef.current.observe(node);
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
 
   // ── Reset on close ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -361,7 +360,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                       </label>
                     );
                   })}
-                  <div ref={loadMoreRef} className="py-2 text-center text-xs text-muted-foreground">
+                  <div ref={setLoadMoreRef} className="py-2 text-center text-xs text-muted-foreground">
                     {isFetchingNextPage ? (
                       <span className="flex items-center justify-center gap-1">
                         <Icon icon="lucide:loader-2" className="h-3 w-3 animate-spin" />
