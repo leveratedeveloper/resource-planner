@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { getEngagements } from "@/lib/assignments/assignment-reads";
 import { upsertAssignment } from "@/lib/assignments/assignment-commands";
+import { AssignmentValidationError } from "@/lib/assignments/assignment-validation";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -30,16 +31,23 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
 
   const body = await request.json();
-  const assignmentUuid = await upsertAssignment({
-    employeeUuid: body.employeeUuid,
-    projectKey: body.projectKey,
-    span: body.span,
-    monthlyHours: body.monthlyHours ?? {},
-    status: body.status,
-    note: body.note ?? null,
-    kind: body.kind ?? "plan",
-    mode: body.mode ?? "replace",
-    actingUserUuid: session.employee?.uuid ?? null,
-  });
-  return NextResponse.json({ success: true, assignmentUuid });
+  try {
+    const assignmentUuid = await upsertAssignment({
+      employeeUuid: body.employeeUuid,
+      projectKey: body.projectKey,
+      span: body.span,
+      monthlyHours: body.monthlyHours ?? {},
+      status: body.status,
+      note: body.note ?? null,
+      kind: body.kind ?? "plan",
+      mode: body.mode ?? "replace",
+      actingUserUuid: session.employee?.uuid ?? null,
+    });
+    return NextResponse.json({ success: true, assignmentUuid });
+  } catch (err) {
+    if (err instanceof AssignmentValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    throw err;
+  }
 }

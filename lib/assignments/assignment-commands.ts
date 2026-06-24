@@ -1,6 +1,7 @@
 import { assignmentsDb } from "@/lib/mysql-assignments/db";
 import { randomUUID } from "crypto";
-import { splitTotalAcrossMonths } from "./split";
+import { splitTotalAcrossMonths, toDateInputValue } from "./split";
+import { validateAssignmentWrite } from "./assignment-validation";
 
 export type AllocRow = { month: string; plannedHours: number; kind: "plan" | "adjustment" };
 
@@ -24,10 +25,17 @@ export type UpsertAssignmentInput = {
 
 /** THE write primitive. Upserts the engagement header + its monthly allocations, transactionally. */
 export async function upsertAssignment(input: UpsertAssignmentInput): Promise<string> {
-  const { employeeUuid, projectKey, span, monthlyHours, actingUserUuid } = input;
+  const { employeeUuid, projectKey, monthlyHours, actingUserUuid } = input;
   const kind = input.kind ?? "plan";
   const mode = input.mode ?? "replace";
   const status = input.status ?? "draft";
+  // Coerce verbose/timestamped driver dates (e.g. "Wed Jun 18 2025 ...") to strict
+  // yyyy-MM-dd before validating or writing — protects every caller, not just bulk.
+  const span = {
+    startDate: toDateInputValue(input.span?.startDate),
+    endDate: toDateInputValue(input.span?.endDate),
+  };
+  validateAssignmentWrite({ span, monthlyHours });
   const rows = buildAllocationRows(monthlyHours, kind);
 
   const client = await assignmentsDb.getConnection();
