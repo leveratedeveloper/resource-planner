@@ -11,16 +11,7 @@ import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import type { OrderedProjectLane } from "@/lib/timeline-v2/lane-order";
 import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
-
-function buildSegmentAssignment(
-  segment: ProjectLaneModel["planDisplaySegments"][number]
-) {
-  return {
-    ...segment.sourceAssignment,
-    startDate: segment.startDate,
-    endDate: segment.endDate,
-  };
-}
+import { buildSegmentDisplayAssignment } from "@/lib/timeline-v2/plan-display-segments";
 
 function parseLocalDate(value: string): Date {
   return new Date(`${value}T00:00:00`);
@@ -173,7 +164,7 @@ export const ProjectLane = React.memo(function ProjectLane({
         {lane.planDisplaySegments.map((segment) => (
           <AssignmentBar
             key={segment.id}
-            assignment={buildSegmentAssignment(segment)}
+            assignment={buildSegmentDisplayAssignment(segment)}
             project={campaign}
             columns={columns}
             resolution={monthRangeView ? "month" : "day"}

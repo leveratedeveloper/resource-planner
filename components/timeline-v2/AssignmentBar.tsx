@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -69,6 +70,11 @@ export const AssignmentBar = React.memo(function AssignmentBar({
     return formatAssignmentDisplayHours(calculateAssignmentDisplayTotalHours(assignment, displayRange));
   }, [assignment, columns]);
 
+  const isMonthBlock = resolution === "month";
+  const monthLabel = isMonthBlock
+    ? format(new Date(`${assignment.startDate}T00:00:00`), "MMM yyyy")
+    : "";
+
   if (!position) return null;
 
   const textClass = getReadableTextClass(project.color || "#64748b");
@@ -107,13 +113,23 @@ export const AssignmentBar = React.memo(function AssignmentBar({
         backgroundColor: project.color || "#64748b",
         zIndex: isHighlighted ? 20 : 10,
       }}
-      title={`${project.name} · ${displayTotalHoursLabel}`}
+      title={
+        isMonthBlock
+          ? `${monthLabel} · ${project.name} · ${displayTotalHoursLabel}`
+          : `${project.name} · ${displayTotalHoursLabel}`
+      }
       data-testid="assignment-bar"
       data-assignment-id={assignment.id}
     >
       <div className="pointer-events-none min-w-0 flex-1 truncate px-2">
-        <span className="font-bold">{project.name}</span>{" "}
-        <span className="opacity-90">{displayTotalHoursLabel}</span>
+        {isMonthBlock ? (
+          <span className="font-medium">{displayTotalHoursLabel}</span>
+        ) : (
+          <>
+            <span className="font-bold">{project.name}</span>{" "}
+            <span className="opacity-90">{displayTotalHoursLabel}</span>
+          </>
+        )}
       </div>
     </div>
   );
