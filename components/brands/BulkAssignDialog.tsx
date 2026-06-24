@@ -4,13 +4,19 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useInfiniteEmployees, type Employee } from "@/lib/query/hooks/useEmployees";
-import { useProjectsByBrand, type ProjectOption } from "@/lib/query/hooks/useProjects";
+import { useProjectsByBrand } from "@/lib/query/hooks/useProjects";
 import { useAssignmentCommands } from "@/lib/query/hooks/useAssignmentCommands";
-import { splitTotalAcrossMonths, parseManHoursInput } from "@/lib/assignments/split";
+import {
+  deriveProjectSpan,
+  summarizeBulkAssign,
+  applyHoursToAll,
+  buildBulkAssignOperations,
+} from "@/lib/assignments/bulk-assign";
 
 interface BulkAssignDialogProps {
   open: boolean;
@@ -19,28 +25,13 @@ interface BulkAssignDialogProps {
   brandName: string;
 }
 
-/** Derive a span from a ProjectOption.
- *  - campaign: use startDate + endDate when both are present.
- *  - pitch: ProjectOption has no submitDate, so fall back to startDate (if present) as a
- *    single-day span. If neither is available the project is skipped.
- */
-function deriveSpan(p: ProjectOption): { startDate: string; endDate: string } | null {
-  if (p.projectType === "campaign") {
-    if (p.startDate && p.endDate) return { startDate: p.startDate, endDate: p.endDate };
-    return null;
-  }
-  // pitch — ProjectOption does not carry submitDate, use startDate as proxy if present
-  if (p.startDate) return { startDate: p.startDate, endDate: p.startDate };
-  return null;
-}
-
 export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
   open,
   onOpenChange,
   brandId,
   brandName,
 }) => {
-  // ── Project list ──────────────────────────────────────────────────────────
+  // ── Project list (full brand list — stable, no search/pagination) ──────────
   const { data: brandProjects = [], isLoading: isLoadingProjects } = useProjectsByBrand(brandId);
 
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
@@ -48,19 +39,14 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
   const toggleProject = (id: string) =>
     setSelectedProjectIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
 
   const selectedProjects = useMemo(
     () => brandProjects.filter((p) => selectedProjectIds.has(p.id)),
     [brandProjects, selectedProjectIds],
-  );
-
-  // How many of the selected projects will be skipped at commit time
-  const skippedCount = useMemo(
-    () => selectedProjects.filter((p) => !deriveSpan(p)).length,
-    [selectedProjects],
   );
 
   // ── Member search + infinite list ─────────────────────────────────────────
@@ -80,25 +66,43 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
     return employeesData.pages.flatMap((page) => page.data);
   }, [employeesData]);
 
-  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
-
-  const toggleMember = (id: string) =>
-    setSelectedMemberIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-
-  const selectedMembers = useMemo(
-    () => employees.filter((e) => selectedMemberIds.has(e.id)),
-    [employees, selectedMemberIds],
-  );
+  // ── Member selection — full objects, independent of the current search ─────
+  const [selectedMembers, setSelectedMembers] = useState<Map<string, Employee>>(new Map());
 
   // ── Per-member man-hours ──────────────────────────────────────────────────
   const [manHoursByMember, setManHoursByMember] = useState<Record<string, string>>({});
 
+  const toggleMember = (emp: Employee) =>
+    setSelectedMembers((prev) => {
+      const next = new Map(prev);
+      if (next.has(emp.id)) next.delete(emp.id);
+      else next.set(emp.id, emp);
+      return next;
+    });
+
+  const removeMember = (id: string) => {
+    setSelectedMembers((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    setManHoursByMember((prev) => {
+      const { [id]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const selectedMemberList = useMemo(() => Array.from(selectedMembers.values()), [selectedMembers]);
+
   const setManHours = (memberId: string, value: string) =>
     setManHoursByMember((prev) => ({ ...prev, [memberId]: value }));
+
+  const [applyAllValue, setApplyAllValue] = useState("");
+
+  const applyAll = () => {
+    const ids = selectedMemberList.map((m) => m.id);
+    setManHoursByMember((prev) => ({ ...prev, ...applyHoursToAll(ids, applyAllValue) }));
+  };
 
   // ── Infinite scroll sentinel ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -123,82 +127,68 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
   useEffect(() => {
     if (!open) {
       setSelectedProjectIds(new Set());
-      setSelectedMemberIds(new Set());
+      setSelectedMembers(new Map());
       setManHoursByMember({});
+      setApplyAllValue("");
       setSearch("");
     }
   }, [open]);
 
-  // ── Commit ────────────────────────────────────────────────────────────────
+  // ── Summary + commit ──────────────────────────────────────────────────────
   const { upsert } = useAssignmentCommands();
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const totalAssignments = selectedMembers.length * (selectedProjects.length - skippedCount);
+  const summary = useMemo(
+    () => summarizeBulkAssign(selectedMembers.size, selectedProjects),
+    [selectedMembers, selectedProjects],
+  );
 
   const commit = useCallback(async () => {
-    if (selectedMembers.length === 0 || selectedProjects.length === 0) return;
+    if (selectedMemberList.length === 0 || selectedProjects.length === 0) return;
     setIsSaving(true);
     setSaveError(null);
     try {
-      const ops: Promise<unknown>[] = [];
-      for (const m of selectedMembers) {
-        const total = parseManHoursInput(manHoursByMember[m.id]) ?? 0;
-        for (const p of selectedProjects) {
-          const span = deriveSpan(p);
-          if (!span) continue; // skipped — no usable dates
-          const monthlyHours = Object.fromEntries(
-            splitTotalAcrossMonths(total, span.startDate, span.endDate).map((x) => [
-              x.month,
-              x.plannedHours,
-            ]),
-          );
-          ops.push(
-            upsert.mutateAsync({
-              employeeUuid: m.id,
-              projectKey: p.projectKey,
-              span,
-              monthlyHours,
-              status: "draft",
-              mode: "merge",
-            }),
-          );
-        }
-      }
-      await Promise.all(ops);
+      const ops = buildBulkAssignOperations({
+        members: selectedMemberList,
+        projects: selectedProjects,
+        hoursByMember: manHoursByMember,
+      });
+      await Promise.all(ops.map((op) => upsert.mutateAsync(op)));
       onOpenChange(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save assignments");
     } finally {
       setIsSaving(false);
     }
-  }, [selectedMembers, selectedProjects, manHoursByMember, upsert, onOpenChange]);
+  }, [selectedMemberList, selectedProjects, manHoursByMember, upsert, onOpenChange]);
 
   const canSave =
-    selectedMembers.length > 0 &&
+    selectedMemberList.length > 0 &&
     selectedProjects.length > 0 &&
-    selectedProjects.length > skippedCount &&
+    summary.assignableProjectCount > 0 &&
     !isSaving;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Bulk Assign — {brandName}</DialogTitle>
           <DialogDescription>
-            Select projects and team members, then set man-hours per member. All combinations will
-            be created as draft assignments.
+            Choose projects and team members, then set man-hours per member. Each member is assigned
+            to every chosen project as a draft.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-6 pr-1">
-          {/* ── Project checklist ──────────────────────────────────────────── */}
-          <section>
+        {/* Two columns on desktop, stacked on mobile */}
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-6 overflow-y-auto md:overflow-hidden">
+          {/* ── Projects column ──────────────────────────────────────────── */}
+          <section className="flex flex-col min-h-0 md:flex-1">
             <h3 className="text-sm font-semibold mb-2">
               Projects{" "}
               <span className="text-muted-foreground font-normal">
-                ({selectedProjectIds.size} selected)
+                ({selectedProjectIds.size} chosen)
               </span>
             </h3>
             {isLoadingProjects ? (
@@ -207,89 +197,125 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                 Loading projects…
               </div>
             ) : brandProjects.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">
-                No projects found for this brand.
-              </p>
+              <p className="text-sm text-muted-foreground py-4">No projects found for this brand.</p>
             ) : (
-              <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1">
-                  {brandProjects.map((p) => {
-                    const isSelected = selectedProjectIds.has(p.id);
-                    const span = deriveSpan(p);
-                    const noDate = !span;
-                    return (
-                      <div
-                        key={p.id}
-                        className={cn(
-                          "flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
-                          isSelected
-                            ? "bg-primary/5 border-primary"
-                            : noDate
-                              ? "border-amber-200 bg-amber-50/50 opacity-70"
-                              : "hover:bg-accent/50 border-transparent",
-                        )}
-                        onClick={() => toggleProject(p.id)}
-                      >
-                        {/* Color swatch */}
-                        <div
-                          className="w-2 h-6 rounded-full shrink-0"
-                          style={{ backgroundColor: p.color }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{p.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {p.projectType === "pitch" ? "Pitch" : "Campaign"}
-                            {span
-                              ? ` · ${span.startDate} – ${span.endDate}`
-                              : " · no dates — will be skipped"}
-                          </div>
-                        </div>
-                        {/* Checkbox */}
-                        <div
-                          className={cn(
-                            "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0",
-                            isSelected ? "bg-primary border-primary" : "border-gray-300",
-                          )}
-                        >
-                          {isSelected && (
-                            <Icon icon="lucide:check" className="h-3 w-3 text-white" />
-                          )}
+              <div className="md:flex-1 md:overflow-y-auto space-y-1 pr-1">
+                {brandProjects.map((p) => {
+                  const isSelected = selectedProjectIds.has(p.id);
+                  const span = deriveProjectSpan(p);
+                  const noDate = !span;
+                  return (
+                    <label
+                      key={p.id}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
+                        isSelected
+                          ? "bg-primary/5 border-primary"
+                          : noDate
+                            ? "border-amber-200 bg-amber-50/50 opacity-70"
+                            : "hover:bg-accent/50 border-transparent",
+                      )}
+                    >
+                      <div className="w-2 h-6 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{p.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {p.projectType === "pitch" ? "Pitch" : "Campaign"}
+                          {span ? ` · ${span.startDate} – ${span.endDate}` : " · no dates — will be skipped"}
                         </div>
                       </div>
-                    );
-                  })}
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleProject(p.id)}
+                        aria-label={`Select project ${p.name}`}
+                      />
+                    </label>
+                  );
+                })}
               </div>
             )}
           </section>
 
-          {/* ── Member selector ────────────────────────────────────────────── */}
-          <section>
+          {/* ── Team Members column ──────────────────────────────────────── */}
+          <section className="flex flex-col min-h-0 md:flex-1">
             <h3 className="text-sm font-semibold mb-2">
               Team Members{" "}
               <span className="text-muted-foreground font-normal">
-                ({selectedMemberIds.size} selected)
+                ({selectedMembers.size} chosen)
               </span>
             </h3>
+
+            {/* Chosen tray = man-hours editor. Persists across searches. */}
+            {selectedMemberList.length > 0 && (
+              <div className="mb-3 rounded-lg border bg-muted/30">
+                <div className="max-h-[180px] overflow-y-auto p-2 space-y-1">
+                  {selectedMemberList.map((emp) => (
+                    <div key={emp.id} className="flex items-center gap-2">
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0"
+                        style={{ backgroundColor: emp.department?.color ?? "#6366f1" }}
+                      >
+                        {emp.fullName.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-sm flex-1 truncate">{emp.fullName}</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="0"
+                        value={manHoursByMember[emp.id] ?? ""}
+                        onChange={(e) => setManHours(emp.id, e.target.value)}
+                        className="w-20 text-right"
+                        aria-label={`Man-hours for ${emp.fullName}`}
+                      />
+                      <span className="text-xs text-muted-foreground w-6">hrs</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMember(emp.id)}
+                        aria-label={`Remove ${emp.fullName}`}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent shrink-0"
+                      >
+                        <Icon icon="lucide:x" className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 border-t px-2 py-2">
+                  <span className="text-xs text-muted-foreground flex-1">Apply to all</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={applyAllValue}
+                    onChange={(e) => setApplyAllValue(e.target.value)}
+                    className="w-20 text-right"
+                    aria-label="Man-hours to apply to all chosen members"
+                  />
+                  <span className="text-xs text-muted-foreground w-6">hrs</span>
+                  <Button type="button" variant="outline" size="sm" onClick={applyAll} disabled={!applyAllValue}>
+                    Apply
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="relative mb-2">
               <Icon
                 icon="lucide:search"
                 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
               />
               <Input
-                placeholder="Search employees…"
+                placeholder="Search to add people…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
 
-            <div ref={scrollContainerRef} className="max-h-[260px] overflow-y-auto space-y-1">
+            <div ref={scrollContainerRef} className="md:flex-1 md:overflow-y-auto max-h-[260px] md:max-h-none overflow-y-auto space-y-1">
               {isLoadingEmployees && employees.length === 0 ? (
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 p-3 rounded-lg border animate-pulse"
-                    >
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg border animate-pulse">
                       <div className="w-8 h-8 rounded-full bg-gray-200" />
                       <div className="flex-1 space-y-2">
                         <div className="h-4 bg-gray-200 rounded w-3/4" />
@@ -305,17 +331,14 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
               ) : (
                 <>
                   {employees.map((emp) => {
-                    const isSelected = selectedMemberIds.has(emp.id);
+                    const isSelected = selectedMembers.has(emp.id);
                     return (
-                      <div
+                      <label
                         key={emp.id}
                         className={cn(
                           "flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
-                          isSelected
-                            ? "bg-primary/5 border-primary"
-                            : "hover:bg-accent/50 border-transparent",
+                          isSelected ? "bg-primary/5 border-primary" : "hover:bg-accent/50 border-transparent",
                         )}
-                        onClick={() => toggleMember(emp.id)}
                       >
                         <div
                           className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium text-sm shrink-0"
@@ -330,17 +353,12 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                             {emp.department && ` · ${emp.department.name}`}
                           </div>
                         </div>
-                        <div
-                          className={cn(
-                            "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0",
-                            isSelected ? "bg-primary border-primary" : "border-gray-300",
-                          )}
-                        >
-                          {isSelected && (
-                            <Icon icon="lucide:check" className="h-3 w-3 text-white" />
-                          )}
-                        </div>
-                      </div>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleMember(emp)}
+                          aria-label={`Select ${emp.fullName}`}
+                        />
+                      </label>
                     );
                   })}
                   <div ref={loadMoreRef} className="py-2 text-center text-xs text-muted-foreground">
@@ -359,78 +377,54 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
               )}
             </div>
           </section>
-
-          {/* ── Per-member man-hours ────────────────────────────────────────── */}
-          {selectedMembers.length > 0 && (
-            <section>
-              <h3 className="text-sm font-semibold mb-2">Man-Hours per Member</h3>
-              <div className="space-y-2">
-                {selectedMembers.map((emp) => (
-                  <div key={emp.id} className="flex items-center gap-3">
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0"
-                      style={{ backgroundColor: emp.department?.color ?? "#6366f1" }}
-                    >
-                      {emp.fullName.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="text-sm flex-1 truncate">{emp.fullName}</span>
-                    <Input
-                      type="number"
-                      min={0}
-                      placeholder="0"
-                      value={manHoursByMember[emp.id] ?? ""}
-                      onChange={(e) => setManHours(emp.id, e.target.value)}
-                      className="w-24 text-right"
-                    />
-                    <span className="text-xs text-muted-foreground w-6">hrs</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Summary line ───────────────────────────────────────────────── */}
-          {(selectedMembers.length > 0 || selectedProjects.length > 0) && (
-            <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm space-y-1">
-              <p className="font-medium">
-                {selectedMembers.length} member{selectedMembers.length !== 1 ? "s" : ""} ×{" "}
-                {selectedProjects.length - skippedCount} project
-                {selectedProjects.length - skippedCount !== 1 ? "s" : ""} ={" "}
-                <span className="text-primary font-semibold">{totalAssignments} assignment{totalAssignments !== 1 ? "s" : ""}</span>
-              </p>
-              {skippedCount > 0 && (
-                <p className="text-amber-600 text-xs">
-                  ({skippedCount} project{skippedCount !== 1 ? "s" : ""} skipped — no usable dates)
-                </p>
-              )}
-            </div>
-          )}
-
-          {saveError && (
-            <p className="text-sm text-red-600 flex items-center gap-1">
-              <Icon icon="lucide:alert-circle" className="h-4 w-4 shrink-0" />
-              {saveError}
-            </p>
-          )}
         </div>
 
-        <DialogFooter className="pt-4 border-t mt-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button onClick={commit} disabled={!canSave}>
-            {isSaving ? (
+        {saveError && (
+          <p className="text-sm text-red-600 flex items-center gap-1 pt-2">
+            <Icon icon="lucide:alert-circle" className="h-4 w-4 shrink-0" />
+            {saveError}
+          </p>
+        )}
+
+        <DialogFooter className="pt-4 border-t mt-2 sm:justify-between items-center">
+          <div className="text-sm">
+            {selectedMembers.size > 0 || selectedProjects.length > 0 ? (
               <>
-                <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
-                Saving…
+                <span className="font-medium">
+                  {selectedMembers.size} member{selectedMembers.size !== 1 ? "s" : ""} ×{" "}
+                  {summary.assignableProjectCount} project{summary.assignableProjectCount !== 1 ? "s" : ""} ={" "}
+                  <span className="text-primary font-semibold">
+                    {summary.totalAssignments} assignment{summary.totalAssignments !== 1 ? "s" : ""}
+                  </span>
+                </span>
+                {summary.skippedCount > 0 && (
+                  <span className="text-amber-600 text-xs ml-2">
+                    ({summary.skippedCount} skipped — no usable dates)
+                  </span>
+                )}
               </>
             ) : (
-              <>
-                <Icon icon="lucide:users" className="h-4 w-4 mr-1" />
-                Save {totalAssignments > 0 ? `(${totalAssignments})` : ""}
-              </>
+              <span className="text-muted-foreground">Nothing chosen yet</span>
             )}
-          </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button onClick={commit} disabled={!canSave}>
+              {isSaving ? (
+                <>
+                  <Icon icon="lucide:loader-2" className="h-4 w-4 mr-1 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Icon icon="lucide:users" className="h-4 w-4 mr-1" />
+                  Save {summary.totalAssignments > 0 ? `(${summary.totalAssignments})` : ""}
+                </>
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
