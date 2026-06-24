@@ -20,4 +20,9 @@ describe("splitTotalAcrossMonths", () => {
   it("returns an empty array when the span is invalid (end before start)", () => {
     expect(splitTotalAcrossMonths(10, "2026-06-01", "2026-04-01")).toEqual([]);
   });
+  it("conserves the total — parts sum to the input (remainder on last month)", () => {
+    const parts = splitTotalAcrossMonths(100, "2026-01-01", "2026-03-31");
+    expect(parts.map((p) => p.plannedHours)).toEqual([33.33, 33.33, 33.34]);
+    expect(parts.reduce((s, p) => s + p.plannedHours, 0)).toBeCloseTo(100, 10);
+  });
 });

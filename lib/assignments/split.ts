@@ -13,7 +13,14 @@ export function splitTotalAcrossMonths(total: number, startDate: string, endDate
   const months = eachMonthOfInterval({ start, end });
   if (months.length === 0) return [];
   const per = round2(total / months.length);
-  return months.map((m) => ({ month: format(m, "yyyy-MM-01"), plannedHours: per }));
+  const result = months.map((m) => ({ month: format(m, "yyyy-MM-01"), plannedHours: per }));
+  // Put the rounding drift on the last month so the parts sum exactly to `total`.
+  const remainder = round2(total - round2(per * months.length));
+  if (remainder !== 0) {
+    const last = result[result.length - 1];
+    last.plannedHours = round2(last.plannedHours + remainder);
+  }
+  return result;
 }
 
 /** Parse a whole-number man-hours string. Returns null when the value is blank or non-integer. */
