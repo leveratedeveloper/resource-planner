@@ -5,7 +5,7 @@ import { useAssignmentCommands } from "@/lib/query/hooks/useAssignmentCommands";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 
-export type MonthSaveData = { planHours: number; adjustmentHours?: number | null };
+export type MonthSaveData = { planHours: number };
 
 function unionSpan(monthStart: Date, existing?: Assignment) {
   const monthFrom = format(startOfMonth(monthStart), "yyyy-MM-dd");
@@ -31,12 +31,6 @@ export function useTimelineEditor(_opts: { canEditAssignments: boolean; createdB
       employeeUuid: target.resourceId, projectKey, span,
       monthlyHours: { [monthKey]: data.planHours }, kind: "plan", mode: "merge", status: "draft",
     });
-    if (data.adjustmentHours != null) {
-      await upsert.mutateAsync({
-        employeeUuid: target.resourceId, projectKey, span,
-        monthlyHours: { [monthKey]: data.adjustmentHours }, kind: "adjustment", mode: "merge", status: "draft",
-      });
-    }
     close();
   };
 
