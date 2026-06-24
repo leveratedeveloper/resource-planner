@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
-import { buildTimelinePlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
+import { buildSegmentDisplayAssignment, buildTimelinePlanDisplaySegments } from "@/lib/timeline-v2/plan-display-segments";
 
 const assignment = (overrides: Partial<Assignment>): Assignment => ({
   id: overrides.id ?? "assignment-1",
@@ -194,5 +194,141 @@ describe("timeline-v2 plan display segments", () => {
 
     expect(segments).toHaveLength(1);
     expect(segments[0].sourceAssignment.id).toBe("has-hours");
+  });
+});
+
+describe("timeline-v2 plan display segments — month resolution (per-month split)", () => {
+  const monthCols = (yyyymm: string[]) =>
+    yyyymm.map((m) => new Date(`${m}-01T00:00:00`));
+
+  it("emits one segment per plan allocation-month with hours", () => {
+    const segments = buildTimelinePlanDisplaySegments({
+      assignments: [
+        assignment({
+          id: "eng-1",
+          startDate: "2026-04-01",
+          endDate: "2026-06-30",
+          allocations: [
+            { month: "2026-04-01", plannedHours: 50, kind: "plan" },
+            { month: "2026-05-01", plannedHours: 30, kind: "plan" },
+            { month: "2026-06-01", plannedHours: 40, kind: "plan" },
+          ],
+        }),
+      ],
+      visibleDates: monthCols(["2026-04", "2026-05", "2026-06"]),
+      resolution: "month",
+    });
+
+    expect(segments).toHaveLength(3);
+    expect(segments.map((s) => s.month)).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
+    expect(segments.map((s) => [s.startDate, s.endDate])).toEqual([
+      ["2026-04-01", "2026-04-30"],
+      ["2026-05-01", "2026-05-31"],
+      ["2026-06-01", "2026-06-30"],
+    ]);
+    expect(segments.every((s) => s.id.startsWith("eng-1:"))).toBe(true);
+  });
+
+  it("skips months with zero / no plan hours (renders a gap)", () => {
+    const segments = buildTimelinePlanDisplaySegments({
+      assignments: [
+        assignment({
+          id: "eng-1",
+          startDate: "2026-04-01",
+          endDate: "2026-06-30",
+          allocations: [
+            { month: "2026-04-01", plannedHours: 50, kind: "plan" },
+            { month: "2026-05-01", plannedHours: 0, kind: "plan" },
+            { month: "2026-06-01", plannedHours: 40, kind: "plan" },
+          ],
+        }),
+      ],
+      visibleDates: monthCols(["2026-04", "2026-05", "2026-06"]),
+      resolution: "month",
+    });
+
+    expect(segments.map((s) => s.month)).toEqual(["2026-04-01", "2026-06-01"]);
+  });
+
+  it("ignores adjustment-kind allocations (plan only)", () => {
+    const segments = buildTimelinePlanDisplaySegments({
+      assignments: [
+        assignment({
+          id: "eng-1",
+          startDate: "2026-04-01",
+          endDate: "2026-05-31",
+          allocations: [
+            { month: "2026-04-01", plannedHours: 50, kind: "plan" },
+            { month: "2026-05-01", plannedHours: 20, kind: "adjustment" },
+          ],
+        }),
+      ],
+      visibleDates: monthCols(["2026-04", "2026-05"]),
+      resolution: "month",
+    });
+
+    expect(segments.map((s) => s.month)).toEqual(["2026-04-01"]);
+  });
+
+  it("skips months outside the visible columns", () => {
+    const segments = buildTimelinePlanDisplaySegments({
+      assignments: [
+        assignment({
+          id: "eng-1",
+          startDate: "2026-04-01",
+          endDate: "2026-06-30",
+          allocations: [
+            { month: "2026-04-01", plannedHours: 10, kind: "plan" },
+            { month: "2026-06-01", plannedHours: 10, kind: "plan" },
+          ],
+        }),
+      ],
+      visibleDates: monthCols(["2026-04", "2026-05"]),
+      resolution: "month",
+    });
+
+    expect(segments.map((s) => s.month)).toEqual(["2026-04-01"]);
+  });
+});
+
+describe("buildSegmentDisplayAssignment", () => {
+  const base = assignment({
+    id: "eng-1",
+    startDate: "2026-04-01",
+    endDate: "2026-06-30",
+    allocations: [
+      { month: "2026-04-01", plannedHours: 50, kind: "plan" },
+      { month: "2026-05-01", plannedHours: 30, kind: "plan" },
+    ],
+  });
+
+  it("narrows a month segment's allocations to its own month", () => {
+    const display = buildSegmentDisplayAssignment({
+      id: "eng-1:2026-04-01",
+      sourceAssignment: base,
+      assignments: [base],
+      employeeId: base.employeeId,
+      projectKey: base.projectKey,
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+      status: base.status,
+      month: "2026-04-01",
+    });
+    expect(display.allocations).toEqual([{ month: "2026-04-01", plannedHours: 50, kind: "plan" }]);
+    expect([display.startDate, display.endDate]).toEqual(["2026-04-01", "2026-04-30"]);
+  });
+
+  it("keeps full allocations for a non-month (day-resolution) segment", () => {
+    const display = buildSegmentDisplayAssignment({
+      id: "eng-1",
+      sourceAssignment: base,
+      assignments: [base],
+      employeeId: base.employeeId,
+      projectKey: base.projectKey,
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+      status: base.status,
+    });
+    expect(display.allocations).toHaveLength(2);
   });
 });

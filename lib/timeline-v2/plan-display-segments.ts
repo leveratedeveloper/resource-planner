@@ -1,4 +1,4 @@
-import { addDays, endOfMonth, format, isAfter, isBefore, startOfDay, startOfMonth } from "date-fns";
+import { addDays, endOfMonth, format, isAfter, isBefore, isSameMonth, startOfDay, startOfMonth } from "date-fns";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 
 export type TimelinePlanDisplaySegment = {
@@ -10,6 +10,8 @@ export type TimelinePlanDisplaySegment = {
   startDate: string;
   endDate: string;
   status: Assignment["status"];
+  /** Present only for month-resolution per-month segments. "yyyy-MM-01". */
+  month?: string;
 };
 
 type TimelineDisplayResolution = "day" | "month";
@@ -162,6 +164,16 @@ export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplay
 
   const segments: TimelinePlanDisplaySegment[] = [];
   const visibleDates = inputVisibleDates ?? buildDefaultVisibleDates(plannedAssignments);
+
+  if (resolution === "month") {
+    return buildMonthResolutionSegments({
+      plannedAssignments,
+      visibleDates,
+      projectStartDate,
+      projectEndDate,
+    });
+  }
+
   const lastSegmentByKey = new Map<
     string,
     {
@@ -211,4 +223,71 @@ export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplay
   }
 
   return segments;
+}
+
+function buildMonthResolutionSegments({
+  plannedAssignments,
+  visibleDates,
+  projectStartDate,
+  projectEndDate,
+}: {
+  plannedAssignments: Assignment[];
+  visibleDates: Date[];
+  projectStartDate?: string | null;
+  projectEndDate?: string | null;
+}): TimelinePlanDisplaySegment[] {
+  const segments: TimelinePlanDisplaySegment[] = [];
+  const projectStart = projectStartDate ? parseDate(projectStartDate) : null;
+  const projectEnd = projectEndDate ? parseDate(projectEndDate) : null;
+
+  for (const assignment of plannedAssignments) {
+    const planMonths = assignment.allocations
+      .filter((alloc) => alloc.kind === "plan" && alloc.plannedHours > 0)
+      .map((alloc) => alloc.month)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const month of planMonths) {
+      const monthStart = startOfMonth(parseDate(month));
+      const monthEnd = endOfMonth(monthStart);
+      if (projectStart && isBefore(monthEnd, projectStart)) continue;
+      if (projectEnd && isAfter(monthStart, projectEnd)) continue;
+      const index = visibleDates.findIndex((date) => isSameMonth(date, monthStart));
+      if (index === -1) continue;
+      const columnDate = visibleDates[index];
+      segments.push({
+        id: `${assignment.id}:${month}`,
+        sourceAssignment: assignment,
+        assignments: [assignment],
+        employeeId: assignment.employeeId,
+        projectKey: assignment.projectKey,
+        startDate: formatSegmentDate(startOfMonth(columnDate)),
+        endDate: formatSegmentDate(endOfMonth(columnDate)),
+        status: assignment.status,
+        month,
+      });
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * The assignment object handed to AssignmentBar for a given segment. For a
+ * per-month segment, allocations are narrowed to that single month so the bar's
+ * hours label shows the month's hours (not the engagement total). Day-resolution
+ * segments are unchanged.
+ */
+export function buildSegmentDisplayAssignment(segment: TimelinePlanDisplaySegment): Assignment {
+  const base: Assignment = {
+    ...segment.sourceAssignment,
+    startDate: segment.startDate,
+    endDate: segment.endDate,
+  };
+  if (!segment.month) return base;
+  return {
+    ...base,
+    allocations: segment.sourceAssignment.allocations.filter(
+      (alloc) => alloc.month === segment.month && alloc.kind === "plan",
+    ),
+  };
 }
