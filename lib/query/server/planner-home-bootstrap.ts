@@ -9,6 +9,7 @@ import type {
   PlannerDirectoryProjectRow,
 } from "@/lib/planner-directory/types";
 import { fetchPlannerTimeline } from "@/lib/query/server/planner-prefetch";
+import { randomColor } from "@/lib/utils/color";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type {
   PlannerTimelineRequest,
@@ -100,15 +101,6 @@ export type PlannerHomeBootstrapResponse = {
     plannerFetchedAt: string;
   };
 };
-
-function randomColor(seed: string): string {
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
-  }
-
-  return `#${hash.toString(16).padStart(6, "0")}`;
-}
 
 export function toMinimalEmployee(
   employee: PlannerDirectoryEmployeeRow,
