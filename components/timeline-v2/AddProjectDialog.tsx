@@ -23,7 +23,7 @@ import {
   countAssignmentWorkingDays,
   getDefaultAssignmentRange,
   parseManHoursInput,
-  splitTotalAcrossMonths,
+  splitTotalAcrossMonthsMap,
   toDateInputValue,
   toWholeHoursInput,
 } from "@/lib/assignments/split";
@@ -124,9 +124,7 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
   const handleAssign = async () => {
     if (!target || !selectedProject || !canSave || totalHours === null) return;
     const assignedId = selectedProject.id;
-    const monthlyHours = Object.fromEntries(
-      splitTotalAcrossMonths(totalHours, startDate, endDate).map((m) => [m.month, m.plannedHours])
-    );
+    const monthlyHours = splitTotalAcrossMonthsMap(totalHours, startDate, endDate);
     try {
       await upsert.mutateAsync({
         employeeUuid: target.resourceId,

@@ -45,7 +45,7 @@ import {
   getMissingAssignmentPlanningDateReason,
   getProjectAssignmentDateRange,
   parseManHoursInput,
-  splitTotalAcrossMonths,
+  splitTotalAcrossMonthsMap,
   toWholeHoursInput,
 } from "@/lib/assignments/split";
 import {
@@ -505,9 +505,7 @@ export const ProjectSetup = () => {
       // 1. Create new assignments for pending employees
       const createOps = pendingAssignments.map((pending) => {
         const totalHours = parseManHoursInput(manHoursByEmployee[pending.employeeId]) ?? 0;
-        const monthlyHours = Object.fromEntries(
-          splitTotalAcrossMonths(totalHours, spanStart, spanEnd).map((m) => [m.month, m.plannedHours])
-        );
+        const monthlyHours = splitTotalAcrossMonthsMap(totalHours, spanStart, spanEnd);
         return upsert.mutateAsync({
           employeeUuid: pending.employeeId,
           projectKey: currentProjectKey,
@@ -522,9 +520,7 @@ export const ProjectSetup = () => {
       const updateOps = unsavedManHoursChanges.map((change) => {
         const totalHours = parseManHoursInput(change.manHours);
         if (totalHours === null) return Promise.resolve();
-        const monthlyHours = Object.fromEntries(
-          splitTotalAcrossMonths(totalHours, spanStart, spanEnd).map((m) => [m.month, m.plannedHours])
-        );
+        const monthlyHours = splitTotalAcrossMonthsMap(totalHours, spanStart, spanEnd);
         return upsert.mutateAsync({
           employeeUuid: change.employeeId,
           projectKey: currentProjectKey,

@@ -1,6 +1,6 @@
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { UpsertBody } from "@/lib/query/hooks/useAssignmentCommands";
-import { parseManHoursInput, splitTotalAcrossMonths, toDateInputValue } from "./split";
+import { parseManHoursInput, splitTotalAcrossMonthsMap, toDateInputValue } from "./split";
 
 export type AssignSpan = { startDate: string; endDate: string };
 
@@ -86,9 +86,7 @@ export function buildBulkAssignOperations(input: {
     for (const p of input.projects) {
       if (!isAssignableProject(p)) continue;
       const span = deriveProjectSpan(p)!;
-      const monthlyHours = Object.fromEntries(
-        splitTotalAcrossMonths(total, span.startDate, span.endDate).map((x) => [x.month, x.plannedHours]),
-      );
+      const monthlyHours = splitTotalAcrossMonthsMap(total, span.startDate, span.endDate);
       ops.push({
         employeeUuid: m.id,
         projectKey: p.projectKey,

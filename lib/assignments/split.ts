@@ -23,6 +23,17 @@ export function splitTotalAcrossMonths(total: number, startDate: string, endDate
   return result;
 }
 
+/** Even split as a `{ "yyyy-MM-01": hours }` map — the shape `upsertAssignment` wants. */
+export function splitTotalAcrossMonthsMap(
+  total: number,
+  startDate: string,
+  endDate: string,
+): Record<string, number> {
+  return Object.fromEntries(
+    splitTotalAcrossMonths(total, startDate, endDate).map((m) => [m.month, m.plannedHours]),
+  );
+}
+
 /** Sanitize a man-hours text input to whole numbers only — strips every non-digit
  *  character. Planning is in whole hours; decimals are not allowed (a typed "7.5"
  *  becomes "75" as the dot is dropped). Mirrors the sanitization already used by the
