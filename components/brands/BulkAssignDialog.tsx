@@ -17,6 +17,7 @@ import {
   applyHoursToAll,
   buildBulkAssignOperations,
 } from "@/lib/assignments/bulk-assign";
+import { toWholeHoursInput } from "@/lib/assignments/split";
 
 interface BulkAssignDialogProps {
   open: boolean;
@@ -266,9 +267,11 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                       <Input
                         type="number"
                         min={0}
+                        step={1}
+                        inputMode="numeric"
                         placeholder="0"
                         value={manHoursByMember[emp.id] ?? ""}
-                        onChange={(e) => setManHours(emp.id, e.target.value)}
+                        onChange={(e) => setManHours(emp.id, toWholeHoursInput(e.target.value))}
                         className="w-20 text-right"
                         aria-label={`Man-hours for ${emp.fullName}`}
                       />
@@ -289,9 +292,11 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                   <Input
                     type="number"
                     min={0}
+                    step={1}
+                    inputMode="numeric"
                     placeholder="0"
                     value={applyAllValue}
-                    onChange={(e) => setApplyAllValue(e.target.value)}
+                    onChange={(e) => setApplyAllValue(toWholeHoursInput(e.target.value))}
                     className="w-20 text-right"
                     aria-label="Man-hours to apply to all chosen members"
                   />

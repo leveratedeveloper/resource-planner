@@ -46,6 +46,7 @@ import {
   getProjectAssignmentDateRange,
   parseManHoursInput,
   splitTotalAcrossMonths,
+  toWholeHoursInput,
 } from "@/lib/assignments/split";
 import {
   hasProjectChannelManHoursChanges,
@@ -272,7 +273,7 @@ export const ProjectSetup = () => {
   }, [initialManHoursByEmployee]);
 
   const handleChangeManHours = useCallback((employeeId: string, value: string) => {
-    const numericValue = value.replace(/\D/g, "");
+    const numericValue = toWholeHoursInput(value);
     setManHoursByEmployee(prev => ({
       ...prev,
       [employeeId]: numericValue,

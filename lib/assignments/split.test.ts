@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitTotalAcrossMonths } from "./split";
+import { splitTotalAcrossMonths, toWholeHoursInput } from "./split";
 
 describe("splitTotalAcrossMonths", () => {
   it("splits a total equally across the months the span covers", () => {
@@ -24,5 +24,20 @@ describe("splitTotalAcrossMonths", () => {
     const parts = splitTotalAcrossMonths(100, "2026-01-01", "2026-03-31");
     expect(parts.map((p) => p.plannedHours)).toEqual([33.33, 33.33, 33.34]);
     expect(parts.reduce((s, p) => s + p.plannedHours, 0)).toBeCloseTo(100, 10);
+  });
+});
+
+describe("toWholeHoursInput", () => {
+  it("keeps a whole number unchanged", () => {
+    expect(toWholeHoursInput("12")).toBe("12");
+  });
+  it("strips a decimal point so fractional hours can't be entered", () => {
+    expect(toWholeHoursInput("7.5")).toBe("75");
+  });
+  it("strips letters and symbols", () => {
+    expect(toWholeHoursInput("8h")).toBe("8");
+  });
+  it("returns empty string for empty input", () => {
+    expect(toWholeHoursInput("")).toBe("");
   });
 });

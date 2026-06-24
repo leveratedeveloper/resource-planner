@@ -25,6 +25,7 @@ import {
   parseManHoursInput,
   splitTotalAcrossMonths,
   toDateInputValue,
+  toWholeHoursInput,
 } from "@/lib/assignments/split";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
@@ -353,7 +354,7 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
                       inputMode="numeric"
                       pattern="[0-9]*"
                       value={hoursInput}
-                      onChange={(event) => setHoursInput(event.target.value.replace(/[^0-9]/g, ""))}
+                      onChange={(event) => setHoursInput(toWholeHoursInput(event.target.value))}
                       placeholder="0"
                       className="h-9 w-28 text-center"
                       data-testid="add-project-hours-input"

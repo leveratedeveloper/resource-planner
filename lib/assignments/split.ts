@@ -23,6 +23,14 @@ export function splitTotalAcrossMonths(total: number, startDate: string, endDate
   return result;
 }
 
+/** Sanitize a man-hours text input to whole numbers only — strips every non-digit
+ *  character. Planning is in whole hours; decimals are not allowed (a typed "7.5"
+ *  becomes "75" as the dot is dropped). Mirrors the sanitization already used by the
+ *  project-setup and add-project hour inputs; centralized here so all hour inputs match. */
+export function toWholeHoursInput(value: string): string {
+  return value.replace(/[^0-9]/g, "");
+}
+
 /** Parse a whole-number man-hours string. Returns null when the value is blank or non-integer. */
 export function parseManHoursInput(value: string | number | null | undefined): number | null {
   const text = String(value ?? "").trim();
