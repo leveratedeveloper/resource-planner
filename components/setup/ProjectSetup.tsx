@@ -697,7 +697,7 @@ export const ProjectSetup = () => {
                                 {project.projectType === "campaign" ? "Campaign" : "Pitch"}
                               </Badge>
                               <span>
-                                {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                                {project.projectNumber || "No project number"} • {project.assignmentCount ?? 0} assignments
                               </span>
                             </div>
                           </div>

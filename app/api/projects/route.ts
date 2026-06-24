@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
+import { getEngagementCountsByProjectKey } from "@/lib/assignments/assignment-reads";
 
 export async function GET(request: Request) {
   try {
@@ -73,9 +74,17 @@ export async function GET(request: Request) {
       projectChannels: [],
     }));
 
+    const counts = await getEngagementCountsByProjectKey(
+      data.map((p) => `${p.projectType}:${p.id}`),
+    );
+    const dataWithCounts = data.map((p) => ({
+      ...p,
+      assignmentCount: counts[`${p.projectType}:${p.id}`] ?? 0,
+    }));
+
     return NextResponse.json({
       success: true,
-      data,
+      data: dataWithCounts,
       total: page.total,
       hasMore: page.hasMore,
     });

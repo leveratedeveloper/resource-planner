@@ -25,6 +25,7 @@ export interface ProjectChannel {
 export interface Project {
   id: string;
   projectKey?: string;
+  assignmentCount?: number;
   brandId: string;
   businessUnitId: string | null;
   projectCategoryId: string | null;

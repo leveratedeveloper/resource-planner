@@ -84,3 +84,21 @@ export async function getEngagements(filters: {
   }
   return { engagements: [...engagementsById.values()], allocations };
 }
+
+/** Count engagements (assignments) per project_key — for the project-list cards. */
+export async function getEngagementCountsByProjectKey(
+  projectKeys: string[],
+): Promise<Record<string, number>> {
+  if (projectKeys.length === 0) return {};
+  const ph = projectKeys.map((_, i) => `$${i + 1}`).join(",");
+  const [rows] = await assignmentsDb.execute(
+    `SELECT project_key, count(*)::int AS c
+     FROM planner_assignments
+     WHERE project_key IN (${ph})
+     GROUP BY project_key`,
+    projectKeys,
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows as Array<{ project_key: string; c: number }>) out[r.project_key] = r.c;
+  return out;
+}
