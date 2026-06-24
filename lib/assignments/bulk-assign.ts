@@ -28,6 +28,15 @@ export function deriveProjectSpan(
   return null;
 }
 
+/** A project can be bulk-assigned only if it's a campaign with a usable date span.
+ *  Pitches are excluded — they don't render on the timeline, so an allocation on one
+ *  would be invisible and unmanageable. */
+export function isAssignableProject(
+  p: Pick<ProjectOption, "projectType" | "startDate" | "endDate">,
+): boolean {
+  return p.projectType !== "pitch" && deriveProjectSpan(p) !== null;
+}
+
 export type BulkAssignSummary = {
   assignableProjectCount: number;
   skippedCount: number;
@@ -40,7 +49,7 @@ export function summarizeBulkAssign(
   memberCount: number,
   projects: Array<Pick<ProjectOption, "projectType" | "startDate" | "endDate">>,
 ): BulkAssignSummary {
-  const assignableProjectCount = projects.filter((p) => deriveProjectSpan(p) !== null).length;
+  const assignableProjectCount = projects.filter((p) => isAssignableProject(p)).length;
   return {
     assignableProjectCount,
     skippedCount: projects.length - assignableProjectCount,
@@ -75,8 +84,8 @@ export function buildBulkAssignOperations(input: {
   for (const m of input.members) {
     const total = parseManHoursInput(input.hoursByMember[m.id]) ?? 0;
     for (const p of input.projects) {
-      const span = deriveProjectSpan(p);
-      if (!span) continue;
+      if (!isAssignableProject(p)) continue;
+      const span = deriveProjectSpan(p)!;
       const monthlyHours = Object.fromEntries(
         splitTotalAcrossMonths(total, span.startDate, span.endDate).map((x) => [x.month, x.plannedHours]),
       );

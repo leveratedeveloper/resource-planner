@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveProjectSpan, summarizeBulkAssign, applyHoursToAll, buildBulkAssignOperations } from "./bulk-assign";
+import { deriveProjectSpan, summarizeBulkAssign, applyHoursToAll, buildBulkAssignOperations, isAssignableProject } from "./bulk-assign";
 
 describe("deriveProjectSpan", () => {
   it("returns start/end for a campaign that has both dates", () => {
@@ -165,5 +165,33 @@ describe("buildBulkAssignOperations", () => {
     expect(ops[0].status).toBe("draft");
     expect(ops[0].mode).toBe("merge");
     expect(ops[0].span).toEqual({ startDate: "2026-04-01", endDate: "2026-06-30" });
+  });
+});
+
+describe("pitch exclusion", () => {
+  const pitch = { projectKey: "pitch:1", projectType: "pitch" as const, startDate: "2026-05-10", endDate: null };
+  const campaign = { projectKey: "campaign:1", projectType: "campaign" as const, startDate: "2026-04-01", endDate: "2026-06-30" };
+
+  it("isAssignableProject is false for a pitch even when it has a startDate", () => {
+    expect(isAssignableProject(pitch)).toBe(false);
+    expect(isAssignableProject(campaign)).toBe(true);
+  });
+
+  it("buildBulkAssignOperations skips pitches", () => {
+    const ops = buildBulkAssignOperations({
+      members: [{ id: "m1" }],
+      projects: [pitch, campaign],
+      hoursByMember: { m1: "30" },
+    });
+    expect(ops).toHaveLength(1);
+    expect(ops[0].projectKey).toBe("campaign:1");
+  });
+
+  it("summarizeBulkAssign counts a pitch as skipped, not assignable", () => {
+    expect(summarizeBulkAssign(1, [pitch, campaign])).toEqual({
+      assignableProjectCount: 1,
+      skippedCount: 1,
+      totalAssignments: 1,
+    });
   });
 });
