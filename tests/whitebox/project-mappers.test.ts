@@ -72,11 +72,14 @@ describe("project mappers", () => {
 
     expect(summary).toEqual({
       id: "campaign-1",
+      projectKey: "campaign:campaign-1",
       name: "Launch Campaign",
       brandId: "10",
       color: expect.any(String),
       status: "active",
       projectType: "campaign",
+      startDate: "2026-05-01",
+      endDate: "2026-05-31",
     });
     expect(summary).not.toHaveProperty("channels");
   });
@@ -102,11 +105,14 @@ describe("project mappers", () => {
 
     expect(summary).toEqual({
       id: "pitch-1",
+      projectKey: "pitch:pitch-1",
       name: "Pitch Work",
       brandId: null,
       color: expect.any(String),
       status: "completed",
       projectType: "pitch",
+      startDate: null,
+      endDate: null,
     });
     expect(summary).not.toHaveProperty("channels");
   });

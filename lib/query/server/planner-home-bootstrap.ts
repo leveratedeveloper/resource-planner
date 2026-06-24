@@ -9,6 +9,7 @@ import type {
   PlannerDirectoryProjectRow,
 } from "@/lib/planner-directory/types";
 import { fetchPlannerTimeline } from "@/lib/query/server/planner-prefetch";
+import { randomColor } from "@/lib/utils/color";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type {
   PlannerTimelineRequest,
@@ -101,15 +102,6 @@ export type PlannerHomeBootstrapResponse = {
   };
 };
 
-function randomColor(seed: string): string {
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
-  }
-
-  return `#${hash.toString(16).padStart(6, "0")}`;
-}
-
 export function toMinimalEmployee(
   employee: PlannerDirectoryEmployeeRow,
   departmentsById: Record<string, BootstrapDepartment>
@@ -138,11 +130,12 @@ function getReferencedProjectIds(plannerTimeline: PlannerTimelineResponse): Set<
   const projectIds = new Set<string>();
 
   for (const assignment of plannerTimeline.assignments) {
-    if (assignment.projectId) projectIds.add(assignment.projectId);
-  }
-
-  for (const actual of plannerTimeline.actualAssignments) {
-    if (actual.projectUuid) projectIds.add(actual.projectUuid);
+    // assignment.projectKey is "{type}:{sourceProjectId}"; bootstrap projects
+    // are keyed by sourceProjectId, so strip the type prefix.
+    if (assignment.projectKey) {
+      const sourceProjectId = assignment.projectKey.slice(assignment.projectKey.indexOf(":") + 1);
+      if (sourceProjectId) projectIds.add(sourceProjectId);
+    }
   }
 
   return projectIds;
@@ -204,7 +197,7 @@ export async function fetchPlannerHomeBootstrap(
       ? fetchPlannerTimeline(session, request, { employeeUuids: pageEmployeeUuids })
       : // An empty employee page must mean an empty timeline — without the
         // guard, an empty IN-list would fall through to a company-wide query.
-        Promise.resolve({ request, assignments: [], actualAssignments: [] } satisfies PlannerTimelineResponse),
+        Promise.resolve({ request, assignments: [] } satisfies PlannerTimelineResponse),
   ]);
 
   const metadataFreshness = classifyPlannerDirectoryFreshness({

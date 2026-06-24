@@ -10,7 +10,6 @@ type UseTimelineEmployeesInput = {
 const EMPTY = {
   employees: [] as PlannerHomeBootstrapResponse["employees"],
   assignments: [] as PlannerHomeBootstrapResponse["plannerTimeline"]["assignments"],
-  actualAssignments: [] as PlannerHomeBootstrapResponse["plannerTimeline"]["actualAssignments"],
   brandsById: {} as PlannerHomeBootstrapResponse["brandsById"],
   projectsById: {} as PlannerHomeBootstrapResponse["projectsById"],
   metadataFreshness: null as PlannerHomeBootstrapResponse["metadataFreshness"] | null,
@@ -33,7 +32,6 @@ export function useTimelineEmployees({ request, initialBootstrap }: UseTimelineE
     ? {
         employees: data.employees,
         assignments: data.plannerTimeline.assignments,
-        actualAssignments: data.plannerTimeline.actualAssignments,
         brandsById: data.brandsById,
         projectsById: data.projectsById,
         metadataFreshness: data.metadataFreshness,
@@ -43,7 +41,6 @@ export function useTimelineEmployees({ request, initialBootstrap }: UseTimelineE
   return {
     employees: merged.employees as Employee[],
     assignments: merged.assignments,
-    actualAssignments: merged.actualAssignments,
     brandsById: merged.brandsById,
     projectsById: merged.projectsById,
     metadataFreshness: merged.metadataFreshness,

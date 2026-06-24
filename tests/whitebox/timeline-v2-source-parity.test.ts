@@ -111,13 +111,13 @@ describe("timeline-v2 source parity", () => {
     expect(resourceRowSource).toContain("cells={row.allocationCells}");
   });
 
-  it("keeps bars click-isolated with single-row-only resize handles", () => {
+  it("keeps bars click-isolated and render-only (no drag/resize on the monthly model)", () => {
     const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
 
     expect(barSource).toContain("event.stopPropagation()");
     expect(barSource).not.toContain("data-resize-handle");
-    expect(barSource).toContain("const canResize = canDrag && memberAssignments.length === 1;");
-    expect(barSource).toContain("canResize ?");
+    expect(barSource).not.toContain("canResize");
+    expect(barSource).toContain("onOpenMonth");
   });
 
   it("styles dimensions through the token system, not magic pixel numbers", () => {
@@ -152,7 +152,6 @@ describe("timeline-v2 source parity", () => {
       "components/timeline-v2/useTimelineEditor.ts",
       "components/timeline-v2/editor/AssignmentEditor.tsx",
       "components/timeline-v2/editor/MonthDistributionFields.tsx",
-      "lib/timeline-v2/assignment-write-service.ts",
     ];
 
     for (const file of files) {

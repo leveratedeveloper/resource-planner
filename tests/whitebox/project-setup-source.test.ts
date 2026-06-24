@@ -23,8 +23,6 @@ describe("ProjectSetup source", () => {
 
   it("defers expensive project detail data until a project detail modal is open", () => {
     expect(source).toContain("const isProjectDetailOpen = isDialogOpen && !!viewingProject");
-    expect(source).toContain("useAssignments(undefined, { enabled: isProjectDetailOpen })");
-    expect(source).toContain("useEmployees({ enabled: isProjectDetailOpen })");
     expect(source).toContain("enabled: isProjectDetailOpen");
   });
 

@@ -6,7 +6,6 @@ import { endOfMonth, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBar } from "@/components/timeline-v2/AssignmentBar";
 import { useDragToCreate } from "@/components/timeline-v2/interactions/useDragToCreate";
-import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline-v2/assignment-display-hours";
 import { getTimelineRangePosition } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import type { OrderedProjectLane } from "@/lib/timeline-v2/lane-order";
@@ -41,14 +40,6 @@ function areAllMembersVisible(
       parseLocalDate(assignment.startDate) >= rangeStart &&
       parseLocalDate(assignment.endDate) <= rangeEnd
   );
-}
-
-function calculateMonthlyHours(assignments: EmployeeRowModel["assignments"], monthStart: Date, monthEnd: Date) {
-  return assignments.reduce((sum, assignment) => {
-    if (assignment.isTimeOff) return sum;
-    const range = { startDate: monthStart, endDate: monthEnd };
-    return sum + calculateAssignmentDisplayTotalHours(assignment, range);
-  }, 0);
 }
 
 type ProjectLaneProps = {
@@ -100,24 +91,13 @@ export const ProjectLane = React.memo(function ProjectLane({
     const clickedMonth = columns[index]?.date ?? columns[0]?.date;
     const monthStart = startOfMonth(clickedMonth);
     const monthEnd = endOfMonth(monthStart);
-    const projectAssignments = resourceAssignments.filter((assignment) => assignment.projectId === campaign.id);
-    const monthlyTotalHours = calculateMonthlyHours(projectAssignments, monthStart, monthEnd);
-    const adjustmentTotalHours = calculateMonthlyHours(
-      projectAssignments.filter((assignment) => assignment.isAdjustment),
-      monthStart,
-      monthEnd
-    );
     openEditor({
       mode: "month",
       resourceId,
       project: campaign,
       monthStart,
       monthEnd,
-      resourceAssignments,
       clickedAssignment: lane.planAssignments[0],
-      monthlyTotalHours,
-      planTotalHours: monthlyTotalHours - adjustmentTotalHours,
-      adjustmentTotalHours,
     });
   };
 
@@ -205,6 +185,21 @@ export const ProjectLane = React.memo(function ProjectLane({
             }
             isHighlighted={lane.isHighlighted}
             disabled={!canEditAssignments}
+            onOpenMonth={
+              canEditAssignments
+                ? () => {
+                    const monthStart = startOfMonth(parseLocalDate(segment.startDate));
+                    openEditor({
+                      mode: "month",
+                      resourceId,
+                      project: campaign,
+                      monthStart,
+                      monthEnd: endOfMonth(monthStart),
+                      clickedAssignment: segment.sourceAssignment ?? lane.planAssignments[0],
+                    });
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

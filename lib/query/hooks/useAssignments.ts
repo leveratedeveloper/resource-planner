@@ -1,470 +1,111 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 import { invalidatePlannerData } from "@/lib/query/invalidatePlannerData";
-import type { Employee } from "./useEmployees";
 
 // Types
-export interface Assignment {
-  id: string;
-  employeeId: string;
-  projectId: string | null;
-  taskId: string | null;
-  startDate: string;
-  endDate: string;
-  hoursPerDay: string;
-  totalHours: number | null;
-  allocationPercentage: string | null;
-  isTimeOff: boolean;
-  isAdjustment: boolean;
-  timeOffTypeId: string | null;
-  category: string | null;
-  isBillable: boolean;
-  status: "draft" | "confirmed" | "completed";
-  note: string | null;
-  createdById: string | null;
-  createdAt: string;
-  updatedAt: string;
-  employee?: {
-    id: string;
-    fullName: string;
-    position: string;
-    department?: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  };
-  project?: {
-    id: string;
-    name: string;
-    color: string;
-    brand?: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  };
-  createdBy?: {
-    id: string;
-    fullName: string;
-  };
+export interface MonthlyAllocation {
+  month: string;
+  plannedHours: number;
+  kind: "plan" | "adjustment";
 }
 
-export type NewAssignment = Omit<
-  Assignment,
-  | "id"
-  | "createdAt"
-  | "updatedAt"
-  | "employee"
-  | "project"
-  | "createdBy"
-  | "totalHours"
-  | "isAdjustment"
-> & { isAdjustment?: boolean };
+export interface Assignment {
+  id: string;            // assignment_uuid
+  employeeId: string;    // employee_uuid
+  projectKey: string;    // project_key
+  startDate: string;
+  endDate: string;
+  status: "draft" | "confirmed";
+  note: string | null;
+  allocations: MonthlyAllocation[];
+  createdBy: string | null;
+  updatedBy: string | null;
+}
+
+// Raw shapes returned by /api/assignments
+interface RawEngagement {
+  assignment_uuid: string;
+  employee_uuid: string;
+  project_key: string;
+  start_date: string;
+  end_date: string;
+  status: "draft" | "confirmed";
+  note: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+interface RawAllocation {
+  assignment_uuid: string;
+  month: string;
+  planned_hours: number;
+  kind: "plan" | "adjustment";
+}
+
+function stitchAssignments(engagements: RawEngagement[], allocations: RawAllocation[]): Assignment[] {
+  const allocationsByUuid = new Map<string, MonthlyAllocation[]>();
+  for (const alloc of allocations) {
+    const list = allocationsByUuid.get(alloc.assignment_uuid) ?? [];
+    list.push({ month: alloc.month, plannedHours: Number(alloc.planned_hours), kind: alloc.kind });
+    allocationsByUuid.set(alloc.assignment_uuid, list);
+  }
+  return engagements.map((eng) => ({
+    id: eng.assignment_uuid,
+    employeeId: eng.employee_uuid,
+    projectKey: eng.project_key,
+    startDate: eng.start_date,
+    endDate: eng.end_date,
+    status: eng.status,
+    note: eng.note,
+    allocations: allocationsByUuid.get(eng.assignment_uuid) ?? [],
+    createdBy: eng.created_by,
+    updatedBy: eng.updated_by,
+  }));
+}
 
 // API Functions
-async function fetchAssignments(params?: { startDate?: string; endDate?: string; projectIds?: string[] }): Promise<Assignment[]> {
-  const url = new URL("/api/assignments", window.location.origin);
-  if (params?.startDate) url.searchParams.set("startDate", params.startDate);
-  if (params?.endDate) url.searchParams.set("endDate", params.endDate);
-  if (params?.projectIds) {
-    params.projectIds.forEach(id => url.searchParams.append("projectIds", id));
-  }
-
-  const response = await fetch(url.toString());
+async function fetchAssignments(): Promise<Assignment[]> {
+  const response = await fetch("/api/assignments");
   if (!response.ok) {
     throw new Error("Failed to fetch assignments");
   }
   const data = await response.json();
-  return data.data;
+  return stitchAssignments(data.engagements ?? [], data.allocations ?? []);
 }
 
-async function fetchAssignment(id: string): Promise<Assignment> {
-  const response = await fetch(`/api/assignments/${id}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch assignment");
-  }
-  const data = await response.json();
-  return data.data;
-}
-
-async function fetchAssignmentsByEmployee(employeeId: string): Promise<Assignment[]> {
-  const response = await fetch(`/api/assignments?employeeId=${employeeId}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch assignments by employee");
-  }
-  const data = await response.json();
-  return data.data;
-}
-
-async function fetchAssignmentsByProject(projectId: string): Promise<Assignment[]> {
-  const response = await fetch(`/api/assignments?projectId=${projectId}`);
+async function fetchAssignmentsByProject(projectKey: string): Promise<Assignment[]> {
+  const response = await fetch(`/api/assignments?projectKey=${encodeURIComponent(projectKey)}`);
   if (!response.ok) {
     throw new Error("Failed to fetch assignments by project");
   }
   const data = await response.json();
-  return data.data;
-}
-
-async function createAssignment(assignment: NewAssignment): Promise<Assignment> {
-  const response = await fetch("/api/assignments", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(assignment),
-  });
-  if (!response.ok) {
-    let errorMessage = "Failed to create assignment";
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.error || errorMessage;
-    } catch {
-      // If parsing fails, use the default message
-    }
-    throw new Error(errorMessage);
-  }
-  const data = await response.json();
-  return data.data;
-}
-
-async function updateAssignment({ id, ...data }: Partial<Assignment> & { id: string }): Promise<Assignment> {
-  const response = await fetch(`/api/assignments/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to update assignment");
-  }
-  const result = await response.json();
-  return result.data;
+  return stitchAssignments(data.engagements ?? [], data.allocations ?? []);
 }
 
 async function deleteAssignment(id: string): Promise<void> {
-  console.log('[deleteAssignment] API call:', id);
   const response = await fetch(`/api/assignments/${id}`, {
     method: "DELETE",
   });
-  console.log('[deleteAssignment] API response:', response.status);
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[deleteAssignment] API error:', errorText);
     throw new Error(`Failed to delete assignment: ${errorText}`);
   }
-  console.log('[deleteAssignment] Success');
 }
 
 // Hooks
-export function useAssignments(
-  params?: { startDate?: string; endDate?: string; projectIds?: string[] },
-  options: { enabled?: boolean } = {}
-) {
+export function useAssignments(options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: [...queryKeys.assignments, params],
-    queryFn: () => fetchAssignments(params),
+    queryKey: [...queryKeys.assignments],
+    queryFn: fetchAssignments,
     enabled: options.enabled ?? true,
   });
 }
 
-export function useAssignment(id: string) {
+export function useAssignmentsByProject(projectKey: string, options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: queryKeys.assignment(id),
-    queryFn: () => fetchAssignment(id),
-    enabled: !!id,
-  });
-}
-
-export function useAssignmentsByEmployee(employeeId: string) {
-  return useQuery({
-    queryKey: queryKeys.assignmentsByEmployee(employeeId),
-    queryFn: () => fetchAssignmentsByEmployee(employeeId),
-    enabled: !!employeeId,
-  });
-}
-
-export function useAssignmentsByProject(projectId: string, options: { enabled?: boolean } = {}) {
-  return useQuery({
-    queryKey: queryKeys.assignmentsByProject(projectId),
-    queryFn: () => fetchAssignmentsByProject(projectId),
-    enabled: !!projectId && (options.enabled ?? true),
-  });
-}
-
-// The timeline renders from the planner home bootstrap cache, so optimistic
-// mutations must patch it too — otherwise edits visually revert until the
-// post-mutation invalidation refetch lands. The cache holds infinite-query
-// entries ({ pages: [...] }); patch every page — the timeline's page merge
-// dedupes by assignment id, so an optimistic create still renders once.
-type BootstrapWithTimeline = {
-  plannerTimeline?: { assignments: Assignment[]; actualAssignments: unknown[] };
-};
-
-type BootstrapCacheEntry =
-  | BootstrapWithTimeline
-  | { pages: BootstrapWithTimeline[]; pageParams: unknown[] };
-
-function patchBootstrapPage(
-  page: BootstrapWithTimeline,
-  patch: (assignments: Assignment[]) => Assignment[]
-): BootstrapWithTimeline {
-  if (!page?.plannerTimeline) return page;
-  return {
-    ...page,
-    plannerTimeline: {
-      ...page.plannerTimeline,
-      assignments: patch(page.plannerTimeline.assignments),
-    },
-  };
-}
-
-function patchBootstrapAssignments(
-  queryClient: ReturnType<typeof useQueryClient>,
-  patch: (assignments: Assignment[]) => Assignment[]
-) {
-  queryClient.setQueriesData<BootstrapCacheEntry>(
-    { queryKey: queryKeys.plannerHomeBootstrap },
-    (old) => {
-      if (!old) return old;
-      if ("pages" in old) {
-        return { ...old, pages: old.pages.map((page) => patchBootstrapPage(page, patch)) };
-      }
-      return patchBootstrapPage(old, patch);
-    }
-  );
-}
-
-function snapshotBootstrapQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  return queryClient.getQueriesData<BootstrapCacheEntry>({
-    queryKey: queryKeys.plannerHomeBootstrap,
-  });
-}
-
-function restoreBootstrapQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-  snapshot: ReturnType<typeof snapshotBootstrapQueries> | undefined
-) {
-  snapshot?.forEach(([queryKey, data]) => {
-    queryClient.setQueryData(queryKey, data);
-  });
-}
-
-export function useCreateAssignment() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: createAssignment,
-
-    // Optimistic update - add to cache immediately with temp ID
-    onMutate: async (newAssignment) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
-      await queryClient.cancelQueries({ queryKey: queryKeys.employees });
-      // A bootstrap refetch in flight from a previous edit would land AFTER
-      // this optimistic patch and briefly snap it back — cancel it first.
-      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
-
-      // Snapshot for rollback
-      const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
-      const previousEmployees = queryClient.getQueryData(queryKeys.employees);
-
-      // Create optimistic assignment with temp ID
-      const optimisticAssignment: Assignment = {
-        id: `temp-${Date.now()}`,
-        employeeId: newAssignment.employeeId,
-        projectId: newAssignment.projectId,
-        taskId: newAssignment.taskId,
-        startDate: newAssignment.startDate,
-        endDate: newAssignment.endDate,
-        hoursPerDay: newAssignment.hoursPerDay,
-        totalHours: null,
-        allocationPercentage: newAssignment.allocationPercentage,
-        isTimeOff: newAssignment.isTimeOff,
-        isAdjustment: newAssignment.isAdjustment ?? false,
-        timeOffTypeId: newAssignment.timeOffTypeId,
-        category: newAssignment.category,
-        isBillable: newAssignment.isBillable,
-        status: newAssignment.status,
-        note: newAssignment.note,
-        createdById: newAssignment.createdById,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Add to assignments cache
-      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
-        if (!old) return [optimisticAssignment];
-        return [...old, optimisticAssignment];
-      });
-
-      // Mirror into the planner bootstrap cache the timeline renders from
-      const previousBootstrap = snapshotBootstrapQueries(queryClient);
-      patchBootstrapAssignments(queryClient, (assignments) => [...assignments, optimisticAssignment]);
-
-      return { previousAssignments, previousEmployees, previousBootstrap, optimisticId: optimisticAssignment.id };
-    },
-
-    // Rollback on error
-    onError: (err, newAssignment, context) => {
-      console.error('[useCreateAssignment] Error creating assignment:', err);
-      console.error('[useCreateAssignment] Assignment data:', newAssignment);
-
-      if (context?.previousAssignments) {
-        queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
-      }
-      if (context?.previousEmployees) {
-        queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
-      }
-      restoreBootstrapQueries(queryClient, context?.previousBootstrap);
-    },
-
-    // Replace temp ID with real data (no refetch needed)
-    onSuccess: (data, variables, context) => {
-      // Replace the optimistic assignment with real server data
-      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
-        if (!old) return [data];
-        return old.map((a) => (a.id === context?.optimisticId ? data : a));
-      });
-      patchBootstrapAssignments(queryClient, (assignments) =>
-        assignments.map((a) => (a.id === context?.optimisticId ? data : a))
-      );
-    },
-
-    // Invalidate related queries so brand-filtered views stay in sync
-    onSettled: async () => {
-      // Invalidate all assignments queries (including those with params)
-      await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
-      await invalidatePlannerData(queryClient, { refetchType: 'active' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
-    },
-  });
-}
-
-export function useUpdateAssignment() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: updateAssignment,
-
-    // Optimistic update before API call
-    onMutate: async (variables) => {
-      const { id, hoursPerDay, ...updates } = variables;
-
-      console.log('[useUpdateAssignment] onMutate:', { id, updates });
-
-      // Defensive check: skip optimistic update for invalid hours
-      if (hoursPerDay !== undefined) {
-        // Normalize comma to dot for parseFloat (supports both "0.5" and "0,5" formats)
-        const normalized = String(hoursPerDay).replace(',', '.');
-        const parsed = parseFloat(normalized);
-        if (isNaN(parsed) || parsed < 0.5 || parsed > 24) {
-          // Return safe context for rollback handlers (don't return null!)
-          // Skip optimistic update - let API handle validation error
-          return {
-            previousAssignments: queryClient.getQueryData(queryKeys.assignments),
-            previousEmployees: queryClient.getQueryData(queryKeys.employees),
-            skipOptimistic: true,
-          };
-        }
-      }
-
-      // Cancel outgoing refetches to prevent overwriting
-      await queryClient.cancelQueries({ queryKey: queryKeys.assignments });
-      await queryClient.cancelQueries({ queryKey: queryKeys.employees });
-      // A bootstrap refetch in flight from a previous edit would land AFTER
-      // this optimistic patch and briefly snap it back — cancel it first.
-      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
-
-      // Snapshot for rollback
-      const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
-      const previousEmployees = queryClient.getQueryData(queryKeys.employees);
-
-      // Immediately update cache
-      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
-        if (!old) return old;
-        return old.map((assignment) =>
-          assignment.id === id ? { ...assignment, ...updates } : assignment
-        );
-      });
-
-      // Update employees cache (assignments nested within)
-      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
-        if (!old) return old;
-        return old.map((employee) => ({
-          ...employee,
-          assignments: employee.assignments?.map((assignment) =>
-            assignment.id === id ? { ...assignment, ...updates } : assignment
-          ),
-        }));
-      });
-
-      // Also update ALL date-filtered query caches
-      const queriesData = queryClient.getQueriesData({ queryKey: queryKeys.assignments });
-      console.log('[useUpdateAssignment] Updating all query caches:', queriesData.length);
-      queriesData.forEach(([queryKey, data]) => {
-        if (Array.isArray(data)) {
-          queryClient.setQueryData<Assignment[]>(queryKey, (old) => {
-            if (!old) return old;
-            return old.map((assignment) =>
-              assignment.id === id ? { ...assignment, ...updates } : assignment
-            );
-          });
-        }
-      });
-
-      // Mirror into the planner bootstrap cache the timeline renders from
-      const previousBootstrap = snapshotBootstrapQueries(queryClient);
-      patchBootstrapAssignments(queryClient, (assignments) =>
-        assignments.map((assignment) =>
-          assignment.id === id ? { ...assignment, ...updates } : assignment
-        )
-      );
-
-      return { previousAssignments, previousEmployees, previousBootstrap };
-    },
-
-    // Rollback on error
-    onError: (err, variables, context) => {
-      console.error('[useUpdateAssignment] onError:', err);
-      // Only rollback if we actually did an optimistic update
-      if (context?.previousAssignments && !context?.skipOptimistic) {
-        queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
-      }
-      if (context?.previousEmployees && !context?.skipOptimistic) {
-        queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
-      }
-      if (!context?.skipOptimistic) {
-        restoreBootstrapQueries(queryClient, context?.previousBootstrap);
-      }
-    },
-
-    // Server sync - update cache with actual server data (no refetch needed)
-    onSuccess: (data) => {
-      console.log('[useUpdateAssignment] onSuccess:', data);
-      // Update assignments cache with server response
-      queryClient.setQueryData<Assignment[]>(queryKeys.assignments, (old) => {
-        if (!old) return [data];
-        return old.map((a) => (a.id === data.id ? data : a));
-      });
-
-      // Update employees cache with server response
-      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
-        if (!old) return old;
-        return old.map((employee) => ({
-          ...employee,
-          assignments: employee.assignments?.map((a) =>
-            a.id === data.id ? data : a
-          ),
-        }));
-      });
-
-      patchBootstrapAssignments(queryClient, (assignments) =>
-        assignments.map((a) => (a.id === data.id ? data : a))
-      );
-    },
-
-    onSettled: () => {
-      invalidatePlannerData(queryClient);
-    },
+    queryKey: queryKeys.assignmentsByProject(projectKey),
+    queryFn: () => fetchAssignmentsByProject(projectKey),
+    enabled: !!projectKey && (options.enabled ?? true),
   });
 }
 
@@ -474,115 +115,10 @@ export function useDeleteAssignment() {
   return useMutation({
     mutationFn: deleteAssignment,
 
-    // Optimistic delete - remove from cache immediately
-    onMutate: async (id: string) => {
-      console.log('[useDeleteAssignment] Deleting assignment:', id);
-
-      // Cancel outgoing refetches for ALL assignment queries
-      await queryClient.cancelQueries({ queryKey: ["assignments"] });
-      await queryClient.cancelQueries({ queryKey: queryKeys.employees });
-      await queryClient.cancelQueries({ queryKey: queryKeys.plannerHomeBootstrap });
-
-      // Snapshot for rollback
-      const previousAssignments = queryClient.getQueryData(queryKeys.assignments);
-      const previousEmployees = queryClient.getQueryData(queryKeys.employees);
-
-      // Get ALL query cache entries and update them individually
-      const queryCache = queryClient.getQueryCache();
-      const queries = queryCache.getAll();
-
-      console.log('[useDeleteAssignment] Found', queries.length, 'queries in cache');
-
-      let updateCount = 0;
-
-      // Update each assignment query individually
-      queries.forEach((query) => {
-        const queryKey = query.queryKey;
-        const keyString = JSON.stringify(queryKey);
-
-        // Check if this is an assignments query (queryKey[0] === 'assignments' or key starts with 'assignments')
-        if (keyString.includes('"assignments"')) {
-          console.log('[useDeleteAssignment] Updating query:', queryKey);
-
-          queryClient.setQueryData(queryKey, (old: Assignment[] | undefined) => {
-            if (!old || !Array.isArray(old)) {
-              console.log('[useDeleteAssignment] Skip - not an array or empty');
-              return old;
-            }
-            const filtered = old.filter((a) => a.id !== id);
-            updateCount++;
-            console.log('[useDeleteAssignment] Filtered:', {
-              queryKey,
-              before: old.length,
-              after: filtered.length
-            });
-            return filtered;
-          });
-        }
-      });
-
-      console.log('[useDeleteAssignment] Updated', updateCount, 'assignment queries');
-
-      // Remove from employees cache (nested assignments)
-      queryClient.setQueryData<Employee[]>(queryKeys.employees, (old) => {
-        if (!old) return old;
-        return old.map((employee) => ({
-          ...employee,
-          assignments: employee.assignments?.filter((a) => a.id !== id),
-        }));
-      });
-
-      // Mirror into the planner bootstrap cache the timeline renders from
-      const previousBootstrap = snapshotBootstrapQueries(queryClient);
-      patchBootstrapAssignments(queryClient, (assignments) =>
-        assignments.filter((assignment) => assignment.id !== id)
-      );
-
-      // Force immediate UI update by invalidating queries without refetch
-      queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'none' });
-      invalidatePlannerData(queryClient, { refetchType: 'none' });
-      queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'none' });
-
-      return { previousAssignments, previousEmployees, previousBootstrap };
-    },
-
-    // Rollback on error (but not if assignment is already deleted - 404)
-    onError: (err, id, context) => {
-      console.error('[useDeleteAssignment] Error deleting assignment:', err);
-
-      const errorMessage = err instanceof Error ? err.message : String(err);
-
-      // If 404 or "not found", the assignment is already deleted, so don't rollback
-      if (errorMessage.includes("404") || errorMessage.toLowerCase().includes("not found")) {
-        console.log('[useDeleteAssignment] Assignment already deleted, keeping optimistic update');
-        // Force invalidate to ensure UI is in sync
-        queryClient.invalidateQueries({ queryKey: ["assignments"] });
-        invalidatePlannerData(queryClient);
-        return;
-      }
-
-      // Otherwise rollback on other errors
-      if (context?.previousAssignments) {
-        queryClient.setQueryData(queryKeys.assignments, context.previousAssignments);
-      }
-      if (context?.previousEmployees) {
-        queryClient.setQueryData(queryKeys.employees, context.previousEmployees);
-      }
-      restoreBootstrapQueries(queryClient, context?.previousBootstrap);
-    },
-
     onSuccess: () => {
-      console.log('[useDeleteAssignment] Successfully deleted assignment');
-    },
-
-    // Invalidate related queries so brand-filtered views stay in sync
-    onSettled: async () => {
-      console.log('[useDeleteAssignment] Invalidating queries for refetch');
-      // Invalidate all assignments queries (including those with params)
-      await queryClient.invalidateQueries({ queryKey: ["assignments"], refetchType: 'active' });
-      await invalidatePlannerData(queryClient, { refetchType: 'active' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.employees, refetchType: 'active' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.brands, refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      invalidatePlannerData(queryClient);
     },
   });
 }

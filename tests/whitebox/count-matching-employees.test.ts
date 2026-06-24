@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -34,28 +33,20 @@ const makeEmployee = (id: string, overrides: Partial<Employee> = {}): Employee =
 const makeAssignment = (overrides: Partial<Assignment>): Assignment => ({
   id: "assignment-1",
   employeeId: "employee-1",
-  projectId: "project-1",
-  taskId: null,
+  projectKey: "campaign:project-1",
   startDate: "2026-05-18",
   endDate: "2026-05-18",
-  hoursPerDay: "8",
-  totalHours: null,
-  allocationPercentage: null,
-  isTimeOff: false,
-  isAdjustment: false,
-  timeOffTypeId: null,
-  category: "Design",
-  isBillable: true,
   status: "confirmed",
   note: null,
-  createdById: null,
-  createdAt: "2026-05-18T00:00:00.000Z",
-  updatedAt: "2026-05-18T00:00:00.000Z",
+  allocations: [{ month: "2026-05-01", plannedHours: 160, kind: "plan" }],
+  createdBy: null,
+  updatedBy: null,
   ...overrides,
 });
 
 const makeProject = (overrides: Partial<ProjectOption>): ProjectOption => ({
   id: "project-1",
+  projectKey: "campaign:project-1",
   name: "Project 1",
   color: "#2563eb",
   status: "active",
@@ -67,10 +58,10 @@ const makeProject = (overrides: Partial<ProjectOption>): ProjectOption => ({
 });
 
 // Two employees on different brands and departments
-const projectById = new Map([
-  ["project-b1", makeProject({ id: "project-b1", brandId: "brand-1" })],
-  ["project-b2", makeProject({ id: "project-b2", brandId: "brand-2" })],
-  ["project-b3", makeProject({ id: "project-b3", brandId: "brand-3" })],
+const projectByKey = new Map([
+  ["campaign:project-b1", makeProject({ id: "project-b1", projectKey: "campaign:project-b1", brandId: "brand-1" })],
+  ["campaign:project-b2", makeProject({ id: "project-b2", projectKey: "campaign:project-b2", brandId: "brand-2" })],
+  ["campaign:project-b3", makeProject({ id: "project-b3", projectKey: "campaign:project-b3", brandId: "brand-3" })],
 ]);
 
 const employees = [
@@ -80,18 +71,15 @@ const employees = [
 ];
 
 const assignments: Assignment[] = [
-  makeAssignment({ id: "a-1", employeeId: "emp-a", projectId: "project-b1" }),
-  makeAssignment({ id: "a-2", employeeId: "emp-b", projectId: "project-b2" }),
-  makeAssignment({ id: "a-3", employeeId: "emp-c", projectId: "project-b3" }),
+  makeAssignment({ id: "a-1", employeeId: "emp-a", projectKey: "campaign:project-b1" }),
+  makeAssignment({ id: "a-2", employeeId: "emp-b", projectKey: "campaign:project-b2" }),
+  makeAssignment({ id: "a-3", employeeId: "emp-c", projectKey: "campaign:project-b3" }),
 ];
-
-const actualAssignments: ActualAssignment[] = [];
 
 const dataset: FilterPreviewDataset = {
   employees,
   assignments,
-  actualAssignments,
-  projectById,
+  projectByKey,
 };
 
 describe("countMatchingEmployees", () => {

@@ -24,6 +24,8 @@ export interface ProjectChannel {
 
 export interface Project {
   id: string;
+  projectKey?: string;
+  assignmentCount?: number;
   brandId: string;
   businessUnitId: string | null;
   projectCategoryId: string | null;
@@ -91,6 +93,7 @@ export type ProjectOption = Pick<
   Project,
   "id" | "name" | "color" | "status" | "projectType" | "startDate" | "endDate"
 > & {
+  projectKey: string;
   brandId: string | null;
   brandName?: string | null;
   brandCompanyName?: string | null;

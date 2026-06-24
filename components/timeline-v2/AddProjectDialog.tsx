@@ -16,16 +16,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDebounce } from "@/hooks/use-debounce";
 import { usePlannerFilterProjects } from "@/lib/query/hooks";
 import { hasProjectCriteria } from "@/lib/query/filterCriteria";
-import { useCreateAssignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignmentCommands } from "@/lib/query/hooks/useAssignmentCommands";
 import { toast } from "@/hooks/use-toast";
 import { useAddProjectStore } from "@/lib/timeline-v2/add-project-store";
 import {
-  buildNewProjectAssignment,
   countAssignmentWorkingDays,
   getDefaultAssignmentRange,
+  parseManHoursInput,
+  splitTotalAcrossMonths,
   toDateInputValue,
-} from "@/lib/timeline-v2/add-project-assignment";
-import { parseManHoursInput } from "@/lib/setup/project-assignment-save";
+  toWholeHoursInput,
+} from "@/lib/assignments/split";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 
 type AddProjectDialogProps = {
@@ -37,10 +38,10 @@ type AddProjectDialogProps = {
 // form (cancel/X/assign) returns to the still-open picker so the planner can
 // enroll the employee on several projects in one session. Mirrors Setup's
 // Assign Member; view-mode independent.
-export function AddProjectDialog({ createdByUuid }: AddProjectDialogProps) {
+export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDialogProps) {
   const target = useAddProjectStore((state) => state.target);
   const closePicker = useAddProjectStore((state) => state.close);
-  const createAssignment = useCreateAssignment();
+  const { upsert } = useAssignmentCommands();
 
   // Picker state
   const [projectSearch, setProjectSearch] = useState("");
@@ -118,21 +119,23 @@ export function AddProjectDialog({ createdByUuid }: AddProjectDialogProps) {
   const rangeValid = orderValid && withinProjectBounds;
   const workingDays = rangeValid ? countAssignmentWorkingDays({ startDate, endDate }) : 0;
   const canSave =
-    rangeValid && totalHours !== null && totalHours > 0 && !createAssignment.isPending;
+    rangeValid && totalHours !== null && totalHours > 0 && !upsert.isPending;
 
   const handleAssign = async () => {
     if (!target || !selectedProject || !canSave || totalHours === null) return;
     const assignedId = selectedProject.id;
+    const monthlyHours = Object.fromEntries(
+      splitTotalAcrossMonths(totalHours, startDate, endDate).map((m) => [m.month, m.plannedHours])
+    );
     try {
-      await createAssignment.mutateAsync(
-        buildNewProjectAssignment({
-          resourceId: target.resourceId,
-          project: selectedProject,
-          range: { startDate, endDate },
-          totalHours,
-          createdByUuid,
-        })
-      );
+      await upsert.mutateAsync({
+        employeeUuid: target.resourceId,
+        projectKey: selectedProject.projectKey,
+        span: { startDate, endDate },
+        monthlyHours,
+        status: "draft",
+        mode: "merge",
+      });
       setJustAssignedIds((prev) => [...prev, assignedId]);
       resetForm(); // back to the still-open picker
     } catch {
@@ -351,7 +354,7 @@ export function AddProjectDialog({ createdByUuid }: AddProjectDialogProps) {
                       inputMode="numeric"
                       pattern="[0-9]*"
                       value={hoursInput}
-                      onChange={(event) => setHoursInput(event.target.value.replace(/[^0-9]/g, ""))}
+                      onChange={(event) => setHoursInput(toWholeHoursInput(event.target.value))}
                       placeholder="0"
                       className="h-9 w-28 text-center"
                       data-testid="add-project-hours-input"
@@ -375,7 +378,7 @@ export function AddProjectDialog({ createdByUuid }: AddProjectDialogProps) {
                   className="text-sm"
                   data-testid="add-project-save"
                 >
-                  {createAssignment.isPending ? "Saving…" : "Assign"}
+                  {upsert.isPending ? "Saving…" : "Assign"}
                 </Button>
               </DialogFooter>
             </>

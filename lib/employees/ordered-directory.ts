@@ -3,21 +3,13 @@ import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { PlannerDirectoryDepartmentRow, PlannerDirectoryEmployeeRow } from "@/lib/planner-directory/types";
 import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import type { EmployeeDirectorySlice } from "@/lib/employees/directory-cache";
+import { randomColor } from "@/lib/utils/color";
 
 const PAGE_SIZE_FALLBACK = 50;
 
 type DepartmentById = Map<string, PlannerDirectoryDepartmentRow>;
 
 export type OrderedEmployeeSlice = EmployeeDirectorySlice<Employee>;
-
-function randomColor(seed: string): string {
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
-  }
-
-  return `#${hash.toString(16).padStart(6, "0")}`;
-}
 
 function toEmployee(
   employee: PlannerDirectoryEmployeeRow,

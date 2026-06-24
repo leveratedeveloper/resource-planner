@@ -19,15 +19,10 @@ describe("planner data invalidation", () => {
     expect(source).not.toContain("queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline");
   });
 
-  it("actual assignment mutations refresh planner home bootstrap data", () => {
-    const source = readFileSync("lib/query/hooks/useActualAssignments.ts", "utf8");
-
-    expect(source).toContain("invalidatePlannerData");
-    expect(source).not.toContain("queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline");
-  });
-
-  it("Timeline V2 monthly flows refresh planner home bootstrap data", () => {
-    const source = readFileSync("components/timeline-v2/useTimelineEditor.ts", "utf8");
+  it("assignment commands (used by Timeline V2 monthly editor) refresh planner home bootstrap data", () => {
+    // useTimelineEditor now delegates to useAssignmentCommands which wraps
+    // the mutation and calls invalidatePlannerData on success.
+    const source = readFileSync("lib/query/hooks/useAssignmentCommands.ts", "utf8");
 
     expect(source).toContain("invalidatePlannerData");
     expect(source).not.toContain("queryClient.invalidateQueries({ queryKey: queryKeys.plannerTimeline");

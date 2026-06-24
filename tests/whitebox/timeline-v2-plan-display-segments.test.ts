@@ -5,23 +5,15 @@ import { buildTimelinePlanDisplaySegments } from "@/lib/timeline-v2/plan-display
 const assignment = (overrides: Partial<Assignment>): Assignment => ({
   id: overrides.id ?? "assignment-1",
   employeeId: overrides.employeeId ?? "employee-1",
-  projectId: overrides.projectId ?? "project-1",
-  taskId: null,
+  projectKey: overrides.projectKey ?? "campaign:project-1",
   startDate: overrides.startDate ?? "2026-06-01",
   endDate: overrides.endDate ?? "2026-06-01",
-  hoursPerDay: overrides.hoursPerDay ?? "8",
-  totalHours: overrides.totalHours ?? null,
-  allocationPercentage: null,
-  isTimeOff: overrides.isTimeOff ?? false,
-  isAdjustment: overrides.isAdjustment ?? false,
-  timeOffTypeId: null,
-  category: overrides.category ?? "Other",
-  isBillable: true,
   status: overrides.status ?? "draft",
   note: overrides.note ?? null,
-  createdById: null,
-  createdAt: "2026-06-01T00:00:00.000Z",
-  updatedAt: "2026-06-01T00:00:00.000Z",
+  // Default to a non-zero allocation so hasHours() returns true
+  allocations: overrides.allocations ?? [{ month: "2026-06-01", plannedHours: 160, kind: "plan" }],
+  createdBy: null,
+  updatedBy: null,
 });
 
 function dailyAssignments(startDay: number, endDay: number, overrides: Partial<Assignment> = {}) {
@@ -63,7 +55,7 @@ describe("timeline-v2 plan display segments", () => {
       startDate: "2026-06-01",
       endDate: "2026-06-30",
       employeeId: "employee-1",
-      projectId: "project-1",
+      projectKey: "campaign:project-1",
     });
     expect(segments[0].assignments).toHaveLength(30);
     expect(segments[0].sourceAssignment.id).toBe("plan-1");
@@ -98,20 +90,23 @@ describe("timeline-v2 plan display segments", () => {
 
   it("keeps different projects in separate segments", () => {
     const segments = buildTimelinePlanDisplaySegments([
-      assignment({ id: "a", projectId: "project-1", startDate: "2026-06-01", endDate: "2026-06-10" }),
-      assignment({ id: "b", projectId: "project-2", startDate: "2026-06-11", endDate: "2026-06-18" }),
+      assignment({ id: "a", projectKey: "campaign:project-1", startDate: "2026-06-01", endDate: "2026-06-10" }),
+      assignment({ id: "b", projectKey: "campaign:project-2", startDate: "2026-06-11", endDate: "2026-06-18" }),
     ]);
 
-    expect(segments.map((segment) => segment.projectId)).toEqual(["project-1", "project-2"]);
+    expect(segments.map((segment) => segment.projectKey)).toEqual([
+      "campaign:project-1",
+      "campaign:project-2",
+    ]);
   });
 
-  it("keeps adjustment and non-adjustment assignments in separate segments", () => {
+  it("keeps different statuses in separate segments (replaces isAdjustment split)", () => {
     const segments = buildTimelinePlanDisplaySegments([
-      assignment({ id: "a", isAdjustment: false, startDate: "2026-06-01", endDate: "2026-06-10" }),
-      assignment({ id: "b", isAdjustment: true, startDate: "2026-06-11", endDate: "2026-06-18" }),
+      assignment({ id: "a", status: "draft", startDate: "2026-06-01", endDate: "2026-06-10" }),
+      assignment({ id: "b", status: "confirmed", startDate: "2026-06-11", endDate: "2026-06-18" }),
     ]);
 
-    expect(segments.map((segment) => segment.isAdjustment)).toEqual([false, true]);
+    expect(segments.map((segment) => segment.status)).toEqual(["draft", "confirmed"]);
   });
 
   it("merges workweek chunks into one visible segment when weekends are hidden", () => {
@@ -179,5 +174,25 @@ describe("timeline-v2 plan display segments", () => {
     });
 
     expect(segments).toEqual([]);
+  });
+
+  it("skips assignments with no planned hours (zero-allocation)", () => {
+    const segments = buildTimelinePlanDisplaySegments([
+      assignment({
+        id: "empty",
+        startDate: "2026-06-01",
+        endDate: "2026-06-10",
+        allocations: [{ month: "2026-06-01", plannedHours: 0, kind: "plan" }],
+      }),
+      assignment({
+        id: "has-hours",
+        startDate: "2026-06-01",
+        endDate: "2026-06-10",
+        allocations: [{ month: "2026-06-01", plannedHours: 80, kind: "plan" }],
+      }),
+    ]);
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0].sourceAssignment.id).toBe("has-hours");
   });
 });

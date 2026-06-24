@@ -6,11 +6,9 @@ export type TimelinePlanDisplaySegment = {
   sourceAssignment: Assignment;
   assignments: Assignment[];
   employeeId: string;
-  projectId: string;
+  projectKey: string;
   startDate: string;
   endDate: string;
-  isAdjustment: boolean;
-  category: Assignment["category"];
   status: Assignment["status"];
 };
 
@@ -27,9 +25,7 @@ function formatSegmentDate(date: Date) {
 function getMergeKey(assignment: Assignment) {
   return [
     assignment.employeeId,
-    assignment.projectId ?? "",
-    assignment.isAdjustment ? "adjustment" : "plan",
-    assignment.category ?? "",
+    assignment.projectKey ?? "",
     assignment.status ?? "",
   ].join("|");
 }
@@ -96,6 +92,14 @@ function overlapsRange(start: Date, end: Date, rangeStart: Date, rangeEnd: Date)
   return start <= rangeEnd && end >= rangeStart;
 }
 
+/**
+ * An assignment is "visible" if it has at least one allocation month with hours
+ * AND its date span overlaps the visible column range.
+ */
+function hasHours(assignment: Assignment): boolean {
+  return assignment.allocations.some((alloc) => alloc.plannedHours > 0);
+}
+
 function getVisibleCoverage({
   assignment,
   visibleDates,
@@ -147,7 +151,7 @@ function getVisibleCoverage({
 export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplaySegmentsInput): TimelinePlanDisplaySegment[] {
   const { assignments, visibleDates: inputVisibleDates, resolution, projectStartDate, projectEndDate } = normalizeInput(input);
   const plannedAssignments = assignments
-    .filter((assignment) => !assignment.isTimeOff && assignment.projectId)
+    .filter((assignment) => assignment.projectKey && hasHours(assignment))
     .sort((a, b) => {
       const startDelta = parseDate(a.startDate).getTime() - parseDate(b.startDate).getTime();
       if (startDelta !== 0) return startDelta;
@@ -193,11 +197,9 @@ export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplay
       sourceAssignment: assignment,
       assignments: [assignment],
       employeeId: assignment.employeeId,
-      projectId: assignment.projectId!,
+      projectKey: assignment.projectKey,
       startDate: coverage.startDate,
       endDate: coverage.endDate,
-      isAdjustment: assignment.isAdjustment,
-      category: assignment.category,
       status: assignment.status,
     };
 

@@ -39,10 +39,7 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import { useFilterPreviewStore } from "@/lib/timeline-v2/filter-preview-store";
 import { countMatchingEmployees } from "@/lib/timeline-v2/count-matching-employees";
-
-// Dashboard/Insights is still under development and not ready for production.
-// Set this to `true` to re-enable the home-page entry point once it ships.
-const DASHBOARD_FEATURE_ENABLED = false;
+import { DASHBOARD_FEATURE_ENABLED } from "@/lib/dashboard/feature-flag";
 
 interface HomeClientProps {
   initialTimelineAnchor: string;

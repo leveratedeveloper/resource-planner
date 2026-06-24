@@ -55,7 +55,6 @@ export async function GET(request: NextRequest) {
       bytes: Buffer.byteLength(JSON.stringify(body), "utf8"),
       employees: data.employees.length,
       assignments: data.plannerTimeline.assignments.length,
-      actualAssignments: data.plannerTimeline.actualAssignments.length,
       metadataPartial: data.metadataPartial,
     });
     timing.total({ result: "success" });

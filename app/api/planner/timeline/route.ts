@@ -57,7 +57,6 @@ export async function GET(request: NextRequest) {
     timing.phase("response_payload", {
       bytes: responseBytes,
       assignmentCount: data.assignments.length,
-      actualAssignmentCount: data.actualAssignments.length,
     });
     timing.total({ result: "success" });
 
