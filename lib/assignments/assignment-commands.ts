@@ -1,6 +1,6 @@
 import { assignmentsDb } from "@/lib/mysql-assignments/db";
 import { randomUUID } from "crypto";
-import { splitTotalAcrossMonths, toDateInputValue } from "./split";
+import { toDateInputValue } from "./split";
 import { validateAssignmentWrite } from "./assignment-validation";
 
 export type AllocRow = { month: string; plannedHours: number; kind: "plan" | "adjustment" };
@@ -78,41 +78,6 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<st
   } finally {
     await pgClient.release();
   }
-}
-
-/** Bulk = the primitive over a cartesian. Total per project split equally across the project span's months. */
-export async function assignToProjects(input: {
-  employeeUuids: string[];
-  projects: { projectKey: string; startDate: string; endDate: string }[];
-  hoursPerProject: number;
-  actingUserUuid: string | null;
-}): Promise<{ created: number }> {
-  let created = 0;
-  for (const employeeUuid of input.employeeUuids) {
-    for (const p of input.projects) {
-      const monthly = Object.fromEntries(
-        splitTotalAcrossMonths(input.hoursPerProject, p.startDate, p.endDate).map((m) => [m.month, m.plannedHours])
-      );
-      await upsertAssignment({
-        employeeUuid, projectKey: p.projectKey, span: { startDate: p.startDate, endDate: p.endDate },
-        monthlyHours: monthly, status: "draft", kind: "plan", mode: "merge", actingUserUuid: input.actingUserUuid,
-      });
-      created++;
-    }
-  }
-  return { created };
-}
-
-/** Single-month edit (timeline editor). */
-export async function setMonthHours(input: {
-  employeeUuid: string; projectKey: string; span: { startDate: string; endDate: string };
-  month: string; hours: number; kind?: "plan" | "adjustment"; actingUserUuid: string | null;
-}): Promise<string> {
-  return upsertAssignment({
-    employeeUuid: input.employeeUuid, projectKey: input.projectKey, span: input.span,
-    monthlyHours: { [input.month]: input.hours }, kind: input.kind ?? "plan", mode: "merge",
-    actingUserUuid: input.actingUserUuid,
-  });
 }
 
 export async function removeAssignment(employeeUuid: string, projectKey: string): Promise<void> {
