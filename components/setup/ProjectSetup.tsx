@@ -332,6 +332,16 @@ export const ProjectSetup = () => {
     return splitTotalAcrossMonthsMap(total, startDate, endDate);
   }, [editingMonthlyEmployeeId, customMonthlyByEmployee, dateRange, manHoursByEmployee]);
 
+  // The popup must cover the MEMBER's engagement, not just the project's
+  // planning range: the timeline editor can extend a single member's span
+  // beyond the project dates (e.g. adding hours to a month outside it). Union
+  // the project span with the member's actual allocation months so no month is
+  // hidden — and so a replace-save never silently drops the omitted months.
+  const editingMonths = useMemo(() => {
+    const months = new Set([...spanMonths, ...Object.keys(editingInitialMonthly)]);
+    return Array.from(months).sort((a, b) => a.localeCompare(b));
+  }, [spanMonths, editingInitialMonthly]);
+
   const handleChangeManHours = useCallback((employeeId: string, value: string) => {
     const numericValue = toWholeHoursInput(value);
     setManHoursByEmployee(prev => ({
@@ -1450,7 +1460,7 @@ export const ProjectSetup = () => {
             open
             memberName={editingMember.fullName}
             projectName={viewingProject.name}
-            months={spanMonths}
+            months={editingMonths}
             initialMonthly={editingInitialMonthly}
             onSave={(monthly) => handleSaveMonthly(editingMember.id, monthly)}
             onClose={() => setEditingMonthlyEmployeeId(null)}
