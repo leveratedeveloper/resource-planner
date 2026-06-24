@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { type DateRange } from "react-day-picker";
 import { useInfiniteProjects, useProjectDetail, type Project } from "@/lib/query/hooks/useProjects";
+import { dedupeProjectsById } from "@/lib/projects/dedupe-projects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
@@ -116,10 +117,11 @@ export const ProjectSetup = () => {
   const { data: channels = [] } = useChannelClassifications();
   const { data: allDeliverables = [] } = useDeliverables();
 
-  // Flatten all pages into a single array of projects
+  // Flatten all pages into a single array of projects. Dedup by id so a
+  // boundary-duplicated row can never produce a duplicate React key.
   const projects = useMemo(() => {
     if (!projectsData?.pages) return [];
-    return projectsData.pages.flatMap((page) => page.data);
+    return dedupeProjectsById(projectsData.pages.flatMap((page) => page.data));
   }, [projectsData]);
 
   const handleLoadMore = useCallback(() => {
