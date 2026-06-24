@@ -1114,7 +1114,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         FROM planner_projects p
         LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
         ${whereSql}
-        ORDER BY p.name ASC
+        ORDER BY p.name ASC, p.project_key ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
