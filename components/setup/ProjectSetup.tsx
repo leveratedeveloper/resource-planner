@@ -45,9 +45,12 @@ import {
   getMissingAssignmentPlanningDateReason,
   getProjectAssignmentDateRange,
   parseManHoursInput,
+  splitTotalAcrossMonths,
   splitTotalAcrossMonthsMap,
   toWholeHoursInput,
 } from "@/lib/assignments/split";
+import { isEvenSplit, monthlyMapsEqual } from "@/lib/assignments/even-split";
+import { EditMonthlyAllocationDialog } from "@/components/setup/EditMonthlyAllocationDialog";
 import {
   hasProjectChannelManHoursChanges,
   updateProjectChannelManHours,
@@ -140,6 +143,9 @@ export const ProjectSetup = () => {
   const [pendingAssignments, setPendingAssignments] = useState<Array<{ employeeId: string }>>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [initialManHoursByEmployee, setInitialManHoursByEmployee] = useState<Record<string, string>>({});
+  const [customMonthlyByEmployee, setCustomMonthlyByEmployee] = useState<Record<string, Record<string, number>>>({});
+  const [initialCustomMonthlyByEmployee, setInitialCustomMonthlyByEmployee] = useState<Record<string, Record<string, number>>>({});
+  const [editingMonthlyEmployeeId, setEditingMonthlyEmployeeId] = useState<string | null>(null);
 
   const isProjectDetailOpen = isDialogOpen && !!viewingProject;
   // useAssignmentsByProject now accepts projectKey (string)
@@ -251,6 +257,17 @@ export const ProjectSetup = () => {
     return new Set(pendingAssignments.map((pending) => pending.employeeId));
   }, [pendingAssignments]);
 
+  const customizedEmployeeIds = useMemo(
+    () => new Set(Object.keys(customMonthlyByEmployee)),
+    [customMonthlyByEmployee],
+  );
+
+  const spanMonths = useMemo(() => {
+    const { startDate, endDate } = getAssignmentDateStrings(dateRange);
+    if (!startDate || !endDate || startDate > endDate) return [];
+    return splitTotalAcrossMonths(0, startDate, endDate).map((m) => m.month);
+  }, [dateRange]);
+
   const unsavedManHoursChanges = useMemo(() => {
     return teamMembers
       .filter((member) => !pendingEmployeeIds.has(member.id))
@@ -259,19 +276,61 @@ export const ProjectSetup = () => {
         manHours: manHoursByEmployee[member.id] ?? "",
         initialManHours: initialManHoursByEmployee[member.id] ?? "",
       }))
-      .filter((change) => change.manHours !== change.initialManHours);
-  }, [teamMembers, pendingEmployeeIds, manHoursByEmployee, initialManHoursByEmployee]);
+      .filter(
+        (change) =>
+          change.manHours !== change.initialManHours ||
+          !monthlyMapsEqual(
+            customMonthlyByEmployee[change.employeeId],
+            initialCustomMonthlyByEmployee[change.employeeId],
+          ),
+      );
+  }, [
+    teamMembers,
+    pendingEmployeeIds,
+    manHoursByEmployee,
+    initialManHoursByEmployee,
+    customMonthlyByEmployee,
+    initialCustomMonthlyByEmployee,
+  ]);
 
   const changedManHoursEmployeeIds = useMemo(() => {
     return new Set(unsavedManHoursChanges.map((change) => change.employeeId));
   }, [unsavedManHoursChanges]);
 
   const handleUndoManHoursChange = useCallback((employeeId: string) => {
-    setManHoursByEmployee(prev => ({
+    setManHoursByEmployee((prev) => ({
       ...prev,
       [employeeId]: initialManHoursByEmployee[employeeId] ?? "",
     }));
-  }, [initialManHoursByEmployee]);
+    setCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      const initial = initialCustomMonthlyByEmployee[employeeId];
+      if (initial) next[employeeId] = initial;
+      else delete next[employeeId];
+      return next;
+    });
+  }, [initialManHoursByEmployee, initialCustomMonthlyByEmployee]);
+
+  const handleSaveMonthly = useCallback((employeeId: string, monthly: Record<string, number>) => {
+    setCustomMonthlyByEmployee((prev) => ({ ...prev, [employeeId]: monthly }));
+    const total = Object.values(monthly).reduce((sum, h) => sum + h, 0);
+    setManHoursByEmployee((prev) => ({ ...prev, [employeeId]: String(Math.round(total)) }));
+    setEditingMonthlyEmployeeId(null);
+  }, []);
+
+  const editingMember = useMemo(
+    () => teamMembers.find((m) => m.id === editingMonthlyEmployeeId) ?? null,
+    [teamMembers, editingMonthlyEmployeeId],
+  );
+
+  const editingInitialMonthly = useMemo(() => {
+    if (!editingMonthlyEmployeeId) return {};
+    const custom = customMonthlyByEmployee[editingMonthlyEmployeeId];
+    if (custom) return custom;
+    const { startDate, endDate } = getAssignmentDateStrings(dateRange);
+    const total = parseManHoursInput(manHoursByEmployee[editingMonthlyEmployeeId]) ?? 0;
+    return splitTotalAcrossMonthsMap(total, startDate, endDate);
+  }, [editingMonthlyEmployeeId, customMonthlyByEmployee, dateRange, manHoursByEmployee]);
 
   const handleChangeManHours = useCallback((employeeId: string, value: string) => {
     const numericValue = toWholeHoursInput(value);
@@ -416,6 +475,8 @@ export const ProjectSetup = () => {
     if (viewingProject?.id !== project.id) {
       setManHoursByEmployee({});
       setInitialManHoursByEmployee({});
+      setCustomMonthlyByEmployee({});
+      setInitialCustomMonthlyByEmployee({});
     }
     setIsDialogOpen(true);
   };
@@ -432,15 +493,24 @@ export const ProjectSetup = () => {
     }
 
     const nextManHoursByEmployee: Record<string, string> = {};
+    const nextCustomMonthly: Record<string, Record<string, number>> = {};
 
     for (const assignment of projectAssignments) {
       if (!assignment.employeeId) continue;
-      const totalHours = assignment.allocations.reduce((sum, a) => sum + a.plannedHours, 0);
+      const planAllocations = assignment.allocations.filter((a) => a.kind === "plan");
+      const totalHours = planAllocations.reduce((sum, a) => sum + a.plannedHours, 0);
       nextManHoursByEmployee[assignment.employeeId] = String(Math.round(totalHours));
+      if (!isEvenSplit(planAllocations.map((a) => a.plannedHours))) {
+        nextCustomMonthly[assignment.employeeId] = Object.fromEntries(
+          planAllocations.map((a) => [a.month, a.plannedHours]),
+        );
+      }
     }
 
     setManHoursByEmployee(nextManHoursByEmployee);
     setInitialManHoursByEmployee(nextManHoursByEmployee);
+    setCustomMonthlyByEmployee(nextCustomMonthly);
+    setInitialCustomMonthlyByEmployee(nextCustomMonthly);
   }, [isDialogOpen, viewingProject, projectAssignments, initialManHoursByEmployee]);
 
   // Initialize assignment planning range from existing assignments when project has no saved dates
@@ -485,6 +555,30 @@ export const ProjectSetup = () => {
     return CURRENCIES.find((c) => c.code === code)?.symbol || code;
   };
 
+  // A customized member returns their exact per-month map; otherwise the total
+  // is even-split. A blank/unparseable total falls back to 0 — but the save is
+  // gated by `allManHoursAreValid`, so this is only ever reached with a valid
+  // whole-number total (the 0 fallback is a defensive floor, not a live path).
+  const resolveMonthlyHours = (
+    employeeId: string,
+    spanStart: string,
+    spanEnd: string,
+  ): Record<string, number> => {
+    const custom = customMonthlyByEmployee[employeeId];
+    if (custom) return custom;
+    const total = parseManHoursInput(manHoursByEmployee[employeeId]) ?? 0;
+    return splitTotalAcrossMonthsMap(total, spanStart, spanEnd);
+  };
+
+  const resetProjectDialogState = useCallback(() => {
+    setPendingAssignments([]);
+    setManHoursByEmployee({});
+    setInitialManHoursByEmployee({});
+    setCustomMonthlyByEmployee({});
+    setInitialCustomMonthlyByEmployee({});
+    setEditingMonthlyEmployeeId(null);
+  }, []);
+
   // Handler for saving pending team assignments and man-hours changes
   const handleSaveTeamAssignments = async (closeAfterSave = false) => {
     if (!viewingProject || !projectKey) return;
@@ -504,8 +598,7 @@ export const ProjectSetup = () => {
 
       // 1. Create new assignments for pending employees
       const createOps = pendingAssignments.map((pending) => {
-        const totalHours = parseManHoursInput(manHoursByEmployee[pending.employeeId]) ?? 0;
-        const monthlyHours = splitTotalAcrossMonthsMap(totalHours, spanStart, spanEnd);
+        const monthlyHours = resolveMonthlyHours(pending.employeeId, spanStart, spanEnd);
         return upsert.mutateAsync({
           employeeUuid: pending.employeeId,
           projectKey: currentProjectKey,
@@ -518,9 +611,7 @@ export const ProjectSetup = () => {
 
       // 2. Update existing assignments with changed man hours
       const updateOps = unsavedManHoursChanges.map((change) => {
-        const totalHours = parseManHoursInput(change.manHours);
-        if (totalHours === null) return Promise.resolve();
-        const monthlyHours = splitTotalAcrossMonthsMap(totalHours, spanStart, spanEnd);
+        const monthlyHours = resolveMonthlyHours(change.employeeId, spanStart, spanEnd);
         return upsert.mutateAsync({
           employeeUuid: change.employeeId,
           projectKey: currentProjectKey,
@@ -544,6 +635,20 @@ export const ProjectSetup = () => {
       }
 
       setInitialManHoursByEmployee(nextInitialManHours);
+
+      const nextInitialCustom: Record<string, Record<string, number>> = { ...initialCustomMonthlyByEmployee };
+      for (const pending of pendingAssignments) {
+        if (customMonthlyByEmployee[pending.employeeId]) {
+          nextInitialCustom[pending.employeeId] = customMonthlyByEmployee[pending.employeeId];
+        }
+      }
+      for (const change of unsavedManHoursChanges) {
+        if (customMonthlyByEmployee[change.employeeId]) {
+          nextInitialCustom[change.employeeId] = customMonthlyByEmployee[change.employeeId];
+        }
+      }
+      setInitialCustomMonthlyByEmployee(nextInitialCustom);
+
       setInitialProjectChannels(projectChannels);
 
       // Clear pending assignments after successful save
@@ -567,6 +672,11 @@ export const ProjectSetup = () => {
       delete next[employeeId];
       return next;
     });
+    setCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      delete next[employeeId];
+      return next;
+    });
   };
 
   // Handler for deleting a saved assignment
@@ -581,6 +691,16 @@ export const ProjectSetup = () => {
       return next;
     });
     setInitialManHoursByEmployee(prev => {
+      const next = { ...prev };
+      delete next[employeeId];
+      return next;
+    });
+    setCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      delete next[employeeId];
+      return next;
+    });
+    setInitialCustomMonthlyByEmployee((prev) => {
       const next = { ...prev };
       delete next[employeeId];
       return next;
@@ -740,9 +860,7 @@ export const ProjectSetup = () => {
         {/* View Project/Pitch Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           if (!open) {
-            setPendingAssignments([]);
-            setManHoursByEmployee({});
-            setInitialManHoursByEmployee({});
+            resetProjectDialogState();
           }
           setIsDialogOpen(open);
         }}>
@@ -1241,6 +1359,8 @@ export const ProjectSetup = () => {
                     onChangeManHours={handleChangeManHours}
                     onRemovePending={handleRemovePending}
                     onDeleteSavedAssignment={handleDeleteSavedAssignment}
+                    customizedEmployeeIds={customizedEmployeeIds}
+                    onEditMonthly={(employeeId) => setEditingMonthlyEmployeeId(employeeId)}
                   />
 
                   {hasUnsavedChanges && (
@@ -1264,7 +1384,7 @@ export const ProjectSetup = () => {
             </div>
 
             <DialogFooter className="px-6 py-4 border-t bg-background shrink-0 gap-2 sm:justify-end">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
+              <Button variant="outline" onClick={() => { setIsDialogOpen(false); resetProjectDialogState(); }} disabled={isSaving}>
                 Close
               </Button>
               <Button
@@ -1321,6 +1441,19 @@ export const ProjectSetup = () => {
                 return next;
               });
             }}
+          />
+        )}
+
+        {/* Edit Monthly Allocation Dialog */}
+        {editingMember && viewingProject && (
+          <EditMonthlyAllocationDialog
+            open
+            memberName={editingMember.fullName}
+            projectName={viewingProject.name}
+            months={spanMonths}
+            initialMonthly={editingInitialMonthly}
+            onSave={(monthly) => handleSaveMonthly(editingMember.id, monthly)}
+            onClose={() => setEditingMonthlyEmployeeId(null)}
           />
         )}
       </div>

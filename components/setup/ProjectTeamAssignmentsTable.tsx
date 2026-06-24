@@ -36,6 +36,8 @@ interface ProjectTeamAssignmentsTableProps {
   onChangeManHours: (employeeId: string, value: string) => void;
   onRemovePending: (employeeId: string) => void;
   onDeleteSavedAssignment: (employeeId: string) => void;
+  customizedEmployeeIds: Set<string>;
+  onEditMonthly: (employeeId: string) => void;
 }
 
 export function ProjectTeamAssignmentsTable({
@@ -50,6 +52,8 @@ export function ProjectTeamAssignmentsTable({
   onChangeManHours,
   onRemovePending,
   onDeleteSavedAssignment,
+  customizedEmployeeIds,
+  onEditMonthly,
 }: ProjectTeamAssignmentsTableProps) {
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -93,17 +97,24 @@ export function ProjectTeamAssignmentsTable({
                   </div>
                 </td>
                 <td className="p-3">
-                  <Input
-                    value={manHoursByEmployee[member.id] ?? ""}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="0"
-                    className="h-8 w-24"
-                    onChange={(event) => {
-                      const nextValue = event.target.value.replace(/\D/g, "");
-                      onChangeManHours(member.id, nextValue);
-                    }}
-                  />
+                  {customizedEmployeeIds.has(member.id) ? (
+                    <div className="flex h-8 w-24 items-center justify-between rounded-md border border-input bg-muted/40 px-2 text-sm">
+                      <span>{manHoursByEmployee[member.id] ?? "0"}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">mo</span>
+                    </div>
+                  ) : (
+                    <Input
+                      value={manHoursByEmployee[member.id] ?? ""}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="0"
+                      className="h-8 w-24"
+                      onChange={(event) => {
+                        const nextValue = event.target.value.replace(/\D/g, "");
+                        onChangeManHours(member.id, nextValue);
+                      }}
+                    />
+                  )}
                 </td>
                 <td className="p-3 text-sm">
                   {member.criticalAllocations.length > 0 ? (
@@ -119,64 +130,82 @@ export function ProjectTeamAssignmentsTable({
                   )}
                 </td>
                 <td className="p-3">
-                  {isPending ? (
+                  <div className="flex items-center gap-1">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="shrink-0 h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => onRemovePending(member.id)}
-                          title="Remove pending assignment"
+                          className="shrink-0 h-7 w-7 text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+                          onClick={() => onEditMonthly(member.id)}
+                          title="Edit monthly hours"
                         >
-                          <Icon icon="lucide:trash-2" className="h-4 w-4" />
+                          <Icon icon="lucide:pencil" className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Remove pending assignment</p>
+                        <p>Edit monthly hours</p>
                       </TooltipContent>
                     </Tooltip>
-                  ) : !hasChangedManHours && (
-                    <Popover>
+                    {isPending ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="shrink-0 h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              disabled={isDeletePending}
-                            >
-                              <Icon icon="lucide:trash-2" className="h-4 w-4" />
-                            </Button>
-                          </PopoverTrigger>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => onRemovePending(member.id)}
+                            title="Remove pending assignment"
+                          >
+                            <Icon icon="lucide:trash-2" className="h-4 w-4" />
+                          </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Remove from project</p>
+                          <p>Remove pending assignment</p>
                         </TooltipContent>
                       </Tooltip>
-                      <PopoverContent className="w-auto p-3" align="start">
-                        <div className="space-y-3">
-                          <p className="text-sm font-medium">Remove {member.fullName} from this project?</p>
-                          <div className="flex items-center gap-2 justify-end">
-                            <PopoverClose asChild>
-                              <Button variant="outline" size="sm">Cancel</Button>
-                            </PopoverClose>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => onDeleteSavedAssignment(member.id)}
-                              disabled={isDeletePending}
-                            >
-                              {isDeletePending ? (
-                                <Icon icon="lucide:loader-2" className="h-3.5 w-3.5 animate-spin" />
-                              ) : "Remove"}
-                            </Button>
+                    ) : !hasChangedManHours && (
+                      <Popover>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0 h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                disabled={isDeletePending}
+                              >
+                                <Icon icon="lucide:trash-2" className="h-4 w-4" />
+                              </Button>
+                            </PopoverTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Remove from project</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <PopoverContent className="w-auto p-3" align="start">
+                          <div className="space-y-3">
+                            <p className="text-sm font-medium">Remove {member.fullName} from this project?</p>
+                            <div className="flex items-center gap-2 justify-end">
+                              <PopoverClose asChild>
+                                <Button variant="outline" size="sm">Cancel</Button>
+                              </PopoverClose>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => onDeleteSavedAssignment(member.id)}
+                                disabled={isDeletePending}
+                              >
+                                {isDeletePending ? (
+                                  <Icon icon="lucide:loader-2" className="h-3.5 w-3.5 animate-spin" />
+                                ) : "Remove"}
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
                 </td>
               </tr>
             );
