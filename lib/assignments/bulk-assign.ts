@@ -16,3 +16,23 @@ export function deriveProjectSpan(
   if (p.startDate) return { startDate: p.startDate, endDate: p.startDate };
   return null;
 }
+
+export type BulkAssignSummary = {
+  assignableProjectCount: number;
+  skippedCount: number;
+  totalAssignments: number;
+};
+
+/** Count how many draft assignments a member×project selection will create.
+ *  A project counts only if deriveProjectSpan returns a span; the rest are skipped. */
+export function summarizeBulkAssign(
+  memberCount: number,
+  projects: Array<Pick<ProjectOption, "projectType" | "startDate" | "endDate">>,
+): BulkAssignSummary {
+  const assignableProjectCount = projects.filter((p) => deriveProjectSpan(p) !== null).length;
+  return {
+    assignableProjectCount,
+    skippedCount: projects.length - assignableProjectCount,
+    totalAssignments: memberCount * assignableProjectCount,
+  };
+}
