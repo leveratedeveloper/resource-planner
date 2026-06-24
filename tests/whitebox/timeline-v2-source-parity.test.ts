@@ -152,7 +152,6 @@ describe("timeline-v2 source parity", () => {
       "components/timeline-v2/useTimelineEditor.ts",
       "components/timeline-v2/editor/AssignmentEditor.tsx",
       "components/timeline-v2/editor/MonthDistributionFields.tsx",
-      "lib/timeline-v2/assignment-write-service.ts",
     ];
 
     for (const file of files) {
