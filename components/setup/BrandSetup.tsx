@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useBrands, useInfiniteBrands, type Brand } from "@/lib/query/hooks/useBrands";
+import React, { useState, useMemo, useCallback } from "react";
+import { useInfiniteBrands, type Brand } from "@/lib/query/hooks/useBrands";
 
 // Extended brand type with metadata for partial data
 interface BrandWithMetadata extends Brand {
@@ -14,8 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Icon } from "@iconify/react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -61,25 +60,6 @@ const INDUSTRY_CATEGORIES = [
   "Tobacco",
   "Transportation & Logistic",
 ];
-
-// Generate client code from brand name
-const generateClientCode = (brandName: string, existingCodes: string[] = []): string => {
-  if (!brandName) return "";
-
-  // Create base code from first 3-4 letters of brand name
-  const cleanName = brandName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const baseCode = cleanName.substring(0, 4);
-
-  // If code exists, append a number
-  let code = baseCode;
-  let counter = 1;
-  while (existingCodes.includes(code)) {
-    code = `${baseCode}${counter}`;
-    counter++;
-  }
-
-  return code;
-};
 
 export const BrandSetup = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -367,18 +347,24 @@ export const BrandSetup = () => {
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Brand Details</DialogTitle>
+        <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b bg-background shrink-0 pr-12">
+            <DialogTitle>
+              Brand Details{name || editingBrand?.name ? ` - ${name || editingBrand?.name}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              View brand information
+            </DialogDescription>
           </DialogHeader>
 
-          {isLoadingBrandDetails ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Icon icon="lucide:loader-2" className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground">Loading brand details...</p>
-            </div>
-          ) : (
-            <div className="grid gap-6 py-4">
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {isLoadingBrandDetails ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Icon icon="lucide:loader-2" className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                <p className="text-sm text-muted-foreground">Loading brand details...</p>
+              </div>
+            ) : (
+              <div className="grid gap-6 py-4">
             {/* Basic Information Section */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-foreground border-b pb-2">Basic Information</h3>
@@ -669,9 +655,10 @@ export const BrandSetup = () => {
                 </div>
               </div>
             </div>
+              </div>
+            )}
           </div>
-          )}
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 border-t bg-background shrink-0 gap-2 sm:justify-end">
             <Button
               onClick={() => setIsDialogOpen(false)}
             >

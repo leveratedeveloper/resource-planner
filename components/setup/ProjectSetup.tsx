@@ -114,7 +114,7 @@ export const ProjectSetup = () => {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteProjects(debouncedSearch || undefined);
-  const { data: brands = [] } = useBrands();
+  const { data: brands = [], isLoading: brandsLoading } = useBrands();
   const { data: businessUnits = [] } = useBusinessUnits();
   const { data: projectCategories = [] } = useProjectCategories();
   const { data: channels = [] } = useChannelClassifications();
@@ -125,6 +125,7 @@ export const ProjectSetup = () => {
     if (!projectsData?.pages) return [];
     return projectsData.pages.flatMap((page) => page.data);
   }, [projectsData]);
+  const isProjectListLoading = projectsLoading || brandsLoading;
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -618,12 +619,12 @@ export const ProjectSetup = () => {
 
         {/* Projects List grouped by Brand */}
         <div className="space-y-6">
-          {projectsByBrand.length === 0 && !projectsLoading && debouncedSearch ? (
+          {projectsByBrand.length === 0 && !isProjectListLoading && debouncedSearch ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:search-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">No projects or brands found matching &quot;{debouncedSearch}&quot;</p>
             </div>
-          ) : projectsByBrand.length === 0 && !projectsLoading ? (
+          ) : projectsByBrand.length === 0 && !isProjectListLoading ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:folder-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">
@@ -647,7 +648,7 @@ export const ProjectSetup = () => {
                 </div>
 
                 {brandProjects.length === 0 ? (
-                  projectsLoading ? (
+                  isProjectListLoading ? (
                     <div className="grid gap-2 pl-5">
                       {[1, 2].map((i) => (
                         <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-white">
