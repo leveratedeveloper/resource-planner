@@ -73,13 +73,25 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
   // ── Per-member man-hours ──────────────────────────────────────────────────
   const [manHoursByMember, setManHoursByMember] = useState<Record<string, string>>({});
 
-  const toggleMember = (emp: Employee) =>
-    setSelectedMembers((prev) => {
-      const next = new Map(prev);
-      if (next.has(emp.id)) next.delete(emp.id);
-      else next.set(emp.id, emp);
-      return next;
-    });
+  const toggleMember = (emp: Employee) => {
+    if (selectedMembers.has(emp.id)) {
+      setSelectedMembers((prev) => {
+        const next = new Map(prev);
+        next.delete(emp.id);
+        return next;
+      });
+      setManHoursByMember((prev) => {
+        const { [emp.id]: _removed, ...rest } = prev;
+        return rest;
+      });
+    } else {
+      setSelectedMembers((prev) => {
+        const next = new Map(prev);
+        next.set(emp.id, emp);
+        return next;
+      });
+    }
+  };
 
   const removeMember = (id: string) => {
     setSelectedMembers((prev) => {
