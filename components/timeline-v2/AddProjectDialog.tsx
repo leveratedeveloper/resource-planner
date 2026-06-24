@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { format } from "date-fns";
 import { Icon } from "@iconify/react";
 import {
   Dialog,
@@ -23,6 +24,7 @@ import {
   countAssignmentWorkingDays,
   getDefaultAssignmentRange,
   parseManHoursInput,
+  splitTotalAcrossMonths,
   splitTotalAcrossMonthsMap,
   toDateInputValue,
   toWholeHoursInput,
@@ -55,6 +57,8 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [hoursInput, setHoursInput] = useState("");
+  const [isCustomizing, setIsCustomizing] = useState(false);
+  const [customMonthly, setCustomMonthly] = useState<Record<string, string>>({});
 
   const projectQuery = usePlannerFilterProjects({ search: debouncedProjectSearch });
 
@@ -91,6 +95,18 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
     setStartDate("");
     setEndDate("");
     setHoursInput("");
+    setIsCustomizing(false);
+    setCustomMonthly({});
+  };
+
+  const evenMonthlyStrings = (total: number, from: string, to: string): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(splitTotalAcrossMonthsMap(total, from, to)).map(([m, h]) => [m, String(Math.round(h))]),
+    );
+
+  const enableCustomize = () => {
+    setCustomMonthly(evenMonthlyStrings(totalHours ?? 0, startDate, endDate));
+    setIsCustomizing(true);
   };
 
   const handleClosePicker = () => {
@@ -118,13 +134,27 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
     (!projectStart || startDate >= projectStart) && (!projectEnd || endDate <= projectEnd);
   const rangeValid = orderValid && withinProjectBounds;
   const workingDays = rangeValid ? countAssignmentWorkingDays({ startDate, endDate }) : 0;
+
+  const spanMonths = useMemo(
+    () => (rangeValid ? splitTotalAcrossMonths(0, startDate, endDate).map((m) => m.month) : []),
+    [rangeValid, startDate, endDate],
+  );
+  const customMonthlyTotal = useMemo(
+    () => spanMonths.reduce((sum, m) => sum + (parseManHoursInput(customMonthly[m]) ?? 0), 0),
+    [spanMonths, customMonthly],
+  );
+
   const canSave =
-    rangeValid && totalHours !== null && totalHours > 0 && !upsert.isPending;
+    rangeValid &&
+    !upsert.isPending &&
+    (isCustomizing ? customMonthlyTotal > 0 : totalHours !== null && totalHours > 0);
 
   const handleAssign = async () => {
-    if (!target || !selectedProject || !canSave || totalHours === null) return;
+    if (!target || !selectedProject || !canSave) return;
     const assignedId = selectedProject.id;
-    const monthlyHours = splitTotalAcrossMonthsMap(totalHours, startDate, endDate);
+    const monthlyHours = isCustomizing
+      ? Object.fromEntries(spanMonths.map((m) => [m, parseManHoursInput(customMonthly[m]) ?? 0]))
+      : splitTotalAcrossMonthsMap(totalHours ?? 0, startDate, endDate);
     try {
       await upsert.mutateAsync({
         employeeUuid: target.resourceId,
@@ -317,7 +347,11 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
                       value={startDate}
                       min={projectStart || undefined}
                       max={endDate || projectEnd || undefined}
-                      onChange={(event) => setStartDate(event.target.value)}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setStartDate(next);
+                        if (isCustomizing) setCustomMonthly(evenMonthlyStrings(totalHours ?? 0, next, endDate));
+                      }}
                       className="h-9"
                       data-testid="add-project-start-date"
                     />
@@ -327,7 +361,11 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
                       value={endDate}
                       min={startDate || projectStart || undefined}
                       max={projectEnd || undefined}
-                      onChange={(event) => setEndDate(event.target.value)}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setEndDate(next);
+                        if (isCustomizing) setCustomMonthly(evenMonthlyStrings(totalHours ?? 0, startDate, next));
+                      }}
                       className="h-9"
                       data-testid="add-project-end-date"
                     />
@@ -346,23 +384,67 @@ export function AddProjectDialog({ createdByUuid: _createdByUuid }: AddProjectDi
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-muted-foreground">Total Hours</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={hoursInput}
-                      onChange={(event) => setHoursInput(toWholeHoursInput(event.target.value))}
-                      placeholder="0"
-                      className="h-9 w-28 text-center"
-                      data-testid="add-project-hours-input"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {rangeValid
-                        ? `over ${workingDays} working ${workingDays === 1 ? "day" : "days"}`
-                        : "hours"}
-                    </span>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-xs text-muted-foreground">Total Hours</label>
+                    {rangeValid && spanMonths.length > 1 ? (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-blue-600 hover:underline"
+                        onClick={() => (isCustomizing ? setIsCustomizing(false) : enableCustomize())}
+                        data-testid="add-project-customize-toggle"
+                      >
+                        {isCustomizing ? "Use even split" : "Customize per month"}
+                      </button>
+                    ) : null}
                   </div>
+                  {isCustomizing ? (
+                    <>
+                      <div className="mb-3 text-sm">
+                        <span className="font-medium">{customMonthlyTotal}</span>{" "}
+                        <span className="text-xs text-muted-foreground">total hours (sum of months)</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {spanMonths.map((month) => (
+                          <div key={month}>
+                            <label className="mb-1 block text-[11px] text-muted-foreground">
+                              {format(new Date(`${month}T00:00:00`), "MMM yyyy")}
+                            </label>
+                            <Input
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={customMonthly[month] ?? ""}
+                              onChange={(event) =>
+                                setCustomMonthly((prev) => ({
+                                  ...prev,
+                                  [month]: toWholeHoursInput(event.target.value),
+                                }))
+                              }
+                              placeholder="0"
+                              className="h-9 text-center"
+                              data-testid={`add-project-month-input-${month}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={hoursInput}
+                        onChange={(event) => setHoursInput(toWholeHoursInput(event.target.value))}
+                        placeholder="0"
+                        className="h-9 w-28 text-center"
+                        data-testid="add-project-hours-input"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {rangeValid
+                          ? `over ${workingDays} working ${workingDays === 1 ? "day" : "days"}`
+                          : "hours"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
