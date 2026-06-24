@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useInfiniteEmployees } from "@/lib/query/hooks/useEmployees";
-import { useAssignmentsByProject, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignmentsByProject } from "@/lib/query/hooks/useAssignments";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,34 +44,23 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
     isLoading: isLoadingEmployees,
   } = useInfiniteEmployees(debouncedSearch);
 
-  // Mutations
-  const deleteAssignment = useDeleteAssignment();
-
   // Flatten employees from all pages
   const employees = useMemo(() => {
     if (!employeesData?.pages) return [];
     return employeesData.pages.flatMap((page) => page.data);
   }, [employeesData]);
 
-  // Get currently assigned employees
-  const assignedEmployees = useMemo(() => {
-    return existingAssignments
-      .filter((assignment) => assignment.employee)
-      .map((assignment) => ({
-        assignmentId: assignment.id,
-        employee: assignment.employee!,
-      }));
-  }, [existingAssignments]);
+  // Already-assigned employee ids (the new Assignment has no nested employee — use employeeId).
+  const assignedEmployeeIds = useMemo(
+    () => new Set(existingAssignments.map((a) => a.employeeId)),
+    [existingAssignments],
+  );
 
-  // Get assigned employee IDs for easy lookup
-  const assignedEmployeeIds = useMemo(() => {
-    return new Set(assignedEmployees.map((a) => a.employee.id));
-  }, [assignedEmployees]);
-
-  // Filter out already assigned employees from available list
-  const availableEmployees = useMemo(() => {
-    return employees.filter((emp) => !assignedEmployeeIds.has(emp.id));
-  }, [employees, assignedEmployeeIds]);
+  // Available = active employees not already assigned to this project.
+  const availableEmployees = useMemo(
+    () => employees.filter((e) => e.employmentStatus === "active" && !assignedEmployeeIds.has(e.id)),
+    [employees, assignedEmployeeIds],
+  );
 
   // Refs for infinite scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -116,15 +105,6 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
       }
       return next;
     });
-  };
-
-  // Remove assigned employee
-  const handleRemoveAssigned = async (assignmentId: string) => {
-    try {
-      await deleteAssignment.mutateAsync(assignmentId);
-    } catch (error) {
-      console.error("Failed to remove assignment:", error);
-    }
   };
 
   // Assign selected employees
@@ -183,44 +163,6 @@ export const AssignEmployeesDialog: React.FC<AssignEmployeesDialogProps> = ({
             className="pl-9"
           />
         </div>
-
-        {/* Currently Assigned Section */}
-        {assignedEmployees.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-muted-foreground">
-              Currently Assigned ({assignedEmployees.length})
-            </h4>
-            <div className="space-y-1 max-h-[150px] overflow-y-auto">
-              {assignedEmployees.map(({ assignmentId, employee }) => (
-                <div
-                  key={assignmentId}
-                  className="flex items-center justify-between p-2 rounded-lg border bg-green-50 border-green-200"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
-                      <Icon icon="lucide:check" className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{employee.fullName}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {employee.position}
-                        {employee.department && ` • ${employee.department.name}`}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0 h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => handleRemoveAssigned(assignmentId)}
-                  >
-                    <Icon icon="lucide:x" className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Available Employees Section */}
         <div className="space-y-2">
