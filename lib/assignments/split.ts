@@ -34,6 +34,24 @@ export function splitTotalAcrossMonthsMap(
   );
 }
 
+/** Flat fill: write `perMonth` to every calendar month touched by [startDate, endDate].
+ *  Unlike splitTotalAcrossMonths (which divides a TOTAL across the span), this treats the
+ *  number as an hours-PER-MONTH rate — the same value lands on each month. Returns the
+ *  `{ "yyyy-MM-01": hours }` map shape `upsertAssignment` wants. Invalid or reversed dates
+ *  yield {} — a STRICTER guard than splitTotalAcrossMonths, additionally rejecting invalid
+ *  dates (via isValid) that splitTotalAcrossMonths does not. */
+export function fillMonthsWithValue(
+  perMonth: number,
+  startDate: string,
+  endDate: string,
+): Record<string, number> {
+  const start = startOfMonth(new Date(`${startDate}T00:00:00`));
+  const end = startOfMonth(new Date(`${endDate}T00:00:00`));
+  if (!isValid(start) || !isValid(end) || end < start) return {};
+  const months = eachMonthOfInterval({ start, end });
+  return Object.fromEntries(months.map((m) => [format(m, "yyyy-MM-01"), perMonth]));
+}
+
 /** Sanitize a man-hours text input to whole numbers only — strips every non-digit
  *  character. Planning is in whole hours; decimals are not allowed (a typed "7.5"
  *  becomes "75" as the dot is dropped). Mirrors the sanitization already used by the
