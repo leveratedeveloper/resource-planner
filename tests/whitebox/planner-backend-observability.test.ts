@@ -10,7 +10,7 @@ describe("planner backend observability", () => {
     expect(routeSource).toContain('timing.phase("response_payload"');
     expect(routeSource).toContain("Buffer.byteLength");
     expect(prefetchSource).toContain('timing.phase("planned_assignments_query"');
-    expect(prefetchSource).toContain('timing.phase("actual_assignments_query"');
-    expect(prefetchSource).toContain('timing.phase("monthly_summary"');
+    // actual_assignments_query and monthly_summary phases were removed when the
+    // actuals and SQL month-aggregate path were retired.
   });
 });

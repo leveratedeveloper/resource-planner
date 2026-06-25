@@ -33,13 +33,11 @@ describe("time-off feature removal source guards", () => {
   it("does not expose time-off API create or update affordances", () => {
     const assignmentsRoute = readFileSync("app/api/assignments/route.ts", "utf8");
     const assignmentRoute = readFileSync("app/api/assignments/[id]/route.ts", "utf8");
-    const actualRoute = readFileSync("app/api/actual/route.ts", "utf8");
-    const actualItemRoute = readFileSync("app/api/actual/[uuid]/route.ts", "utf8");
 
+    // The /api/actual routes were fully removed in the monthly migration (a
+    // stronger guarantee than the old "retired" guard messages).
     expect(assignmentsRoute).not.toContain("isCreatingOwnTimeOff");
     expect(assignmentRoute).not.toContain("isUpdatingOwnTimeOff");
     expect(assignmentRoute).not.toContain("isDeletingOwnTimeOff");
-    expect(actualRoute).toContain("Time-off actual assignments are retired");
-    expect(actualItemRoute).toContain("Time-off actual assignments are retired");
   });
 });

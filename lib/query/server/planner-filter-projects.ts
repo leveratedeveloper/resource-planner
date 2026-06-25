@@ -1,9 +1,10 @@
 import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import type { PlannerDirectoryProjectRow } from "@/lib/planner-directory/types";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
+import { randomColor } from "@/lib/utils/color";
 
 export type PlannerFilterProjectsRequest = {
-  brandId?: string | null;
+  brandIds?: string[] | null;
   status?: ProjectOption["status"] | null;
   sourceType?: ProjectOption["projectType"] | null;
   search?: string | null;
@@ -15,31 +16,12 @@ export type PlannerFilterProjectsResponse = {
   projects: ProjectOption[];
   total: number;
   hasMore: boolean;
-  scope: {
-    brandId: string | null;
-    brandName: string | null;
-    status: ProjectOption["status"] | null;
-    sourceType: ProjectOption["projectType"] | null;
-  };
-  availableStatuses: ProjectOption["status"][];
-  availableTypes: ProjectOption["projectType"][];
-  freshness: {
-    fetchedAt: string;
-  };
 };
-
-function randomColor(seed: string): string {
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
-  }
-
-  return `#${hash.toString(16).padStart(6, "0")}`;
-}
 
 export function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOption {
   return {
     id: project.sourceProjectId,
+    projectKey: `${project.sourceType}:${project.sourceProjectId}`,
     name: project.name,
     color: project.color ?? randomColor(project.sourceProjectId),
     status:
@@ -62,11 +44,10 @@ export function toProjectOption(project: PlannerDirectoryProjectRow): ProjectOpt
 export async function fetchPlannerFilterProjects(
   request: PlannerFilterProjectsRequest = {}
 ): Promise<PlannerFilterProjectsResponse> {
-  const fetchedAt = new Date().toISOString();
   const limit = request.limit ?? 50;
   const offset = request.offset ?? 0;
   const { data, total, hasMore } = await plannerDirectoryRepository.listProjectsForFilterOptions({
-    brandId: request.brandId ?? null,
+    brandIds: request.brandIds ?? null,
     status: request.status ?? null,
     sourceType: request.sourceType ?? null,
     search: request.search ?? null,
@@ -78,16 +59,5 @@ export async function fetchPlannerFilterProjects(
     projects: data.map(toProjectOption),
     total,
     hasMore,
-    scope: {
-      brandId: request.brandId ?? null,
-      brandName: null,
-      status: request.status ?? null,
-      sourceType: request.sourceType ?? null,
-    },
-    availableStatuses: ["planning", "active", "on_hold", "completed", "cancelled"],
-    availableTypes: ["campaign", "pitch"],
-    freshness: {
-      fetchedAt,
-    },
   };
 }

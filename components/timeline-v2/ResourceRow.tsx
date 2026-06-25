@@ -18,8 +18,8 @@ type ResourceRowProps = {
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
-  brandId: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  projectIds: string[];
 };
 
 export const ResourceRow = React.memo(function ResourceRow({
@@ -29,8 +29,8 @@ export const ResourceRow = React.memo(function ResourceRow({
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
-  brandId,
-  projectId,
+  brandIds,
+  projectIds,
 }: ResourceRowProps) {
   const isExpanded = useIsRowExpanded(row.id);
   const toggleExpanded = useTimelineExpansionStore((state) => state.toggle);
@@ -44,26 +44,19 @@ export const ResourceRow = React.memo(function ResourceRow({
         ? orderProjectLanes({
             lanes: row.projectLanes,
             resourceAssignments: row.assignments,
-            brandId,
-            projectId,
+            brandIds,
+            projectIds,
             days: projectDays,
           })
         : [],
-    [brandId, isExpanded, projectDays, projectId, row.assignments, row.projectLanes]
+    [brandIds, isExpanded, projectDays, projectIds, row.assignments, row.projectLanes]
   );
 
-  // Project ids this employee already has assignments on — used to disable them
-  // in the Add-project picker. Same id space as ProjectOption.id.
+  // Project IDs (ProjectOption.id) this employee already has lanes for — used
+  // to disable them in the Add-project picker.
   const assignedProjectIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          row.assignments
-            .filter((assignment) => assignment.projectId && !assignment.isTimeOff)
-            .map((assignment) => assignment.projectId as string)
-        )
-      ),
-    [row.assignments]
+    () => row.projectLanes.map((lane) => lane.project.id),
+    [row.projectLanes]
   );
 
   return (
@@ -91,7 +84,7 @@ export const ResourceRow = React.memo(function ResourceRow({
             <>
               {orderedLanes.map((lane) => (
                 <ProjectLane
-                  key={lane.projectId}
+                  key={lane.projectKey}
                   lane={lane}
                   resourceId={row.resource.id}
                   resourceAssignments={row.assignments}

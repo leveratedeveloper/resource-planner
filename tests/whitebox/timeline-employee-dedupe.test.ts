@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -31,53 +30,22 @@ const makeEmployee = (id: string, overrides: Partial<Employee> = {}): Employee =
 const makeAssignment = (overrides: Partial<Assignment>): Assignment => ({
   id: "assignment-1",
   employeeId: "employee-1",
-  projectId: "project-1",
-  taskId: null,
+  projectKey: "campaign:project-1",
   startDate: "2026-06-01",
   endDate: "2026-06-01",
-  hoursPerDay: "8",
-  totalHours: null,
-  allocationPercentage: null,
-  isTimeOff: false,
-  isAdjustment: false,
-  timeOffTypeId: null,
-  category: "Design",
-  isBillable: true,
   status: "confirmed",
   note: null,
-  createdById: null,
-  createdAt: "2026-06-01T00:00:00.000Z",
-  updatedAt: "2026-06-01T00:00:00.000Z",
-  ...overrides,
-});
-
-const makeActualAssignment = (overrides: Partial<ActualAssignment>): ActualAssignment => ({
-  uuid: "actual-1",
-  employeeUuid: "employee-1",
-  projectUuid: "project-1",
-  taskUuid: null,
-  startDate: "2026-06-01",
-  endDate: "2026-06-01",
-  hoursPerDay: 8,
-  allocationPercentage: null,
-  isTimeOff: false,
-  timeOffTypeUuid: null,
-  category: "Design",
-  isBillable: true,
-  status: "confirmed",
-  note: null,
-  createdByUuid: null,
-  createdAt: "2026-06-01T00:00:00.000Z",
-  updatedAt: "2026-06-01T00:00:00.000Z",
+  allocations: [{ month: "2026-06-01", plannedHours: 160, kind: "plan" }],
+  createdBy: null,
+  updatedBy: null,
   ...overrides,
 });
 
 const baseInput = {
   dateFilteredAssignments: [] as Assignment[],
-  visibleActualAssignments: [] as ActualAssignment[],
-  projectById: new Map<string, ProjectOption>(),
-  selectedBrandProjectIds: new Set<string>(),
-  filters: { brandId: null, projectId: null, department: null, searchQuery: undefined },
+  projectByKey: new Map<string, ProjectOption>(),
+  selectedBrandProjectKeys: new Set<string>(),
+  filters: { brandIds: [], projectIds: [], departments: [], searchQuery: undefined },
 };
 
 describe("filterTimelineEmployees dedup", () => {
@@ -96,15 +64,6 @@ describe("filterTimelineEmployees dedup", () => {
       dateFilteredAssignments: [makeAssignment({ employeeId: "has-work" })],
     });
     expect(result.map((e) => e.id)).toEqual(["has-work"]);
-  });
-
-  it("counts an actual assignment as work in range", () => {
-    const result = filterTimelineEmployees({
-      ...baseInput,
-      employees: [makeEmployee("no-work"), makeEmployee("actual-work")],
-      visibleActualAssignments: [makeActualAssignment({ employeeUuid: "actual-work" })],
-    });
-    expect(result.map((e) => e.id)).toEqual(["actual-work"]);
   });
 
   it("prefers an active record over inactive when neither has work", () => {

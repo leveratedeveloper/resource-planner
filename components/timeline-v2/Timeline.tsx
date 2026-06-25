@@ -7,7 +7,6 @@ import { useAuth } from "@/context/AuthContext";
 import type { Brand } from "@/lib/query/hooks/useBrands";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import { getResourceRowLoadingState } from "@/lib/timeline-v2/resource-row-loading";
-import { getTimelineRowStateResetKey } from "@/lib/timeline-v2/row-state";
 import { shouldEnableTimelineAssignments, type TimelineAssignmentDateRange } from "@/lib/planner/initial-load";
 import { getTimelineColumns, getTimelineResolution } from "@/lib/timeline-v2/date-range";
 import { buildEmployeeRowModels } from "@/lib/timeline-v2/row-model";
@@ -22,6 +21,7 @@ import {
 } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import { useAddProjectStore } from "@/lib/timeline-v2/add-project-store";
+import { useFilterPreviewStore } from "@/lib/timeline-v2/filter-preview-store";
 import { AddProjectDialog } from "@/components/timeline-v2/AddProjectDialog";
 import { TimelineToolbar } from "@/components/timeline-v2/TimelineToolbar";
 import { DataStatus } from "@/components/timeline-v2/DataStatus";
@@ -40,10 +40,10 @@ const AssignmentEditor = dynamic(
 type TimelineProps = {
   initialTimelineAnchor: string;
   initialBootstrap?: PlannerHomeBootstrapResponse | null;
-  brandId: string | null;
-  department: string | null;
+  brandIds: string[];
+  departments: string[];
   searchQuery?: string;
-  projectId: string | null;
+  projectIds: string[];
 };
 
 function getInitialDate(anchor: string) {
@@ -83,6 +83,7 @@ function toBrandOption(brand: PlannerHomeBootstrapResponse["brandsById"][string]
 function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][string]): ProjectOption {
   return {
     id: project.sourceProjectId,
+    projectKey: `${project.sourceType}:${project.sourceProjectId}`,
     name: project.name,
     color: project.color ?? "#64748b",
     status:
@@ -103,10 +104,10 @@ function toProjectOption(project: PlannerHomeBootstrapResponse["projectsById"][s
 export function Timeline({
   initialTimelineAnchor,
   initialBootstrap,
-  brandId,
-  department,
+  brandIds,
+  departments,
   searchQuery,
-  projectId,
+  projectIds,
 }: TimelineProps) {
   const { session } = useAuth();
   const timelineRootRef = useRef<HTMLDivElement>(null);
@@ -189,38 +190,25 @@ export function Timeline({
     if (!assignmentDateRange || !shouldEnableTimelineAssignments(assignmentDateRange)) {
       return undefined;
     }
-
     return {
       viewMode,
       resolution: getTimelineResolution(viewMode),
       startDate: assignmentDateRange.startDate,
       endDate: assignmentDateRange.endDate,
-      filters: {
-        category: null,
-        status: null,
-      },
-      // One bootstrap page fills the viewport with headroom; the route clamps
-      // to 100. Small pages made first load crawl the directory request by
-      // request, rebuilding row models on every arrival. The offset is the
-      // infinite-query page param, not part of the request.
-      employeeLimit: 60,
-      brandId,
-      department,
-      projectId,
-      search: searchQuery?.trim() || null,
+      filters: { category: null, status: null },
     };
-  }, [assignmentDateRange, brandId, department, projectId, searchQuery, viewMode]);
+  }, [assignmentDateRange, viewMode]);
 
   const timelineFilters = useMemo(
-    () => ({ brandId, department, projectId, searchQuery }),
-    [brandId, department, projectId, searchQuery]
+    () => ({ brandIds, departments, projectIds, searchQuery }),
+    [brandIds, departments, projectIds, searchQuery]
   );
-  // ONE data source: infinite bootstrap pages. Each page carries an employee
-  // slice with its own assignments; the hook returns the merged unions.
+  // ONE data source: a single windowed bootstrap query. It carries every
+  // employee with their assignments for the date window; filters re-slice it
+  // client-side via visibleIds, so changing a filter never refetches.
   const {
     employees,
     assignments: dateFilteredAssignments,
-    actualAssignments: visibleActualAssignments,
     brandsById,
     projectsById,
     metadataFreshness,
@@ -229,26 +217,32 @@ export function Timeline({
     isFetchingBootstrap,
     isShowingPreviousBootstrap,
     isBootstrapRefetchError,
-    hasNextEmployeePage,
-    isFetchingNextEmployeePage,
-    fetchNextEmployeePage,
   } = useTimelineEmployees({
     request: bootstrapRequest,
     initialBootstrap,
   });
   const timelineBrands = useMemo(() => Object.values(brandsById).map(toBrandOption), [brandsById]);
   const timelineProjects = useMemo(() => Object.values(projectsById).map(toProjectOption), [projectsById]);
-  const selectedBrandProjectIds = useMemo(
+  const selectedBrandProjectKeys = useMemo(
     () =>
       new Set(
         timelineProjects
-          .filter((project) => !brandId || project.brandId === brandId)
-          .map((project) => project.id)
+          .filter((project) => brandIds.length === 0 || (project.brandId !== null && brandIds.includes(project.brandId)))
+          .map((project) => project.projectKey)
       ),
-    [brandId, timelineProjects]
+    [brandIds, timelineProjects]
   );
-  const projectById = useMemo(() => new Map(timelineProjects.map((project) => [project.id, project])), [timelineProjects]);
+  const projectByKey = useMemo(() => new Map(timelineProjects.map((project) => [project.projectKey, project])), [timelineProjects]);
   const brandById = useMemo(() => new Map(timelineBrands.map((brand) => [brand.id, brand])), [timelineBrands]);
+
+  const setFilterPreviewDataset = useFilterPreviewStore((state) => state.setDataset);
+  useEffect(() => {
+    setFilterPreviewDataset({
+      employees,
+      assignments: dateFilteredAssignments,
+      projectByKey,
+    });
+  }, [employees, dateFilteredAssignments, projectByKey, setFilterPreviewDataset]);
 
   const days = useMemo(() => columns.columns.map((column) => column.date), [columns.columns]);
 
@@ -259,13 +253,12 @@ export function Timeline({
       buildEmployeeRowModels({
         employees,
         assignments: dateFilteredAssignments,
-        actualAssignments: visibleActualAssignments,
         projects: timelineProjects,
         brandById,
         days,
         viewMode,
       }),
-    [brandById, dateFilteredAssignments, days, employees, timelineProjects, viewMode, visibleActualAssignments]
+    [brandById, dateFilteredAssignments, days, employees, timelineProjects, viewMode]
   );
 
   // Filters only decide WHICH rows are visible — an ordered id list, not a rebuild.
@@ -274,25 +267,13 @@ export function Timeline({
       getVisibleEmployeeIds({
         employees,
         assignments: dateFilteredAssignments,
-        actualAssignments: visibleActualAssignments,
-        projectById,
-        selectedBrandProjectIds,
+        projectByKey,
+        selectedBrandProjectKeys,
         filters: timelineFilters,
       }),
-    [dateFilteredAssignments, employees, projectById, selectedBrandProjectIds, timelineFilters, visibleActualAssignments]
+    [dateFilteredAssignments, employees, projectByKey, selectedBrandProjectKeys, timelineFilters]
   );
 
-  const rowStateResetKey = useMemo(
-    () =>
-      getTimelineRowStateResetKey({
-        brandId,
-        department,
-        projectId,
-        searchQuery,
-      }),
-    [brandId, department, projectId, searchQuery]
-  );
-  const previousRowStateResetKeyRef = useRef(rowStateResetKey);
   const canEditAssignmentsRef = useRef(false);
 
   const rowVirtualizer = useVirtualizer({
@@ -327,39 +308,10 @@ export function Timeline({
     [rowVirtualizer]
   );
 
-  useEffect(() => {
-    if (previousRowStateResetKeyRef.current === rowStateResetKey) return;
-    previousRowStateResetKeyRef.current = rowStateResetKey;
-    useTimelineExpansionStore.getState().collapseAll();
-    rowVirtualizer.scrollToOffset(0);
-  }, [rowStateResetKey, rowVirtualizer]);
-
   // Skeletons (and the edit lock) engage only while OLD-request data is shown
-  // for a NEW request (filter/date change). Same-key background refetches —
+  // for a NEW request (date/view change). Same-key background refetches —
   // e.g. the invalidation after every save/drag — keep rendering current data.
   const isApplyingNewRequest = isShowingPreviousBootstrap && isFetchingBootstrap;
-
-  useEffect(() => {
-    // While a new request is applying, placeholder rows are the OLD key's —
-    // fetching "next" here cancels and restarts the new key's page-0 fetch.
-    if (isApplyingNewRequest || !hasNextEmployeePage || isFetchingNextEmployeePage) return;
-    const lastVirtualRow = virtualRows[virtualRows.length - 1];
-    const shouldPrefetchInitialRows = !isLoadingBootstrap && visibleIds.length < 20;
-    const shouldPrefetchNearEnd = !!lastVirtualRow && lastVirtualRow.index >= visibleIds.length - 10;
-
-    if (shouldPrefetchInitialRows || shouldPrefetchNearEnd) {
-      // Dedupe onto any in-flight fetch instead of cancel-restarting it.
-      fetchNextEmployeePage({ cancelRefetch: false });
-    }
-  }, [
-    fetchNextEmployeePage,
-    hasNextEmployeePage,
-    isApplyingNewRequest,
-    isFetchingNextEmployeePage,
-    isLoadingBootstrap,
-    virtualRows,
-    visibleIds.length,
-  ]);
 
   const rowLoadingState = getResourceRowLoadingState({
     hasPlannerData: hasBootstrapData,
@@ -457,9 +409,8 @@ export function Timeline({
             showTimelineLoading={rowLoadingState.showTimelineLoading}
             showExpandedLoading={rowLoadingState.showExpandedLoading}
             canEditAssignments={canEditAssignments}
-            brandId={brandId}
-            projectId={projectId}
-            isFetchingNextEmployeePage={isFetchingNextEmployeePage}
+            brandIds={brandIds}
+            projectIds={projectIds}
           />
         </div>
       )}

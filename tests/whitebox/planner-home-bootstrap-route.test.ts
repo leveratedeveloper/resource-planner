@@ -7,8 +7,6 @@ describe("planner home bootstrap route", () => {
 
     expect(source).toContain('createRequestTiming("planner_home_bootstrap_api")');
     expect(source).toContain("fetchPlannerHomeBootstrap");
-    expect(source).toContain("employeeLimit");
-    expect(source).toContain("employeeOffset");
     expect(source).toContain("Buffer.byteLength");
     expect(source).toContain("metadataPartial");
     expect(source).not.toContain("getMySqlApiClient");

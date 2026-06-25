@@ -1,4 +1,3 @@
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -13,18 +12,17 @@ type EmployeeNameRecord = {
 };
 
 type TimelineEmployeeFilters = {
-  brandId: string | null;
-  department: string | null;
-  projectId: string | null;
+  brandIds: string[];
+  departments: string[];
+  projectIds: string[];
   searchQuery?: string;
 };
 
 export type TimelineEmployeeFilterInput = {
   employees: Employee[];
   dateFilteredAssignments: Assignment[];
-  visibleActualAssignments: ActualAssignment[];
-  projectById: Map<string, ProjectOption>;
-  selectedBrandProjectIds?: Set<string>;
+  projectByKey: Map<string, ProjectOption>;
+  selectedBrandProjectKeys?: Set<string>;
   filters: TimelineEmployeeFilters;
 };
 
@@ -33,12 +31,10 @@ function normalizeEmployeeName(name: string | null | undefined): string {
 }
 
 function getEmployeeIdsWithWork(
-  dateFilteredAssignments: Assignment[],
-  visibleActualAssignments: ActualAssignment[]
+  dateFilteredAssignments: Assignment[]
 ): Set<string> {
   const ids = new Set<string>();
   for (const assignment of dateFilteredAssignments) ids.add(assignment.employeeId);
-  for (const assignment of visibleActualAssignments) ids.add(assignment.employeeUuid);
   return ids;
 }
 
@@ -125,30 +121,30 @@ function matchesSearch(employee: Employee, query: string): boolean {
 export function filterTimelineEmployees({
   employees,
   dateFilteredAssignments,
-  visibleActualAssignments,
-  projectById,
-  selectedBrandProjectIds,
+  projectByKey,
+  selectedBrandProjectKeys,
   filters,
 }: TimelineEmployeeFilterInput): Employee[] {
   let filtered = employees;
 
-  if (hasActiveTimelineScopeFilter(filters)) {
+  if (hasActiveTimelineScopeFilter({ brandIds: filters.brandIds, projectIds: filters.projectIds })) {
     const matchingEmployeeIds = getMatchingTimelineEmployeeIds({
       dateFilteredAssignments,
-      visibleActualAssignments,
-      projectById,
-      selectedBrandProjectIds,
+      projectByKey,
+      selectedBrandProjectKeys,
       filters: {
-        brandId: filters.brandId,
-        projectId: filters.projectId,
+        brandIds: filters.brandIds,
+        projectIds: filters.projectIds,
       },
     });
 
     filtered = filtered.filter((employee) => matchingEmployeeIds?.has(employee.id));
   }
 
-  if (filters.department) {
-    filtered = filtered.filter((employee) => employee.departmentId === filters.department);
+  if (filters.departments.length > 0) {
+    filtered = filtered.filter(
+      (employee) => employee.departmentId !== null && filters.departments.includes(employee.departmentId)
+    );
   }
 
   const query = filters.searchQuery?.toLowerCase().trim();
@@ -157,6 +153,6 @@ export function filterTimelineEmployees({
   }
 
   const sorted = sortTimelineEmployees(filtered);
-  const idsWithWork = getEmployeeIdsWithWork(dateFilteredAssignments, visibleActualAssignments);
+  const idsWithWork = getEmployeeIdsWithWork(dateFilteredAssignments);
   return dedupeTimelineEmployeesByNameAndSource(sorted, idsWithWork);
 }

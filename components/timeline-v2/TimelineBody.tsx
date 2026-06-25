@@ -3,7 +3,6 @@
 import React from "react";
 import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { ResourceRow } from "@/components/timeline-v2/ResourceRow";
-import { TimelineLoadingMore } from "@/components/timeline-v2/LoadingStates";
 import type { EmployeeRowModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
 
@@ -17,9 +16,8 @@ type TimelineBodyProps = {
   showTimelineLoading: boolean;
   showExpandedLoading: boolean;
   canEditAssignments: boolean;
-  brandId: string | null;
-  projectId: string | null;
-  isFetchingNextEmployeePage?: boolean;
+  brandIds: string[];
+  projectIds: string[];
 };
 
 // Virtualized rows region. Lives inside the single scroll container owned by
@@ -35,9 +33,8 @@ export function TimelineBody({
   showTimelineLoading,
   showExpandedLoading,
   canEditAssignments,
-  brandId,
-  projectId,
-  isFetchingNextEmployeePage,
+  brandIds,
+  projectIds,
 }: TimelineBodyProps) {
   return (
     <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
@@ -61,13 +58,12 @@ export function TimelineBody({
               showTimelineLoading={showTimelineLoading}
               showExpandedLoading={showExpandedLoading}
               canEditAssignments={canEditAssignments}
-              brandId={brandId}
-              projectId={projectId}
+              brandIds={brandIds}
+              projectIds={projectIds}
             />
           </div>
         );
       })}
-      {isFetchingNextEmployeePage ? <TimelineLoadingMore /> : null}
     </div>
   );
 }

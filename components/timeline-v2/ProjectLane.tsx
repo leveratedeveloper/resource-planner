@@ -6,22 +6,12 @@ import { endOfMonth, startOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AssignmentBar } from "@/components/timeline-v2/AssignmentBar";
 import { useDragToCreate } from "@/components/timeline-v2/interactions/useDragToCreate";
-import { calculateAssignmentDisplayTotalHours } from "@/lib/timeline-v2/assignment-display-hours";
 import { getTimelineRangePosition } from "@/lib/timeline-v2/layout";
 import { useAssignmentEditorStore } from "@/lib/timeline-v2/editor-store";
 import type { OrderedProjectLane } from "@/lib/timeline-v2/lane-order";
 import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
-
-function buildSegmentAssignment(
-  segment: ProjectLaneModel["planDisplaySegments"][number]
-) {
-  return {
-    ...segment.sourceAssignment,
-    startDate: segment.startDate,
-    endDate: segment.endDate,
-  };
-}
+import { buildSegmentDisplayAssignment } from "@/lib/timeline-v2/plan-display-segments";
 
 function parseLocalDate(value: string): Date {
   return new Date(`${value}T00:00:00`);
@@ -41,14 +31,6 @@ function areAllMembersVisible(
       parseLocalDate(assignment.startDate) >= rangeStart &&
       parseLocalDate(assignment.endDate) <= rangeEnd
   );
-}
-
-function calculateMonthlyHours(assignments: EmployeeRowModel["assignments"], monthStart: Date, monthEnd: Date) {
-  return assignments.reduce((sum, assignment) => {
-    if (assignment.isTimeOff) return sum;
-    const range = { startDate: monthStart, endDate: monthEnd };
-    return sum + calculateAssignmentDisplayTotalHours(assignment, range);
-  }, 0);
 }
 
 type ProjectLaneProps = {
@@ -100,24 +82,13 @@ export const ProjectLane = React.memo(function ProjectLane({
     const clickedMonth = columns[index]?.date ?? columns[0]?.date;
     const monthStart = startOfMonth(clickedMonth);
     const monthEnd = endOfMonth(monthStart);
-    const projectAssignments = resourceAssignments.filter((assignment) => assignment.projectId === campaign.id);
-    const monthlyTotalHours = calculateMonthlyHours(projectAssignments, monthStart, monthEnd);
-    const adjustmentTotalHours = calculateMonthlyHours(
-      projectAssignments.filter((assignment) => assignment.isAdjustment),
-      monthStart,
-      monthEnd
-    );
     openEditor({
       mode: "month",
       resourceId,
       project: campaign,
       monthStart,
       monthEnd,
-      resourceAssignments,
       clickedAssignment: lane.planAssignments[0],
-      monthlyTotalHours,
-      planTotalHours: monthlyTotalHours - adjustmentTotalHours,
-      adjustmentTotalHours,
     });
   };
 
@@ -193,7 +164,7 @@ export const ProjectLane = React.memo(function ProjectLane({
         {lane.planDisplaySegments.map((segment) => (
           <AssignmentBar
             key={segment.id}
-            assignment={buildSegmentAssignment(segment)}
+            assignment={buildSegmentDisplayAssignment(segment)}
             project={campaign}
             columns={columns}
             resolution={monthRangeView ? "month" : "day"}
@@ -205,6 +176,21 @@ export const ProjectLane = React.memo(function ProjectLane({
             }
             isHighlighted={lane.isHighlighted}
             disabled={!canEditAssignments}
+            onOpenMonth={
+              canEditAssignments
+                ? () => {
+                    const monthStart = startOfMonth(parseLocalDate(segment.startDate));
+                    openEditor({
+                      mode: "month",
+                      resourceId,
+                      project: campaign,
+                      monthStart,
+                      monthEnd: endOfMonth(monthStart),
+                      clickedAssignment: segment.sourceAssignment ?? lane.planAssignments[0],
+                    });
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

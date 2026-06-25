@@ -5,16 +5,19 @@ describe("timeline-v2 source parity", () => {
   it("preserves page-level filters in HomeClient", () => {
     const source = readFileSync("app/HomeClient.tsx", "utf8");
 
-    expect(source).toContain("<FilterBar");
+    expect(source).toContain("<FilterPanel");
     expect(source).toContain("Timeline");
     expect(source).not.toContain("components/timeline/Timeline");
-    expect(source).toContain("searchQuery={searchQuery}");
-    // Brand change goes through a handler that clears an incompatible project
-    // selection (brand∩project would otherwise intersect to an empty timeline).
-    expect(source).toContain("onBrandChange={handleBrandChange}");
-    expect(source).toContain("setSelectedBrandId(brand?.id ?? null)");
-    expect(source).toContain("onDepartmentChange={setSelectedDepartment}");
-    expect(source).toContain("onProjectChange={handleProjectChange}");
+    // Live people search is independent of the filter panel and feeds the
+    // applied filters straight through to the timeline context.
+    expect(source).toContain("value={searchQuery}");
+    expect(source).toContain("setSearchQuery(event.target.value)");
+    // Draft selections only reach the timeline once Apply commits them to the
+    // applied id arrays the planner context consumes.
+    expect(source).toContain("onToggleBrand={handleToggleBrandId}");
+    expect(source).toContain("onToggleProject={handleToggleProjectId}");
+    expect(source).toContain("onToggleDepartment={handleToggleDepartment}");
+    expect(source).toContain("onApply={handleApplyFilters}");
   });
 
   it("keeps brand and project ids out of planner assignment request filters", () => {
@@ -108,13 +111,13 @@ describe("timeline-v2 source parity", () => {
     expect(resourceRowSource).toContain("cells={row.allocationCells}");
   });
 
-  it("keeps bars click-isolated with single-row-only resize handles", () => {
+  it("keeps bars click-isolated and render-only (no drag/resize on the monthly model)", () => {
     const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
 
     expect(barSource).toContain("event.stopPropagation()");
     expect(barSource).not.toContain("data-resize-handle");
-    expect(barSource).toContain("const canResize = canDrag && memberAssignments.length === 1;");
-    expect(barSource).toContain("canResize ?");
+    expect(barSource).not.toContain("canResize");
+    expect(barSource).toContain("onOpenMonth");
   });
 
   it("styles dimensions through the token system, not magic pixel numbers", () => {
@@ -149,7 +152,6 @@ describe("timeline-v2 source parity", () => {
       "components/timeline-v2/useTimelineEditor.ts",
       "components/timeline-v2/editor/AssignmentEditor.tsx",
       "components/timeline-v2/editor/MonthDistributionFields.tsx",
-      "lib/timeline-v2/assignment-write-service.ts",
     ];
 
     for (const file of files) {

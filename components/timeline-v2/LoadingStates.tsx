@@ -28,10 +28,6 @@ export function TimelineEmptyState() {
   return <div className="p-8 text-center text-muted-foreground">No results found</div>;
 }
 
-export function TimelineLoadingMore() {
-  return <div className="border-b bg-background p-4 text-sm text-muted-foreground">Loading more employees...</div>;
-}
-
 export function TimelineRowLoadingCells({ dayCount }: { dayCount: number }) {
   return (
     <div className="timeline-grid h-timeline-row flex-1" data-testid="timeline-v2-loading-cells">

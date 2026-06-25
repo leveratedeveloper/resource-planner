@@ -1,6 +1,7 @@
 import { plannerDirectoryRepository } from "@/lib/planner-directory/repository";
 import type { PlannerDirectoryBrandRow } from "@/lib/planner-directory/types";
 import type { Brand } from "@/lib/query/hooks/useBrands";
+import { randomColor } from "@/lib/utils/color";
 
 export type PlannerFilterBrandsRequest = {
   search?: string | null;
@@ -16,15 +17,6 @@ export type PlannerFilterBrandsResponse = {
     fetchedAt: string;
   };
 };
-
-function randomColor(seed: string): string {
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) & 0xffffff;
-  }
-
-  return `#${hash.toString(16).padStart(6, "0")}`;
-}
 
 function toBrandOption(brand: PlannerDirectoryBrandRow): Brand {
   return {

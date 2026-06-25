@@ -56,4 +56,20 @@ describe("listProjectsPage", () => {
     expect(result.total).toBe(1);
     expect(result.hasMore).toBe(false);
   });
+
+  it("orders by a unique tiebreaker so offset pages cannot duplicate or skip name-tied rows", async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
+        calls.push({ sql, params });
+        return [[makeRow()]];
+      }),
+    };
+    const repository = createPlannerDirectoryRepository({ db });
+
+    await repository.listProjectsPage({ limit: 100, offset: 0 });
+
+    const { sql } = calls[0];
+    expect(sql).toContain("ORDER BY p.name ASC, p.project_key ASC");
+  });
 });

@@ -1,4 +1,4 @@
-import { addDays, endOfMonth, format, isAfter, isBefore, startOfDay, startOfMonth } from "date-fns";
+import { addDays, endOfMonth, format, isAfter, isBefore, isSameMonth, startOfDay, startOfMonth } from "date-fns";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 
 export type TimelinePlanDisplaySegment = {
@@ -6,12 +6,12 @@ export type TimelinePlanDisplaySegment = {
   sourceAssignment: Assignment;
   assignments: Assignment[];
   employeeId: string;
-  projectId: string;
+  projectKey: string;
   startDate: string;
   endDate: string;
-  isAdjustment: boolean;
-  category: Assignment["category"];
   status: Assignment["status"];
+  /** Present only for month-resolution per-month segments. "yyyy-MM-01". */
+  month?: string;
 };
 
 type TimelineDisplayResolution = "day" | "month";
@@ -27,9 +27,7 @@ function formatSegmentDate(date: Date) {
 function getMergeKey(assignment: Assignment) {
   return [
     assignment.employeeId,
-    assignment.projectId ?? "",
-    assignment.isAdjustment ? "adjustment" : "plan",
-    assignment.category ?? "",
+    assignment.projectKey ?? "",
     assignment.status ?? "",
   ].join("|");
 }
@@ -96,6 +94,14 @@ function overlapsRange(start: Date, end: Date, rangeStart: Date, rangeEnd: Date)
   return start <= rangeEnd && end >= rangeStart;
 }
 
+/**
+ * An assignment is "visible" if it has at least one allocation month with hours
+ * AND its date span overlaps the visible column range.
+ */
+function hasHours(assignment: Assignment): boolean {
+  return assignment.allocations.some((alloc) => alloc.plannedHours > 0);
+}
+
 function getVisibleCoverage({
   assignment,
   visibleDates,
@@ -147,7 +153,7 @@ function getVisibleCoverage({
 export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplaySegmentsInput): TimelinePlanDisplaySegment[] {
   const { assignments, visibleDates: inputVisibleDates, resolution, projectStartDate, projectEndDate } = normalizeInput(input);
   const plannedAssignments = assignments
-    .filter((assignment) => !assignment.isTimeOff && assignment.projectId)
+    .filter((assignment) => assignment.projectKey && hasHours(assignment))
     .sort((a, b) => {
       const startDelta = parseDate(a.startDate).getTime() - parseDate(b.startDate).getTime();
       if (startDelta !== 0) return startDelta;
@@ -158,6 +164,16 @@ export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplay
 
   const segments: TimelinePlanDisplaySegment[] = [];
   const visibleDates = inputVisibleDates ?? buildDefaultVisibleDates(plannedAssignments);
+
+  if (resolution === "month") {
+    return buildMonthResolutionSegments({
+      plannedAssignments,
+      visibleDates,
+      projectStartDate,
+      projectEndDate,
+    });
+  }
+
   const lastSegmentByKey = new Map<
     string,
     {
@@ -193,11 +209,9 @@ export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplay
       sourceAssignment: assignment,
       assignments: [assignment],
       employeeId: assignment.employeeId,
-      projectId: assignment.projectId!,
+      projectKey: assignment.projectKey,
       startDate: coverage.startDate,
       endDate: coverage.endDate,
-      isAdjustment: assignment.isAdjustment,
-      category: assignment.category,
       status: assignment.status,
     };
 
@@ -209,4 +223,71 @@ export function buildTimelinePlanDisplaySegments(input: BuildTimelinePlanDisplay
   }
 
   return segments;
+}
+
+function buildMonthResolutionSegments({
+  plannedAssignments,
+  visibleDates,
+  projectStartDate,
+  projectEndDate,
+}: {
+  plannedAssignments: Assignment[];
+  visibleDates: Date[];
+  projectStartDate?: string | null;
+  projectEndDate?: string | null;
+}): TimelinePlanDisplaySegment[] {
+  const segments: TimelinePlanDisplaySegment[] = [];
+  const projectStart = projectStartDate ? parseDate(projectStartDate) : null;
+  const projectEnd = projectEndDate ? parseDate(projectEndDate) : null;
+
+  for (const assignment of plannedAssignments) {
+    const planMonths = assignment.allocations
+      .filter((alloc) => alloc.kind === "plan" && alloc.plannedHours > 0)
+      .map((alloc) => alloc.month)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const month of planMonths) {
+      const monthStart = startOfMonth(parseDate(month));
+      const monthEnd = endOfMonth(monthStart);
+      if (projectStart && isBefore(monthEnd, projectStart)) continue;
+      if (projectEnd && isAfter(monthStart, projectEnd)) continue;
+      const index = visibleDates.findIndex((date) => isSameMonth(date, monthStart));
+      if (index === -1) continue;
+      const columnDate = visibleDates[index];
+      segments.push({
+        id: `${assignment.id}:${month}`,
+        sourceAssignment: assignment,
+        assignments: [assignment],
+        employeeId: assignment.employeeId,
+        projectKey: assignment.projectKey,
+        startDate: formatSegmentDate(startOfMonth(columnDate)),
+        endDate: formatSegmentDate(endOfMonth(columnDate)),
+        status: assignment.status,
+        month,
+      });
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * The assignment object handed to AssignmentBar for a given segment. For a
+ * per-month segment, allocations are narrowed to that single month so the bar's
+ * hours label shows the month's hours (not the engagement total). Day-resolution
+ * segments are unchanged.
+ */
+export function buildSegmentDisplayAssignment(segment: TimelinePlanDisplaySegment): Assignment {
+  const base: Assignment = {
+    ...segment.sourceAssignment,
+    startDate: segment.startDate,
+    endDate: segment.endDate,
+  };
+  if (!segment.month) return base;
+  return {
+    ...base,
+    allocations: segment.sourceAssignment.allocations.filter(
+      (alloc) => alloc.month === segment.month && alloc.kind === "plan",
+    ),
+  };
 }

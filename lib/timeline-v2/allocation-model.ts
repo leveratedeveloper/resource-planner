@@ -1,34 +1,38 @@
-import { startOfDay, startOfMonth } from "date-fns";
-import { WORK_DAYS_PER_WEEK } from "@/lib/constants";
+import { startOfDay, startOfMonth, endOfMonth } from "date-fns";
+import {
+  monthPct,
+  weekPct,
+  dayPct,
+} from "@/lib/assignments/allocation";
 import type { EmployeeDayMap } from "@/lib/timeline-v2/allocation-day-map";
 import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 import { toLocalDateString } from "@/lib/utils";
+import { formatAssignmentDisplayHours } from "@/lib/timeline-v2/assignment-display-hours";
 
 export type AllocationCellModel =
   | { kind: "empty" }
   | {
       kind: "allocation";
       planPct: number;
-      actualPct: number;
+      planHours: number;
       planLabel: string;
-      actualLabel: string;
+      planHoursLabel: string;
     };
 
 export type AllocationCellModelInput = {
   dayMap: EmployeeDayMap | undefined;
   day: Date;
   viewMode: TimelineViewMode;
-  capacity: number;
 };
 
 function getMonthDays(day: Date): Date[] {
   const monthStart = startOfMonth(day);
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const monthEnd = endOfMonth(day);
   const days: Date[] = [];
   const current = new Date(monthStart);
 
   while (current <= monthEnd) {
-    days.push(startOfDay(current));
+    days.push(startOfDay(new Date(current)));
     current.setDate(current.getDate() + 1);
   }
 
@@ -39,65 +43,50 @@ export function getAllocationCellModel({
   dayMap,
   day,
   viewMode,
-  capacity,
 }: AllocationCellModelInput): AllocationCellModel {
   const isWeekView = viewMode === "week";
   const isMonthRangeView =
     viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
-  // Month-resolution views aggregate the full calendar month containing the column day;
-  // callers guarantee the day map covers full month bounds for those views.
-  const daysToCheck = isMonthRangeView ? getMonthDays(day) : [startOfDay(day)];
-  const dailyCapacity = capacity / WORK_DAYS_PER_WEEK;
-  // Legacy hardcodes a 40h weekly capacity for week view regardless of employee capacity.
-  const weeklyCapacity = 40;
+
   let totalPlanHours = 0;
-  let totalActualHours = 0;
-  let daysWithScheduleCount = 0;
 
-  for (const currentDay of daysToCheck) {
-    const dayOfWeek = currentDay.getDay();
-    const allocation = dayMap?.get(toLocalDateString(currentDay));
-    const dayPlanHours = allocation?.planHours ?? 0;
-    const dayActualHours = allocation?.actualHours ?? 0;
-
-    // A day counts toward capacity when it has hours or is a weekday.
-    if (dayPlanHours > 0 || dayActualHours > 0 || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
-      daysWithScheduleCount += 1;
-      totalPlanHours += dayPlanHours;
-      totalActualHours += dayActualHours;
+  if (isMonthRangeView) {
+    // Aggregate all days in the calendar month from the day map.
+    for (const d of getMonthDays(day)) {
+      const key = toLocalDateString(d);
+      totalPlanHours += dayMap?.get(key)?.planHours ?? 0;
     }
+  } else if (isWeekView) {
+    // The "day" arg for week view is the Monday of that week; walk 5 weekdays.
+    const current = startOfDay(new Date(day));
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(current);
+      d.setDate(d.getDate() + i);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) {
+        totalPlanHours += dayMap?.get(toLocalDateString(d))?.planHours ?? 0;
+      }
+    }
+  } else {
+    // Day view — single cell.
+    totalPlanHours = dayMap?.get(toLocalDateString(startOfDay(day)))?.planHours ?? 0;
   }
 
   const planPct = isMonthRangeView
-    ? daysWithScheduleCount > 0
-      ? totalPlanHours / (daysWithScheduleCount * dailyCapacity)
-      : 0
+    ? monthPct(totalPlanHours)
     : isWeekView
-      ? weeklyCapacity > 0
-        ? totalPlanHours / weeklyCapacity
-        : 0
-      : dailyCapacity > 0 && daysWithScheduleCount > 0
-        ? totalPlanHours / daysWithScheduleCount / dailyCapacity
-        : 0;
-  const actualPct = isMonthRangeView
-    ? daysWithScheduleCount > 0
-      ? totalActualHours / (daysWithScheduleCount * dailyCapacity)
-      : 0
-    : isWeekView
-      ? weeklyCapacity > 0
-        ? totalActualHours / weeklyCapacity
-        : 0
-      : dailyCapacity > 0 && daysWithScheduleCount > 0
-        ? totalActualHours / daysWithScheduleCount / dailyCapacity
-        : 0;
+      ? weekPct(totalPlanHours)
+      : dayPct(totalPlanHours);
 
-  if (planPct <= 0 && actualPct <= 0) return { kind: "empty" };
+  if (planPct <= 0) return { kind: "empty" };
+
+  const roundHours = (hours: number) => Math.round(hours * 10) / 10;
 
   return {
     kind: "allocation",
     planPct,
-    actualPct,
+    planHours: roundHours(totalPlanHours),
     planLabel: `${Math.round(planPct * 100)}%`,
-    actualLabel: `${Math.round(actualPct * 100)}%`,
+    planHoursLabel: formatAssignmentDisplayHours(totalPlanHours),
   };
 }

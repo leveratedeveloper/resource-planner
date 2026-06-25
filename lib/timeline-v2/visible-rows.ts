@@ -1,4 +1,3 @@
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -8,26 +7,23 @@ import type { TimelineFilters } from "@/lib/timeline-v2/types";
 export type VisibleEmployeeIdsInput = {
   employees: Employee[];
   assignments: Assignment[];
-  actualAssignments: ActualAssignment[];
-  projectById: Map<string, ProjectOption>;
-  selectedBrandProjectIds: Set<string>;
+  projectByKey: Map<string, ProjectOption>;
+  selectedBrandProjectKeys: Set<string>;
   filters: TimelineFilters;
 };
 
 export function getVisibleEmployeeIds({
   employees,
   assignments,
-  actualAssignments,
-  projectById,
-  selectedBrandProjectIds,
+  projectByKey,
+  selectedBrandProjectKeys,
   filters,
 }: VisibleEmployeeIdsInput): string[] {
   return filterTimelineEmployees({
     employees,
     dateFilteredAssignments: assignments,
-    visibleActualAssignments: actualAssignments,
-    projectById,
-    selectedBrandProjectIds,
+    projectByKey,
+    selectedBrandProjectKeys,
     filters,
   }).map((employee) => employee.id);
 }

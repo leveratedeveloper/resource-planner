@@ -7,7 +7,7 @@ import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 const PAGE_SIZE = 50;
 
 type ProjectScope = {
-  brandId: string | null;
+  brandIds: string[];
   status: ProjectOption["status"] | null;
   sourceType: ProjectOption["projectType"] | null;
   search: string;
@@ -21,7 +21,7 @@ async function fetchPage(
   const url = new URL("/api/planner/filter-options/projects", window.location.origin);
   url.searchParams.set("limit", String(PAGE_SIZE));
   url.searchParams.set("offset", String(pageParam));
-  if (scope.brandId) url.searchParams.set("brandId", scope.brandId);
+  if (scope.brandIds.length > 0) url.searchParams.set("brandIds", scope.brandIds.join(","));
   if (scope.status) url.searchParams.set("status", scope.status);
   if (scope.sourceType) url.searchParams.set("sourceType", scope.sourceType);
   if (scope.search) url.searchParams.set("search", scope.search);
@@ -37,7 +37,7 @@ async function fetchPage(
 
 export function usePlannerFilterProjects(
   params: {
-    brandId?: string | null;
+    brandIds?: string[];
     status?: ProjectOption["status"] | null;
     sourceType?: ProjectOption["projectType"] | null;
     search?: string;
@@ -45,7 +45,7 @@ export function usePlannerFilterProjects(
   options: { enabled?: boolean } = {}
 ) {
   const scope: ProjectScope = {
-    brandId: params.brandId ?? null,
+    brandIds: params.brandIds ?? [],
     status: params.status ?? null,
     sourceType: params.sourceType ?? null,
     search: params.search ?? "",
@@ -58,12 +58,7 @@ export function usePlannerFilterProjects(
       lastPage.hasMore ? allPages.reduce((count, page) => count + page.projects.length, 0) : undefined,
     enabled:
       (options.enabled ?? true) &&
-      hasProjectCriteria({
-        search: scope.search,
-        brandId: scope.brandId,
-        status: scope.status,
-        sourceType: scope.sourceType,
-      }),
+      hasProjectCriteria({ search: scope.search, brandIds: scope.brandIds, status: scope.status, sourceType: scope.sourceType }),
     staleTime: 5 * 60 * 1000,
   });
 }

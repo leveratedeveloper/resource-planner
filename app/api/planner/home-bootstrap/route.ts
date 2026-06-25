@@ -15,12 +15,6 @@ const VIEW_MODES = new Set<TimelineViewMode>([
   "year",
 ]);
 
-function boundedInteger(value: string | null, fallback: number, min: number, max: number) {
-  const parsed = value ? Number.parseInt(value, 10) : fallback;
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(Math.max(parsed, min), max);
-}
-
 export async function GET(request: NextRequest) {
   const timing = createRequestTiming("planner_home_bootstrap_api");
 
@@ -44,8 +38,6 @@ export async function GET(request: NextRequest) {
     }
 
     const viewMode = viewParam as TimelineViewMode;
-    const employeeLimit = boundedInteger(request.nextUrl.searchParams.get("employeeLimit"), 24, 1, 100);
-    const employeeOffset = boundedInteger(request.nextUrl.searchParams.get("employeeOffset"), 0, 0, 100_000);
 
     const data = await fetchPlannerHomeBootstrap(session, {
       viewMode,
@@ -56,12 +48,6 @@ export async function GET(request: NextRequest) {
         category: request.nextUrl.searchParams.get("category"),
         status: request.nextUrl.searchParams.get("status"),
       },
-      employeeLimit,
-      employeeOffset,
-      brandId: request.nextUrl.searchParams.get("brandId"),
-      department: request.nextUrl.searchParams.get("department"),
-      projectId: request.nextUrl.searchParams.get("projectId"),
-      search: request.nextUrl.searchParams.get("search"),
     });
 
     const body = { success: true, data };
@@ -69,7 +55,6 @@ export async function GET(request: NextRequest) {
       bytes: Buffer.byteLength(JSON.stringify(body), "utf8"),
       employees: data.employees.length,
       assignments: data.plannerTimeline.assignments.length,
-      actualAssignments: data.plannerTimeline.actualAssignments.length,
       metadataPartial: data.metadataPartial,
     });
     timing.total({ result: "success" });

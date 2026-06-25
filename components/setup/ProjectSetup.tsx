@@ -5,15 +5,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { type DateRange } from "react-day-picker";
 import { useInfiniteProjects, useProjectDetail, type Project } from "@/lib/query/hooks/useProjects";
-import { queryKeys } from "@/lib/query/queryKeys";
+import { dedupeProjectsById } from "@/lib/projects/dedupe-projects";
 import { useBrands } from "@/lib/query/hooks/useBrands";
 import { useBusinessUnits } from "@/lib/query/hooks/useBusinessUnits";
 import { useProjectCategories } from "@/lib/query/hooks/useProjectCategories";
 import { useChannelClassifications } from "@/lib/query/hooks/useChannelClassifications";
 import { useDeliverables } from "@/lib/query/hooks/useDeliverables";
-import { useAssignments, useAssignmentsByProject, useDeleteAssignment } from "@/lib/query/hooks/useAssignments";
-import { useQueryClient } from "@tanstack/react-query";
+import { useAssignments, useAssignmentsByProject, type Assignment } from "@/lib/query/hooks/useAssignments";
+import { useAssignmentCommands } from "@/lib/query/hooks/useAssignmentCommands";
 import { useEmployees } from "@/lib/query/hooks/useEmployees";
+import { criticalMonths } from "@/lib/assignments/allocation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,19 +37,20 @@ import { InfiniteScrollTrigger } from "@/components/ui/InfiniteScrollTrigger";
 import { AssignEmployeesDialog } from "@/components/projects/AssignEmployeesDialog";
 import { ProjectTeamAssignmentsTable } from "@/components/setup/ProjectTeamAssignmentsTable";
 import { useAuth } from "@/context/AuthContext";
-import { buildEmployeeAssignmentMap } from "@/components/setup/project-setup/team-members";
 import { getProjectDetailState } from "@/components/setup/project-setup/project-detail-state";
-import { getCriticalMonthlyAllocations } from "@/lib/utils/critical-allocation";
 import {
-  buildPendingAssignmentPayloads,
-  calculateDerivedHoursPerDay,
   formatProjectDateForDisplay,
   getAssignmentDateStrings,
   getFallbackAssignmentDateRange,
   getMissingAssignmentPlanningDateReason,
   getProjectAssignmentDateRange,
   parseManHoursInput,
-} from "@/lib/setup/project-assignment-save";
+  splitTotalAcrossMonths,
+  splitTotalAcrossMonthsMap,
+  toWholeHoursInput,
+} from "@/lib/assignments/split";
+import { isEvenSplit, monthlyMapsEqual } from "@/lib/assignments/even-split";
+import { EditMonthlyAllocationDialog } from "@/components/setup/EditMonthlyAllocationDialog";
 import {
   hasProjectChannelManHoursChanges,
   updateProjectChannelManHours,
@@ -102,7 +104,6 @@ function mapRawChannels(project: Project): EditableProjectChannel[] {
 
 export const ProjectSetup = () => {
   const { session } = useAuth();
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [showEmptyBrands, setShowEmptyBrands] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -114,17 +115,19 @@ export const ProjectSetup = () => {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteProjects(debouncedSearch || undefined);
-  const { data: brands = [] } = useBrands();
+  const { data: brands = [], isLoading: brandsLoading } = useBrands();
   const { data: businessUnits = [] } = useBusinessUnits();
   const { data: projectCategories = [] } = useProjectCategories();
   const { data: channels = [] } = useChannelClassifications();
   const { data: allDeliverables = [] } = useDeliverables();
 
-  // Flatten all pages into a single array of projects
+  // Flatten all pages into a single array of projects. Dedup by id so a
+  // boundary-duplicated row can never produce a duplicate React key.
   const projects = useMemo(() => {
     if (!projectsData?.pages) return [];
-    return projectsData.pages.flatMap((page) => page.data);
+    return dedupeProjectsById(projectsData.pages.flatMap((page) => page.data));
   }, [projectsData]);
+  const isProjectListLoading = projectsLoading || brandsLoading;
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -140,18 +143,39 @@ export const ProjectSetup = () => {
   const [pendingAssignments, setPendingAssignments] = useState<Array<{ employeeId: string }>>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [initialManHoursByEmployee, setInitialManHoursByEmployee] = useState<Record<string, string>>({});
+  const [customMonthlyByEmployee, setCustomMonthlyByEmployee] = useState<Record<string, Record<string, number>>>({});
+  const [initialCustomMonthlyByEmployee, setInitialCustomMonthlyByEmployee] = useState<Record<string, Record<string, number>>>({});
+  const [editingMonthlyEmployeeId, setEditingMonthlyEmployeeId] = useState<string | null>(null);
 
   const isProjectDetailOpen = isDialogOpen && !!viewingProject;
-  const { data: projectAssignments = [] } = useAssignmentsByProject(viewingProject?.id ?? "", {
-    enabled: isProjectDetailOpen,
+  // useAssignmentsByProject now accepts projectKey (string)
+  const projectKey = viewingProject ? `${viewingProject.projectType}:${viewingProject.id}` : "";
+  const { data: projectAssignments = [] } = useAssignmentsByProject(projectKey, {
+    enabled: isProjectDetailOpen && !!projectKey,
   });
-  const { data: allAssignments = [] } = useAssignments(undefined, { enabled: isProjectDetailOpen });
+  const { data: allAssignments = [] } = useAssignments({ enabled: isProjectDetailOpen });
   const { data: employees = [] } = useEmployees({ enabled: isProjectDetailOpen });
-  const deleteAssignment = useDeleteAssignment();
+  const { upsert, remove } = useAssignmentCommands();
 
-  const employeeMap = useMemo(() => {
-    return buildEmployeeAssignmentMap(employees, allAssignments);
-  }, [employees, allAssignments]);
+  // Simple lookup: employee info by id (name/position/dept only — no legacy hoursPerDay shape)
+  const employeeInfoMap = useMemo(() => {
+    const map = new Map<string, { fullName: string; position: string; department: { id: string; name: string; color: string } | null }>();
+    for (const emp of employees) {
+      map.set(emp.id, { fullName: emp.fullName, position: emp.position, department: emp.department ?? null });
+    }
+    return map;
+  }, [employees]);
+
+  // All assignments grouped by employeeId, for cross-project critical-month calculation
+  const assignmentsByEmployee = useMemo(() => {
+    const map = new Map<string, Assignment[]>();
+    for (const a of allAssignments) {
+      const list = map.get(a.employeeId) ?? [];
+      list.push(a);
+      map.set(a.employeeId, list);
+    }
+    return map;
+  }, [allAssignments]);
 
 
   // Form State - Project Type
@@ -194,31 +218,34 @@ export const ProjectSetup = () => {
     // Find which employees are assigned to this project
     const employeeIdsInProject = new Set<string>();
 
-    // Add existing assignments from database
     for (const a of projectAssignments) {
       if (a.employeeId) employeeIdsInProject.add(a.employeeId);
     }
-
-    // Add pending assignments
     for (const p of pendingAssignments) {
       employeeIdsInProject.add(p.employeeId);
     }
 
     return Array.from(employeeIdsInProject).map((employeeId) => {
-      const emp = employeeMap.get(employeeId);
-      const allAssignments = emp?.allAssignments || [];
-
-      const criticalAllocations = getCriticalMonthlyAllocations(allAssignments, dateRange);
+      const info = employeeInfoMap.get(employeeId);
+      // Flatten all of this employee's allocations across all projects into {month, hours} entries
+      const entries = (assignmentsByEmployee.get(employeeId) ?? []).flatMap((a) =>
+        a.allocations.map((alloc) => ({ month: alloc.month, hours: alloc.plannedHours }))
+      );
+      const critical = criticalMonths(entries);
 
       return {
         id: employeeId,
-        fullName: emp?.fullName ?? "Unknown",
-        position: emp?.position ?? "",
-        department: emp?.department ?? null,
-        criticalAllocations,
+        fullName: info?.fullName ?? "Unknown",
+        position: info?.position ?? "",
+        department: info?.department ?? null,
+        criticalAllocations: critical.map((c) => ({
+          monthKey: c.month,
+          monthLabel: c.monthLabel,
+          percentage: c.percentage,
+        })),
       };
     });
-  }, [projectAssignments, pendingAssignments, employeeMap, dateRange]);
+  }, [projectAssignments, pendingAssignments, employeeInfoMap, assignmentsByEmployee]);
 
   // Resolve brand name for the currently selected project/pitch
   const brandName = useMemo(() => {
@@ -230,6 +257,17 @@ export const ProjectSetup = () => {
     return new Set(pendingAssignments.map((pending) => pending.employeeId));
   }, [pendingAssignments]);
 
+  const customizedEmployeeIds = useMemo(
+    () => new Set(Object.keys(customMonthlyByEmployee)),
+    [customMonthlyByEmployee],
+  );
+
+  const spanMonths = useMemo(() => {
+    const { startDate, endDate } = getAssignmentDateStrings(dateRange);
+    if (!startDate || !endDate || startDate > endDate) return [];
+    return splitTotalAcrossMonths(0, startDate, endDate).map((m) => m.month);
+  }, [dateRange]);
+
   const unsavedManHoursChanges = useMemo(() => {
     return teamMembers
       .filter((member) => !pendingEmployeeIds.has(member.id))
@@ -238,22 +276,74 @@ export const ProjectSetup = () => {
         manHours: manHoursByEmployee[member.id] ?? "",
         initialManHours: initialManHoursByEmployee[member.id] ?? "",
       }))
-      .filter((change) => change.manHours !== change.initialManHours);
-  }, [teamMembers, pendingEmployeeIds, manHoursByEmployee, initialManHoursByEmployee]);
+      .filter(
+        (change) =>
+          change.manHours !== change.initialManHours ||
+          !monthlyMapsEqual(
+            customMonthlyByEmployee[change.employeeId],
+            initialCustomMonthlyByEmployee[change.employeeId],
+          ),
+      );
+  }, [
+    teamMembers,
+    pendingEmployeeIds,
+    manHoursByEmployee,
+    initialManHoursByEmployee,
+    customMonthlyByEmployee,
+    initialCustomMonthlyByEmployee,
+  ]);
 
   const changedManHoursEmployeeIds = useMemo(() => {
     return new Set(unsavedManHoursChanges.map((change) => change.employeeId));
   }, [unsavedManHoursChanges]);
 
   const handleUndoManHoursChange = useCallback((employeeId: string) => {
-    setManHoursByEmployee(prev => ({
+    setManHoursByEmployee((prev) => ({
       ...prev,
       [employeeId]: initialManHoursByEmployee[employeeId] ?? "",
     }));
-  }, [initialManHoursByEmployee]);
+    setCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      const initial = initialCustomMonthlyByEmployee[employeeId];
+      if (initial) next[employeeId] = initial;
+      else delete next[employeeId];
+      return next;
+    });
+  }, [initialManHoursByEmployee, initialCustomMonthlyByEmployee]);
+
+  const handleSaveMonthly = useCallback((employeeId: string, monthly: Record<string, number>) => {
+    setCustomMonthlyByEmployee((prev) => ({ ...prev, [employeeId]: monthly }));
+    const total = Object.values(monthly).reduce((sum, h) => sum + h, 0);
+    setManHoursByEmployee((prev) => ({ ...prev, [employeeId]: String(Math.round(total)) }));
+    setEditingMonthlyEmployeeId(null);
+  }, []);
+
+  const editingMember = useMemo(
+    () => teamMembers.find((m) => m.id === editingMonthlyEmployeeId) ?? null,
+    [teamMembers, editingMonthlyEmployeeId],
+  );
+
+  const editingInitialMonthly = useMemo(() => {
+    if (!editingMonthlyEmployeeId) return {};
+    const custom = customMonthlyByEmployee[editingMonthlyEmployeeId];
+    if (custom) return custom;
+    const { startDate, endDate } = getAssignmentDateStrings(dateRange);
+    const total = parseManHoursInput(manHoursByEmployee[editingMonthlyEmployeeId]) ?? 0;
+    return splitTotalAcrossMonthsMap(total, startDate, endDate);
+  }, [editingMonthlyEmployeeId, customMonthlyByEmployee, dateRange, manHoursByEmployee]);
+
+  // The popup must cover the MEMBER's engagement, not just the project's
+  // planning range: the timeline editor can extend a single member's span
+  // beyond the project dates (e.g. adding hours to a month outside it). Union
+  // the project span with the member's actual allocation months so no month is
+  // hidden — and so a replace-save never silently drops the omitted months.
+  const editingMonths = useMemo(() => {
+    const months = new Set([...spanMonths, ...Object.keys(editingInitialMonthly)]);
+    return Array.from(months).sort((a, b) => a.localeCompare(b));
+  }, [spanMonths, editingInitialMonthly]);
 
   const handleChangeManHours = useCallback((employeeId: string, value: string) => {
-    const numericValue = value.replace(/\D/g, "");
+    const numericValue = toWholeHoursInput(value);
     setManHoursByEmployee(prev => ({
       ...prev,
       [employeeId]: numericValue,
@@ -310,14 +400,6 @@ export const ProjectSetup = () => {
 
   const getDeliverablesForChannel = (channelId: string) => {
     return allDeliverables.filter(d => d.channelId === channelId);
-  };
-
-  const ensureSuccessfulSaveResponse = async (response: Response) => {
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      throw new Error(body?.error || "Failed to save pitch details");
-    }
-    return response;
   };
 
   const applyProjectToForm = useCallback((project: Project) => {
@@ -403,11 +485,14 @@ export const ProjectSetup = () => {
     if (viewingProject?.id !== project.id) {
       setManHoursByEmployee({});
       setInitialManHoursByEmployee({});
+      setCustomMonthlyByEmployee({});
+      setInitialCustomMonthlyByEmployee({});
     }
     setIsDialogOpen(true);
   };
 
   // Load saved man hours from existing assignments when project assignments are loaded.
+  // Man hours per engagement = sum of allocations[].plannedHours.
   useEffect(() => {
     if (!isDialogOpen || !viewingProject || projectAssignments.length === 0) {
       return;
@@ -418,16 +503,24 @@ export const ProjectSetup = () => {
     }
 
     const nextManHoursByEmployee: Record<string, string> = {};
+    const nextCustomMonthly: Record<string, Record<string, number>> = {};
 
     for (const assignment of projectAssignments) {
       if (!assignment.employeeId) continue;
-      const totalHours = assignment.totalHours;
-      nextManHoursByEmployee[assignment.employeeId] =
-        totalHours === null || totalHours === undefined ? "" : String(Math.round(Number(totalHours)));
+      const planAllocations = assignment.allocations.filter((a) => a.kind === "plan");
+      const totalHours = planAllocations.reduce((sum, a) => sum + a.plannedHours, 0);
+      nextManHoursByEmployee[assignment.employeeId] = String(Math.round(totalHours));
+      if (!isEvenSplit(planAllocations.map((a) => a.plannedHours))) {
+        nextCustomMonthly[assignment.employeeId] = Object.fromEntries(
+          planAllocations.map((a) => [a.month, a.plannedHours]),
+        );
+      }
     }
 
     setManHoursByEmployee(nextManHoursByEmployee);
     setInitialManHoursByEmployee(nextManHoursByEmployee);
+    setCustomMonthlyByEmployee(nextCustomMonthly);
+    setInitialCustomMonthlyByEmployee(nextCustomMonthly);
   }, [isDialogOpen, viewingProject, projectAssignments, initialManHoursByEmployee]);
 
   // Initialize assignment planning range from existing assignments when project has no saved dates
@@ -472,8 +565,33 @@ export const ProjectSetup = () => {
     return CURRENCIES.find((c) => c.code === code)?.symbol || code;
   };
 
-  // Handler for saving pending team assignments and deliverable changes
+  // A customized member returns their exact per-month map; otherwise the total
+  // is even-split. A blank/unparseable total falls back to 0 — but the save is
+  // gated by `allManHoursAreValid`, so this is only ever reached with a valid
+  // whole-number total (the 0 fallback is a defensive floor, not a live path).
+  const resolveMonthlyHours = (
+    employeeId: string,
+    spanStart: string,
+    spanEnd: string,
+  ): Record<string, number> => {
+    const custom = customMonthlyByEmployee[employeeId];
+    if (custom) return custom;
+    const total = parseManHoursInput(manHoursByEmployee[employeeId]) ?? 0;
+    return splitTotalAcrossMonthsMap(total, spanStart, spanEnd);
+  };
+
+  const resetProjectDialogState = useCallback(() => {
+    setPendingAssignments([]);
+    setManHoursByEmployee({});
+    setInitialManHoursByEmployee({});
+    setCustomMonthlyByEmployee({});
+    setInitialCustomMonthlyByEmployee({});
+    setEditingMonthlyEmployeeId(null);
+  }, []);
+
+  // Handler for saving pending team assignments and man-hours changes
   const handleSaveTeamAssignments = async (closeAfterSave = false) => {
+    if (!viewingProject || !projectKey) return;
     setIsSaving(true);
     try {
       if (hasAssignmentChanges && missingAssignmentPlanningDateReason) {
@@ -485,44 +603,36 @@ export const ProjectSetup = () => {
       }
 
       const assignmentDates = getAssignmentDateStrings(dateRange);
+      const { startDate: spanStart, endDate: spanEnd } = assignmentDates;
+      const currentProjectKey = projectKey;
 
       // 1. Create new assignments for pending employees
-      const createPromises = buildPendingAssignmentPayloads({
-        projectId: viewingProject!.id,
-        pendingAssignments,
-        manHoursByEmployee,
-        assignmentDates,
-      }).map((payload) =>
-        fetch('/api/assignments', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }).then(ensureSuccessfulSaveResponse)
-      );
-
-      // 2. Update existing assignments with changed man hours
-      const updatePromises = unsavedManHoursChanges.map((change) => {
-        const assignment = projectAssignments.find(a => a.employeeId === change.employeeId);
-        if (!assignment) return Promise.resolve();
-
-        const totalHours = parseManHoursInput(change.manHours);
-        if (totalHours === null) return Promise.resolve();
-
-        return fetch(`/api/assignments/${assignment.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            totalHours,
-            hoursPerDay: calculateDerivedHoursPerDay(totalHours, assignmentDates),
-          }),
-        }).then(ensureSuccessfulSaveResponse);
+      const createOps = pendingAssignments.map((pending) => {
+        const monthlyHours = resolveMonthlyHours(pending.employeeId, spanStart, spanEnd);
+        return upsert.mutateAsync({
+          employeeUuid: pending.employeeId,
+          projectKey: currentProjectKey,
+          span: { startDate: spanStart, endDate: spanEnd },
+          monthlyHours,
+          status: "draft",
+          mode: "replace",
+        });
       });
 
-      await Promise.all([...createPromises, ...updatePromises]);
+      // 2. Update existing assignments with changed man hours
+      const updateOps = unsavedManHoursChanges.map((change) => {
+        const monthlyHours = resolveMonthlyHours(change.employeeId, spanStart, spanEnd);
+        return upsert.mutateAsync({
+          employeeUuid: change.employeeId,
+          projectKey: currentProjectKey,
+          span: { startDate: spanStart, endDate: spanEnd },
+          monthlyHours,
+          status: "draft",
+          mode: "replace",
+        });
+      });
+
+      await Promise.all([...createOps, ...updateOps]);
 
       const nextInitialManHours: Record<string, string> = { ...initialManHoursByEmployee };
 
@@ -535,18 +645,24 @@ export const ProjectSetup = () => {
       }
 
       setInitialManHoursByEmployee(nextInitialManHours);
+
+      const nextInitialCustom: Record<string, Record<string, number>> = { ...initialCustomMonthlyByEmployee };
+      for (const pending of pendingAssignments) {
+        if (customMonthlyByEmployee[pending.employeeId]) {
+          nextInitialCustom[pending.employeeId] = customMonthlyByEmployee[pending.employeeId];
+        }
+      }
+      for (const change of unsavedManHoursChanges) {
+        if (customMonthlyByEmployee[change.employeeId]) {
+          nextInitialCustom[change.employeeId] = customMonthlyByEmployee[change.employeeId];
+        }
+      }
+      setInitialCustomMonthlyByEmployee(nextInitialCustom);
+
       setInitialProjectChannels(projectChannels);
 
       // Clear pending assignments after successful save
       setPendingAssignments([]);
-
-      if (hasAssignmentChanges) {
-        // Invalidate queries to refetch persisted assignment data
-        queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectsInfinite });
-        queryClient.invalidateQueries({ queryKey: queryKeys.assignments });
-        queryClient.invalidateQueries({ queryKey: queryKeys.assignmentsByProject(viewingProject!.id) });
-      }
 
       if (closeAfterSave) {
         setIsDialogOpen(false);
@@ -566,6 +682,11 @@ export const ProjectSetup = () => {
       delete next[employeeId];
       return next;
     });
+    setCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      delete next[employeeId];
+      return next;
+    });
   };
 
   // Handler for deleting a saved assignment
@@ -573,7 +694,7 @@ export const ProjectSetup = () => {
     const assignment = projectAssignments.find(a => a.employeeId === employeeId);
     if (!assignment?.id) return;
 
-    // Clean up local state
+    // Clean up local state immediately
     setManHoursByEmployee(prev => {
       const next = { ...prev };
       delete next[employeeId];
@@ -584,12 +705,18 @@ export const ProjectSetup = () => {
       delete next[employeeId];
       return next;
     });
-
-    deleteAssignment.mutate(assignment.id, {
-      onSettled: () => {
-        queryClient.invalidateQueries({ queryKey: ["assignmentsByProject", viewingProject!.id] });
-      },
+    setCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      delete next[employeeId];
+      return next;
     });
+    setInitialCustomMonthlyByEmployee((prev) => {
+      const next = { ...prev };
+      delete next[employeeId];
+      return next;
+    });
+
+    remove.mutate(assignment.id);
   };
 
   return (
@@ -618,12 +745,12 @@ export const ProjectSetup = () => {
 
         {/* Projects List grouped by Brand */}
         <div className="space-y-6">
-          {projectsByBrand.length === 0 && !projectsLoading && debouncedSearch ? (
+          {projectsByBrand.length === 0 && !isProjectListLoading && debouncedSearch ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:search-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">No projects or brands found matching &quot;{debouncedSearch}&quot;</p>
             </div>
-          ) : projectsByBrand.length === 0 && !projectsLoading ? (
+          ) : projectsByBrand.length === 0 && !isProjectListLoading ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="lucide:folder-x" className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">
@@ -647,7 +774,7 @@ export const ProjectSetup = () => {
                 </div>
 
                 {brandProjects.length === 0 ? (
-                  projectsLoading ? (
+                  isProjectListLoading ? (
                     <div className="grid gap-2 pl-5">
                       {[1, 2].map((i) => (
                         <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-white">
@@ -700,7 +827,7 @@ export const ProjectSetup = () => {
                                 {project.projectType === "campaign" ? "Campaign" : "Pitch"}
                               </Badge>
                               <span>
-                                {project.projectNumber || "No project number"} • {project.assignments?.length || 0} assignments
+                                {project.projectNumber || "No project number"} • {project.assignmentCount ?? 0} assignments
                               </span>
                             </div>
                           </div>
@@ -743,9 +870,7 @@ export const ProjectSetup = () => {
         {/* View Project/Pitch Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           if (!open) {
-            setPendingAssignments([]);
-            setManHoursByEmployee({});
-            setInitialManHoursByEmployee({});
+            resetProjectDialogState();
           }
           setIsDialogOpen(open);
         }}>
@@ -1238,12 +1363,14 @@ export const ProjectSetup = () => {
                     changedManHoursEmployeeIds={changedManHoursEmployeeIds}
                     manHoursByEmployee={manHoursByEmployee}
                     canAssignTeam={!!session?.access.can_view_all}
-                    isDeletePending={deleteAssignment.isPending}
+                    isDeletePending={remove.isPending}
                     onAssignTeam={() => setIsAssignEmployeesOpen(true)}
                     onUndoManHoursChange={handleUndoManHoursChange}
                     onChangeManHours={handleChangeManHours}
                     onRemovePending={handleRemovePending}
                     onDeleteSavedAssignment={handleDeleteSavedAssignment}
+                    customizedEmployeeIds={customizedEmployeeIds}
+                    onEditMonthly={(employeeId) => setEditingMonthlyEmployeeId(employeeId)}
                   />
 
                   {hasUnsavedChanges && (
@@ -1267,7 +1394,7 @@ export const ProjectSetup = () => {
             </div>
 
             <DialogFooter className="px-6 py-4 border-t bg-background shrink-0 gap-2 sm:justify-end">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
+              <Button variant="outline" onClick={() => { setIsDialogOpen(false); resetProjectDialogState(); }} disabled={isSaving}>
                 Close
               </Button>
               <Button
@@ -1307,7 +1434,7 @@ export const ProjectSetup = () => {
           <AssignEmployeesDialog
             open={isAssignEmployeesOpen}
             onOpenChange={setIsAssignEmployeesOpen}
-            projectId={viewingProject.id}
+            projectId={projectKey}
             projectName={viewingProject.name}
             projectColor={viewingProject.color}
             onAssignPending={(employeeIds) => {
@@ -1324,6 +1451,19 @@ export const ProjectSetup = () => {
                 return next;
               });
             }}
+          />
+        )}
+
+        {/* Edit Monthly Allocation Dialog */}
+        {editingMember && viewingProject && (
+          <EditMonthlyAllocationDialog
+            open
+            memberName={editingMember.fullName}
+            projectName={viewingProject.name}
+            months={editingMonths}
+            initialMonthly={editingInitialMonthly}
+            onSave={(monthly) => handleSaveMonthly(editingMember.id, monthly)}
+            onClose={() => setEditingMonthlyEmployeeId(null)}
           />
         )}
       </div>

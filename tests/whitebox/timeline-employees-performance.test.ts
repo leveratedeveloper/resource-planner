@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { ActualAssignment } from "@/lib/query/hooks/useActualAssignments";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
 import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
@@ -35,49 +34,20 @@ const makeEmployee = (id: string, overrides: Partial<Employee> = {}): Employee =
 const makeAssignment = (overrides: Partial<Assignment>): Assignment => ({
   id: "assignment-1",
   employeeId: "employee-1",
-  projectId: "project-1",
-  taskId: null,
+  projectKey: "campaign:project-1",
   startDate: "2026-05-18",
   endDate: "2026-05-18",
-  hoursPerDay: "8",
-  totalHours: null,
-  allocationPercentage: null,
-  isTimeOff: false,
-  isAdjustment: false,
-  timeOffTypeId: null,
-  category: "Design",
-  isBillable: true,
   status: "confirmed",
   note: null,
-  createdById: null,
-  createdAt: "2026-05-18T00:00:00.000Z",
-  updatedAt: "2026-05-18T00:00:00.000Z",
-  ...overrides,
-});
-
-const makeActualAssignment = (overrides: Partial<ActualAssignment>): ActualAssignment => ({
-  uuid: "actual-1",
-  employeeUuid: "employee-1",
-  projectUuid: "project-1",
-  taskUuid: null,
-  startDate: "2026-05-18",
-  endDate: "2026-05-18",
-  hoursPerDay: 8,
-  allocationPercentage: null,
-  isTimeOff: false,
-  timeOffTypeUuid: null,
-  category: "Design",
-  isBillable: true,
-  status: "confirmed",
-  note: null,
-  createdByUuid: null,
-  createdAt: "2026-05-18T00:00:00.000Z",
-  updatedAt: "2026-05-18T00:00:00.000Z",
+  allocations: [{ month: "2026-05-01", plannedHours: 160, kind: "plan" }],
+  createdBy: null,
+  updatedBy: null,
   ...overrides,
 });
 
 const makeProject = (overrides: Partial<ProjectOption>): ProjectOption => ({
   id: "project-1",
+  projectKey: "campaign:project-1",
   name: "Project 1",
   color: "#2563eb",
   status: "active",
@@ -116,15 +86,14 @@ describe("timeline employee loading helpers", () => {
     const visible = filterTimelineEmployees({
       employees: minimalRows,
       dateFilteredAssignments: [],
-      visibleActualAssignments: [],
-      projectById: new Map(),
-      filters: { brandId: null, department: "department-1", projectId: null },
+      projectByKey: new Map(),
+      filters: { brandIds: [], departments: ["department-1"], projectIds: [] },
     });
 
     expect(visible.map((employee) => employee.id)).toEqual(["employee-1"]);
   });
 
-  it("filters resources by selected project using planned and actual assignments", () => {
+  it("filters resources by selected project using planned assignments", () => {
     const employees = [
       makeEmployee("employee-1", { fullName: "Alpha Person" }),
       makeEmployee("employee-2", { fullName: "Beta Person" }),
@@ -134,22 +103,22 @@ describe("timeline employee loading helpers", () => {
     const visible = filterTimelineEmployees({
       employees,
       dateFilteredAssignments: [
-        makeAssignment({ id: "planned-match", employeeId: "employee-2", projectId: "project-1" }),
-        makeAssignment({ id: "planned-other", employeeId: "employee-3", projectId: "project-2" }),
+        makeAssignment({ id: "planned-match", employeeId: "employee-2", projectKey: "campaign:project-1" }),
+        makeAssignment({ id: "planned-other", employeeId: "employee-3", projectKey: "campaign:project-2" }),
       ],
-      visibleActualAssignments: [
-        makeActualAssignment({ uuid: "actual-match", employeeUuid: "employee-1", projectUuid: "project-1" }),
-      ],
-      projectById: new Map(),
+      projectByKey: new Map([
+        ["campaign:project-1", makeProject({ id: "project-1", projectKey: "campaign:project-1" })],
+        ["campaign:project-2", makeProject({ id: "project-2", projectKey: "campaign:project-2" })],
+      ]),
       filters: {
-        brandId: null,
-        department: null,
-        projectId: "project-1",
+        brandIds: [],
+        departments: [],
+        projectIds: ["project-1"],
         searchQuery: "",
       },
     });
 
-    expect(visible.map((employee) => employee.id)).toEqual(["employee-1", "employee-2"]);
+    expect(visible.map((employee) => employee.id)).toEqual(["employee-2"]);
   });
 
   it("returns no resources when selected project has no assignments in the visible timeline range", () => {
@@ -159,16 +128,15 @@ describe("timeline employee loading helpers", () => {
         makeEmployee("employee-2", { fullName: "Beta Person" }),
       ],
       dateFilteredAssignments: [
-        makeAssignment({ id: "other-project", employeeId: "employee-1", projectId: "project-2" }),
+        makeAssignment({ id: "other-project", employeeId: "employee-1", projectKey: "campaign:project-2" }),
       ],
-      visibleActualAssignments: [
-        makeActualAssignment({ uuid: "other-actual", employeeUuid: "employee-2", projectUuid: "project-3" }),
-      ],
-      projectById: new Map(),
+      projectByKey: new Map([
+        ["campaign:project-2", makeProject({ id: "project-2", projectKey: "campaign:project-2" })],
+      ]),
       filters: {
-        brandId: null,
-        department: null,
-        projectId: "project-1",
+        brandIds: [],
+        departments: [],
+        projectIds: ["project-1"],
         searchQuery: "",
       },
     });
@@ -183,12 +151,11 @@ describe("timeline employee loading helpers", () => {
         makeEmployee("employee-2", { fullName: "Beta Person" }),
       ],
       dateFilteredAssignments: [],
-      visibleActualAssignments: [],
-      projectById: new Map(),
+      projectByKey: new Map(),
       filters: {
-        brandId: "brand-empty",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-empty"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -197,9 +164,9 @@ describe("timeline employee loading helpers", () => {
   });
 
   it("filters resources by selected brand using visible planned assignments and keeps unassigned members out", () => {
-    const projectById = new Map([
-      ["project-brand", makeProject({ id: "project-brand", brandId: "brand-1" })],
-      ["project-other", makeProject({ id: "project-other", brandId: "brand-2" })],
+    const projectByKey = new Map([
+      ["campaign:project-brand", makeProject({ id: "project-brand", projectKey: "campaign:project-brand", brandId: "brand-1" })],
+      ["campaign:project-other", makeProject({ id: "project-other", projectKey: "campaign:project-other", brandId: "brand-2" })],
     ]);
 
     const visible = filterTimelineEmployees({
@@ -213,20 +180,19 @@ describe("timeline employee loading helpers", () => {
         makeAssignment({
           id: "visible-brand-work",
           employeeId: "employee-visible-brand-work",
-          projectId: "project-brand",
+          projectKey: "campaign:project-brand",
         }),
         makeAssignment({
           id: "visible-other-brand-work",
           employeeId: "employee-other-brand-work",
-          projectId: "project-other",
+          projectKey: "campaign:project-other",
         }),
       ],
-      visibleActualAssignments: [],
-      projectById,
+      projectByKey,
       filters: {
-        brandId: "brand-1",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-1"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -244,23 +210,22 @@ describe("timeline employee loading helpers", () => {
         makeAssignment({
           id: "visible-brand-work",
           employeeId: "employee-visible-brand-work",
-          projectId: "project-brand-not-in-generic-map",
+          projectKey: "campaign:project-brand-not-in-generic-map",
         }),
         makeAssignment({
           id: "visible-other-brand-work",
           employeeId: "employee-other-brand-work",
-          projectId: "project-other",
+          projectKey: "campaign:project-other",
         }),
       ],
-      visibleActualAssignments: [],
-      projectById: new Map([
-        ["project-other", makeProject({ id: "project-other", brandId: "brand-2" })],
+      projectByKey: new Map([
+        ["campaign:project-other", makeProject({ id: "project-other", projectKey: "campaign:project-other", brandId: "brand-2" })],
       ]),
-      selectedBrandProjectIds: new Set(["project-brand-not-in-generic-map"]),
+      selectedBrandProjectKeys: new Set(["campaign:project-brand-not-in-generic-map"]),
       filters: {
-        brandId: "brand-1",
-        department: null,
-        projectId: null,
+        brandIds: ["brand-1"],
+        departments: [],
+        projectIds: [],
         searchQuery: "",
       },
     });
@@ -268,46 +233,10 @@ describe("timeline employee loading helpers", () => {
     expect(visible.map((employee) => employee.id)).toEqual(["employee-visible-brand-work"]);
   });
 
-  it("filters resources by selected brand using visible actual assignments", () => {
-    const projectById = new Map([
-      ["project-brand", makeProject({ id: "project-brand", brandId: "brand-1" })],
-      ["project-other", makeProject({ id: "project-other", brandId: "brand-2" })],
-    ]);
-
-    const visible = filterTimelineEmployees({
-      employees: [
-        makeEmployee("employee-visible-actual-brand"),
-        makeEmployee("employee-visible-actual-other"),
-      ],
-      dateFilteredAssignments: [],
-      visibleActualAssignments: [
-        makeActualAssignment({
-          uuid: "actual-brand",
-          employeeUuid: "employee-visible-actual-brand",
-          projectUuid: "project-brand",
-        }),
-        makeActualAssignment({
-          uuid: "actual-other",
-          employeeUuid: "employee-visible-actual-other",
-          projectUuid: "project-other",
-        }),
-      ],
-      projectById,
-      filters: {
-        brandId: "brand-1",
-        department: null,
-        projectId: null,
-        searchQuery: "",
-      },
-    });
-
-    expect(visible.map((employee) => employee.id)).toEqual(["employee-visible-actual-brand"]);
-  });
-
   it("combines brand, department, search, and project filters before sorting resources", () => {
-    const projectById = new Map([
-      ["project-1", makeProject({ id: "project-1", brandId: "brand-1" })],
-      ["project-2", makeProject({ id: "project-2", brandId: "brand-2" })],
+    const projectByKey = new Map([
+      ["campaign:project-1", makeProject({ id: "project-1", projectKey: "campaign:project-1", brandId: "brand-1" })],
+      ["campaign:project-2", makeProject({ id: "project-2", projectKey: "campaign:project-2", brandId: "brand-2" })],
     ]);
 
     const visible = filterTimelineEmployees({
@@ -329,15 +258,14 @@ describe("timeline employee loading helpers", () => {
         }),
       ],
       dateFilteredAssignments: [
-        makeAssignment({ id: "project-match-a", employeeId: "employee-a", projectId: "project-1" }),
-        makeAssignment({ id: "project-match-c", employeeId: "employee-c", projectId: "project-1" }),
+        makeAssignment({ id: "project-match-a", employeeId: "employee-a", projectKey: "campaign:project-1" }),
+        makeAssignment({ id: "project-match-c", employeeId: "employee-c", projectKey: "campaign:project-1" }),
       ],
-      visibleActualAssignments: [],
-      projectById,
+      projectByKey,
       filters: {
-        brandId: "brand-1",
-        department: "department-1",
-        projectId: "project-1",
+        brandIds: ["brand-1"],
+        departments: ["department-1"],
+        projectIds: ["project-1"],
         searchQuery: "designer",
       },
     });
@@ -401,20 +329,22 @@ describe("timeline employee loading helpers", () => {
     ];
 
     const dateFilteredAssignments = [
-      makeAssignment({ id: "selected-project", employeeId: "employee-1", projectId: "project-1" }),
-      makeAssignment({ id: "other-project-same-employee", employeeId: "employee-1", projectId: "project-2" }),
-      makeAssignment({ id: "other-employee", employeeId: "employee-2", projectId: "project-2" }),
+      makeAssignment({ id: "selected-project", employeeId: "employee-1", projectKey: "campaign:project-1" }),
+      makeAssignment({ id: "other-project-same-employee", employeeId: "employee-1", projectKey: "campaign:project-2" }),
+      makeAssignment({ id: "other-employee", employeeId: "employee-2", projectKey: "campaign:project-2" }),
     ];
 
     const visible = filterTimelineEmployees({
       employees,
       dateFilteredAssignments,
-      visibleActualAssignments: [],
-      projectById: new Map(),
+      projectByKey: new Map([
+        ["campaign:project-1", makeProject({ id: "project-1", projectKey: "campaign:project-1" })],
+        ["campaign:project-2", makeProject({ id: "project-2", projectKey: "campaign:project-2" })],
+      ]),
       filters: {
-        brandId: null,
-        department: null,
-        projectId: "project-1",
+        brandIds: [],
+        departments: [],
+        projectIds: ["project-1"],
         searchQuery: "",
       },
     });

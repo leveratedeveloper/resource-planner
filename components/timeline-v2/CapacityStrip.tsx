@@ -43,14 +43,15 @@ export const CapacityStrip = React.memo(function CapacityStrip({ cells }: Capaci
           <div
             key={cell.id}
             className={cn(
-              "flex h-full items-center justify-center overflow-hidden text-[11px] font-bold",
+              "flex h-full flex-col items-center justify-center overflow-hidden leading-none",
               styles.text,
               styles.border
             )}
             style={{ backgroundColor: styles.bgColor }}
             data-date={cell.date}
           >
-            {cell.model.planLabel}
+            <span className="text-[11px] font-bold">{cell.model.planHoursLabel}</span>
+            <span className="text-[9px] font-medium opacity-80">{cell.model.planLabel}</span>
           </div>
         );
       })}

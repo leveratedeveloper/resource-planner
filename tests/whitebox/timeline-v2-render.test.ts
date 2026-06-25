@@ -14,78 +14,61 @@ vi.mock("@/context/AuthContext", () => ({
 vi.mock("@/lib/query/hooks", () => ({
   useBrands: () => ({ data: [], isLoading: false }),
   useEmployees: () => ({ data: [], isLoading: false }),
-  useInfiniteEmployees: () => ({
-    data: {
-      pages: [
-        {
-          data: [],
-          total: 0,
-          hasMore: false,
-        },
-      ],
-    },
-    isLoading: false,
-    hasNextPage: false,
-    isFetchingNextPage: false,
-    fetchNextPage: vi.fn(),
-  }),
   usePlannerTimeline: () => ({
     data: { assignments: [], actualAssignments: [] },
     isFetching: false,
     isRefetchError: false,
     isShowingPreviousData: false,
   }),
-  usePlannerHomeBootstrapPages: () => ({
+  useProjectsByBrand: () => ({ data: [], isLoading: false }),
+  useProjectOptions: () => ({ data: [], isLoading: false }),
+}));
+
+// The timeline reads a single windowed bootstrap query (deep import path).
+vi.mock("@/lib/query/hooks/usePlannerHomeBootstrap", () => ({
+  usePlannerHomeBootstrapWindow: () => ({
     data: {
-      pages: [
-        {
-          employees: [],
-          employeeTotal: 0,
-          employeeHasMore: false,
-          departmentsById: {},
-          brandsById: {},
-          projectsById: {},
-          plannerTimeline: { assignments: [], actualAssignments: [], request: { viewMode: "quarter", resolution: "month", startDate: "2026-04-01", endDate: "2026-06-30", filters: { category: null, status: null } } },
-          metadataPartial: false,
-          metadataFreshness: {
-            state: "healthy",
-            lastSuccessfulSyncAt: null,
-            latestSyncAt: null,
-            stale: false,
-            issueCount: 0,
-          },
-          freshness: {
-            directoryFetchedAt: "2026-06-05T00:00:00.000Z",
-            plannerFetchedAt: "2026-06-05T00:00:00.000Z",
-          },
-          request: {
-            viewMode: "quarter",
-            resolution: "month",
-            startDate: "2026-04-01",
-            endDate: "2026-06-30",
-            filters: { category: null, status: null },
-            employeeLimit: 60,
-            employeeOffset: 0,
-            brandId: null,
-            department: null,
-            projectId: null,
-            search: null,
-          },
+      employees: [],
+      employeeTotal: 0,
+      departmentsById: {},
+      brandsById: {},
+      projectsById: {},
+      plannerTimeline: {
+        assignments: [],
+        actualAssignments: [],
+        request: {
+          viewMode: "quarter",
+          resolution: "month",
+          startDate: "2026-04-01",
+          endDate: "2026-06-30",
+          filters: { category: null, status: null },
         },
-      ],
-      pageParams: [0],
+      },
+      metadataPartial: false,
+      metadataFreshness: {
+        state: "healthy",
+        lastSuccessfulSyncAt: null,
+        latestSyncAt: null,
+        stale: false,
+        issueCount: 0,
+      },
+      freshness: {
+        directoryFetchedAt: "2026-06-05T00:00:00.000Z",
+        plannerFetchedAt: "2026-06-05T00:00:00.000Z",
+      },
+      request: {
+        viewMode: "quarter",
+        resolution: "month",
+        startDate: "2026-04-01",
+        endDate: "2026-06-30",
+        filters: { category: null, status: null },
+      },
     },
     isLoading: false,
     isFetching: false,
     isPlaceholderData: false,
     isRefetchError: false,
-    isFetchNextPageError: false,
-    hasNextPage: false,
-    isFetchingNextPage: false,
-    fetchNextPage: vi.fn(),
   }),
-  useProjectsByBrand: () => ({ data: [], isLoading: false }),
-  useProjectOptions: () => ({ data: [], isLoading: false }),
 }));
 
 vi.mock("@tanstack/react-virtual", () => ({
@@ -110,10 +93,10 @@ describe("timeline-v2 render smoke test", () => {
     const html = renderToStaticMarkup(
       React.createElement(Timeline, {
         initialTimelineAnchor: "2026-06-04",
-        brandId: null,
-        department: null,
+        brandIds: [],
+        departments: [],
         searchQuery: "",
-        projectId: null,
+        projectIds: [],
       })
     );
 

@@ -9,10 +9,24 @@ import {
   useMemo,
   useState,
 } from "react";
-import { FilterBar } from "@/components/filters/FilterBar";
+import Link from "next/link";
+import { FilterPanel } from "@/components/filters/FilterPanel";
 import { SetupManager } from "@/components/setup/SetupManager";
 import { Timeline } from "@/components/timeline-v2";
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Icon } from "@iconify/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ExportButton } from "@/components/export";
+import { useAuth } from "@/context/AuthContext";
+import { canAccessDashboard, isFullAccess } from "@/lib/auth/client-access";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   useDepartments,
@@ -23,6 +37,9 @@ import { XIcon } from "lucide-react";
 import { hasBrandCriteria, hasProjectCriteria } from "@/lib/query/filterCriteria";
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { Brand } from "@/lib/query/hooks/useBrands";
+import { useFilterPreviewStore } from "@/lib/timeline-v2/filter-preview-store";
+import { countMatchingEmployees } from "@/lib/timeline-v2/count-matching-employees";
+import { DASHBOARD_FEATURE_ENABLED } from "@/lib/dashboard/feature-flag";
 
 interface HomeClientProps {
   initialTimelineAnchor: string;
@@ -30,10 +47,10 @@ interface HomeClientProps {
 }
 
 type HomePlannerFilters = {
-  brandId: string | null;
-  department: string | null;
+  brandIds: string[];
+  departments: string[];
   searchQuery: string;
-  projectId: string | null;
+  projectIds: string[];
 };
 
 const HomePlannerContext = createContext<HomePlannerFilters | null>(null);
@@ -65,10 +82,10 @@ export function HomePlannerTimeline({
   return (
     <Timeline
       initialTimelineAnchor={initialTimelineAnchor}
-      brandId={filters.brandId}
-      department={filters.department}
+      brandIds={filters.brandIds}
+      departments={filters.departments}
       searchQuery={filters.searchQuery}
-      projectId={filters.projectId}
+      projectIds={filters.projectIds}
     />
   );
 }
@@ -77,33 +94,42 @@ export function HomeClient({
   initialTimelineAnchor,
   children,
 }: HomeClientProps) {
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  // The selected brand/project objects are stashed at selection time, not
-  // derived by .find() over loaded pages — with server pagination a selection
-  // made via search may not be in the currently-loaded page.
-  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  const { session, logout } = useAuth();
+  const hasFullAccess = isFullAccess(session);
+  const hasDashboardAccess = canAccessDashboard(session);
+
+  // APPLIED ids flow to the timeline context; DRAFT objects live inside the
+  // FilterPanel until the user hits Apply.
+  const [appliedBrandIds, setAppliedBrandIds] = useState<string[]>([]);
+  const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>([]);
+  const [appliedDepartmentIds, setAppliedDepartmentIds] = useState<string[]>([]);
+
+  const [draftBrands, setDraftBrands] = useState<Brand[]>([]);
+  const [draftProjects, setDraftProjects] = useState<ProjectOption[]>([]);
+  const [draftDepartmentIds, setDraftDepartmentIds] = useState<string[]>([]);
+
+  const [panelOpen, setPanelOpen] = useState(false);
+
   const [brandSearch, setBrandSearch] = useState("");
   const debouncedBrandSearch = useDebounce(brandSearch, 300);
-  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [isSetupOpen, setIsSetupOpen] = useState(false);
 
-  const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState<ProjectOption | null>(null);
-  const [selectedProjectStatus, setSelectedProjectStatus] = useState<ProjectOption["status"] | null>(null);
-  const [selectedProjectSourceType, setSelectedProjectSourceType] = useState<ProjectOption["projectType"] | null>(null);
   const [projectSearch, setProjectSearch] = useState("");
   const debouncedProjectSearch = useDebounce(projectSearch, 300);
   const { data: departments = [] } = useDepartments();
 
-  // Infinite filter catalogs: search and project scope (brand/status/type) are
-  // server-side, so the dropdown payload stays bounded as the directory grows.
+  // Infinite filter catalogs: search and brand scope are server-side, so the
+  // dropdown payload stays bounded as the directory grows. The project column
+  // pre-fills from the selected brands' projects when the user hasn't typed;
+  // typing searches every project (ignoring brand scope) so any project is findable.
   const brandQuery = usePlannerFilterBrands({ search: debouncedBrandSearch });
+  const draftBrandIds = useMemo(() => draftBrands.map((b) => b.id), [draftBrands]);
+  const projectSearchActive = projectSearch.trim().length > 0;
   const projectQuery = usePlannerFilterProjects({
-    brandId: selectedBrandId,
-    status: selectedProjectStatus,
-    sourceType: selectedProjectSourceType,
+    // Typing searches every project; otherwise the column previews the selected brands' projects.
+    brandIds: projectSearchActive ? [] : draftBrandIds,
     search: debouncedProjectSearch,
   });
 
@@ -123,10 +149,16 @@ export function HomeClient({
   const brandHasQuery = hasBrandCriteria(brandSearch);
   const projectHasQuery = hasProjectCriteria({
     search: projectSearch,
-    brandId: selectedBrandId,
-    status: selectedProjectStatus,
-    sourceType: selectedProjectSourceType,
+    brandIds: projectSearchActive ? [] : draftBrandIds,
+    status: null,
+    sourceType: null,
   });
+
+  const projectCaption = useMemo(() => {
+    if (projectSearchActive || draftBrands.length === 0) return null;
+    const names = draftBrands.map((b) => b.name);
+    return names.length <= 2 ? `in ${names.join(", ")}` : `in ${names.length} brands`;
+  }, [projectSearchActive, draftBrands]);
 
   useEffect(() => {
     console.info("[Timing]", {
@@ -136,15 +168,25 @@ export function HomeClient({
     });
   }, []);
 
-  const plannerFilters = useMemo(
+  const plannerFilters = useMemo<HomePlannerFilters>(
     () => ({
-      brandId: selectedBrandId,
-      department: selectedDepartment,
+      brandIds: appliedBrandIds,
+      departments: appliedDepartmentIds,
       searchQuery: debouncedSearch,
-      projectId: filterProjectId,
+      projectIds: appliedProjectIds,
     }),
-    [debouncedSearch, filterProjectId, selectedBrandId, selectedDepartment]
+    [appliedBrandIds, appliedDepartmentIds, appliedProjectIds, debouncedSearch]
   );
+
+  const previewDataset = useFilterPreviewStore((state) => state.dataset);
+  const draftMatchCount = useMemo(() => {
+    if (!previewDataset) return null;
+    return countMatchingEmployees(previewDataset, {
+      brandIds: draftBrands.map((b) => b.id),
+      projectIds: draftProjects.map((p) => p.id),
+      departmentIds: draftDepartmentIds,
+    });
+  }, [previewDataset, draftBrands, draftProjects, draftDepartmentIds]);
 
   const brands = useMemo(
     () => brandQuery.data?.pages.flatMap((page) => page.brands) ?? [],
@@ -157,75 +199,150 @@ export function HomeClient({
   );
   const projectTotal = projectQuery.data?.pages[0]?.total ?? projects.length;
 
-  // Brand and project filters intersect on the client and the server scopes the
-  // employee page by the selected project's brand. A project left selected from
-  // a different brand intersects to an empty timeline and makes the server page
-  // the wrong employees — clear it (and its dependent status/type) when the
-  // brand changes to one the project doesn't belong to. Reads the stashed
-  // selectedProject object, not a lookup over loaded pages.
-  const handleBrandChange = useCallback(
-    (brand: Brand | null) => {
-      setSelectedBrand(brand);
-      setSelectedBrandId(brand?.id ?? null);
-      if (brand && selectedProject && selectedProject.brandId !== brand.id) {
-        setSelectedProject(null);
-        setFilterProjectId(null);
-        setSelectedProjectStatus(null);
-        setSelectedProjectSourceType(null);
+  // Toggle handlers resolve the emitted option id to the full Brand/Project
+  // object from the loaded pages, so the draft holds the objects the chips and
+  // apply step need. Selections live in the draft until Apply.
+  const handleToggleBrandId = useCallback((optionId: string, checked: boolean) => {
+    setDraftBrands((prev) => {
+      if (checked) {
+        if (prev.some((b) => b.id === optionId)) return prev;
+        const found = brands.find((b) => b.id === optionId);
+        return found ? [...prev, found] : prev;
       }
-    },
-    [selectedProject]
-  );
+      return prev.filter((b) => b.id !== optionId);
+    });
+  }, [brands]);
 
-  const handleProjectChange = useCallback((project: ProjectOption | null) => {
-    setSelectedProject(project);
-    setFilterProjectId(project?.id ?? null);
+  const handleToggleProjectId = useCallback((optionId: string, checked: boolean) => {
+    setDraftProjects((prev) => {
+      if (checked) {
+        if (prev.some((p) => p.id === optionId)) return prev;
+        const found = projects.find((p) => p.id === optionId);
+        return found ? [...prev, found] : prev;
+      }
+      return prev.filter((p) => p.id !== optionId);
+    });
+  }, [projects]);
+
+  const handleToggleDepartment = useCallback((id: string, checked: boolean) => {
+    setDraftDepartmentIds((prev) => checked ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((d) => d !== id));
+  }, []);
+
+  const handleApplyFilters = useCallback(() => {
+    setAppliedBrandIds(draftBrands.map((b) => b.id));
+    setAppliedProjectIds(draftProjects.map((p) => p.id));
+    setAppliedDepartmentIds(draftDepartmentIds);
+    setPanelOpen(false);
+  }, [draftBrands, draftProjects, draftDepartmentIds]);
+
+  const handleClearAll = useCallback(() => {
+    setDraftBrands([]); setDraftProjects([]); setDraftDepartmentIds([]);
   }, []);
 
   return (
     <HomePlannerContext.Provider value={plannerFilters}>
       <div className="flex flex-col h-screen bg-background">
-        <FilterBar
-          brands={brands}
-          selectedBrand={selectedBrand}
-          departments={departments}
-          projects={projects}
-          selectedBrandId={selectedBrandId}
-          onBrandChange={handleBrandChange}
-          brandSearch={brandSearch}
-          brandTotal={brandTotal}
-          isLoadingBrands={brandSearchPending && !brandQuery.isFetchingNextPage}
-          brandHasMore={brandQuery.hasNextPage}
-          isFetchingMoreBrands={brandQuery.isFetchingNextPage}
-          onLoadMoreBrands={() => {
-            if (brandQuery.hasNextPage && !brandQuery.isFetchingNextPage) brandQuery.fetchNextPage();
-          }}
-          onBrandSearchChange={setBrandSearch}
-          brandHasQuery={brandHasQuery}
-          selectedDepartment={selectedDepartment}
-          onDepartmentChange={setSelectedDepartment}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onOpenSetup={() => setIsSetupOpen(true)}
-          projectId={filterProjectId}
-          onProjectChange={handleProjectChange}
-          selectedProject={selectedProject}
-          projectSearch={projectSearch}
-          projectTotal={projectTotal}
-          isLoadingProjects={projectSearchPending && !projectQuery.isFetchingNextPage}
-          projectHasMore={projectQuery.hasNextPage}
-          isFetchingMoreProjects={projectQuery.isFetchingNextPage}
-          onLoadMoreProjects={() => {
-            if (projectQuery.hasNextPage && !projectQuery.isFetchingNextPage) projectQuery.fetchNextPage();
-          }}
-          projectScopeBrandName={selectedBrand?.name ?? null}
-          selectedProjectStatus={selectedProjectStatus}
-          selectedProjectSourceType={selectedProjectSourceType}
-          onProjectStatusChange={setSelectedProjectStatus}
-          onProjectSourceTypeChange={setSelectedProjectSourceType}
-          onProjectSearchChange={setProjectSearch}
-          projectHasQuery={projectHasQuery}
-        />
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 border-b bg-card" data-testid="filter-bar">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search people…"
+              className="h-9 w-[220px]"
+              data-testid="timeline-search-input"
+            />
+            <FilterPanel
+              open={panelOpen}
+              onOpenChange={setPanelOpen}
+              draft={{ brands: draftBrands, projects: draftProjects, departmentIds: draftDepartmentIds }}
+              appliedCount={appliedBrandIds.length + appliedProjectIds.length + appliedDepartmentIds.length}
+              matchCount={draftMatchCount}
+              brandFeed={{
+                options: brands.map((b) => ({ id: b.id, label: b.name, sublabel: b.companyName })),
+                search: brandSearch, onSearchChange: setBrandSearch, hasQuery: brandHasQuery,
+                isLoading: brandSearchPending && !brandQuery.isFetchingNextPage,
+                hasMore: !!brandQuery.hasNextPage, isFetchingNextPage: brandQuery.isFetchingNextPage,
+                onLoadMore: () => brandQuery.fetchNextPage(), total: brandTotal,
+              }}
+              projectFeed={{
+                options: projects.map((p) => ({ id: p.id, label: p.name, sublabel: p.brandName })),
+                search: projectSearch, onSearchChange: setProjectSearch, hasQuery: projectHasQuery,
+                isLoading: projectSearchPending && !projectQuery.isFetchingNextPage,
+                hasMore: !!projectQuery.hasNextPage, isFetchingNextPage: projectQuery.isFetchingNextPage,
+                onLoadMore: () => projectQuery.fetchNextPage(), total: projectTotal,
+              }}
+              projectCaption={projectCaption}
+              departments={departments}
+              onToggleBrand={handleToggleBrandId}
+              onToggleProject={handleToggleProjectId}
+              onToggleDepartment={handleToggleDepartment}
+              onRemoveBrand={(id) => setDraftBrands((prev) => prev.filter((b) => b.id !== id))}
+              onRemoveProject={(id) => setDraftProjects((prev) => prev.filter((p) => p.id !== id))}
+              onRemoveDepartment={(id) => setDraftDepartmentIds((prev) => prev.filter((d) => d !== id))}
+              onClearAll={handleClearAll}
+              onApply={handleApplyFilters}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+            <ExportButton
+              filters={{
+                brandId: appliedBrandIds[0] ?? null,
+                departmentId: appliedDepartmentIds[0] ?? null,
+                projectId: appliedProjectIds[0] ?? null,
+                startDate: undefined,
+                endDate: undefined,
+              }}
+            />
+            {DASHBOARD_FEATURE_ENABLED && hasDashboardAccess && (
+              <Button asChild variant="outline" data-testid="open-dashboard-button">
+                <Link href="/dashboard">
+                  <Icon icon="lucide:layout-dashboard" className="mr-2 h-4 w-4" />
+                  Dashboard
+                </Link>
+              </Button>
+            )}
+            {hasFullAccess && (
+              <Button onClick={() => setIsSetupOpen(true)} variant="outline" data-testid="open-setup-button">
+                <Icon icon="lucide:settings" className="mr-2 h-4 w-4" />
+                Setup
+              </Button>
+            )}
+
+            {/* User Menu */}
+            {session && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Icon icon="lucide:user" className="h-4 w-4" />
+                    <span className="hidden sm:inline">{session.employee.nickname || session.employee.full_name}</span>
+                    <Icon icon="lucide:chevron-down" className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[200px]">
+                  <div className="px-2 py-1.5">
+                    <p className="text-sm font-medium">{session.employee.full_name}</p>
+                    <p className="text-xs text-muted-foreground">{session.employee.position}</p>
+                    <p className="text-xs text-muted-foreground">Dept: {session.employee.department_name}</p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      Access: <span className={`font-medium ${hasFullAccess ? 'text-green-600' : 'text-orange-600'}`}>
+                        {hasFullAccess ? 'Full' : 'Restricted'}
+                      </span>
+                    </p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout}>
+                    <Icon icon="lucide:log-out" className="mr-2 h-4 w-4" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
 
         <main className="flex-1 overflow-hidden">
           {children ?? (

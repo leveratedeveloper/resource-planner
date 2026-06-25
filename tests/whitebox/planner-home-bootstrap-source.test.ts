@@ -10,7 +10,7 @@ describe("planner home bootstrap server composer", () => {
     expect(source).toContain("MinimalTimelineEmployee");
     expect(source).toContain("fetchPlannerHomeBootstrap");
     expect(source).toContain("fetchPlannerTimeline");
-    expect(source).toContain("plannerDirectoryRepository.listEmployeesForBootstrap");
+    expect(source).toContain("plannerDirectoryRepository.listTimelineEmployees");
     expect(source).toContain("plannerDirectoryRepository.listProjectsForBootstrap");
     expect(source).toContain("plannerDirectoryRepository.listBrandsByIds");
     expect(source).toContain("syncMode: latestInFlightSync?.syncMode ?? null");

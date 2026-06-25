@@ -12,6 +12,7 @@ export type ProjectSummaryResult = {
 function toProjectOption(project: Awaited<ReturnType<typeof plannerDirectoryRepository.listProjects>>[number]): ProjectOption {
   return {
     id: project.sourceProjectId,
+    projectKey: `${project.sourceType}:${project.sourceProjectId}`,
     name: project.name,
     brandId: project.brandId,
     color: project.color ?? "#64748b",

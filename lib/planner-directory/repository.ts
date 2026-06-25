@@ -11,6 +11,7 @@ import type {
   PlannerSyncStatus,
 } from "@/lib/planner-directory/types";
 import { chunkRowsForBatching, getPlannerDirectoryBatchSize } from "@/lib/planner-directory/write-batches";
+import { shouldSkipArchive } from "./archive-guard";
 
 type PlannerDirectoryDb = {
   query(sql: string, params?: unknown[]): Promise<unknown>;
@@ -393,6 +394,8 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     seenIds: string[];
     archivedAt?: string;
   }): Promise<number> {
+    // Never archive the whole table when a sync saw nothing — see archive-guard.ts.
+    if (shouldSkipArchive(args.seenIds)) return 0;
     const archivedAt = args.archivedAt ?? now();
     const tableMap = {
       department: { table: "planner_departments", key: "department_id" },
@@ -724,7 +727,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         SELECT *, COUNT(*) OVER() AS total_count
         FROM planner_brands
         WHERE ${whereClauses.join(" AND ")}
-        ORDER BY name ASC
+        ORDER BY name ASC, brand_id ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
@@ -801,6 +804,30 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     return `EXISTS (SELECT 1 FROM ${table} x WHERE x.employee_uuid = e.employee_uuid${projectClause} AND x.end_date >= ${startPlaceholder} AND x.start_date <= ${endPlaceholder} AND ${timeOffExclusion})`;
   }
 
+  function mapEmployeeReadRow(row: DbRow): PlannerDirectoryEmployeeRow {
+    return {
+      employeeUuid: String(row.employee_uuid),
+      sourceEmployeeId: row.source_employee_id ? String(row.source_employee_id) : null,
+      employeeNumber: row.employee_number ? String(row.employee_number) : null,
+      nik: row.nik ? String(row.nik) : null,
+      fullName: String(row.full_name ?? ""),
+      nickname: row.nickname ? String(row.nickname) : null,
+      email: row.email ? String(row.email) : null,
+      photo: row.photo ? String(row.photo) : null,
+      position: row.position ? String(row.position) : null,
+      departmentId: row.department_id ? String(row.department_id) : null,
+      weeklyCapacity: Number(row.weekly_capacity ?? 40),
+      employmentStatus: String(row.employment_status ?? "active"),
+      visibility: String(row.visibility ?? "active"),
+      workStartDate: row.work_start_date ? String(row.work_start_date) : null,
+      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
+      sourceHash: String(row.source_hash ?? ""),
+      syncedAt: String(row.synced_at ?? ""),
+      lastSeenAt: String(row.last_seen_at ?? ""),
+      archivedAt: row.archived_at ? String(row.archived_at) : null,
+    };
+  }
+
   async function listEmployeesForBootstrap(args: {
     offset: number;
     limit: number;
@@ -874,7 +901,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         FROM planner_employees e
         LEFT JOIN planner_departments d ON d.department_id = e.department_id
         WHERE ${whereClauses.join(" AND ")}
-        ORDER BY e.full_name ASC
+        ORDER BY e.full_name ASC, e.employee_uuid ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
@@ -885,30 +912,43 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     const total = rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : args.offset;
 
     return {
-      data: rows.map((row) => ({
-      employeeUuid: String(row.employee_uuid),
-      sourceEmployeeId: row.source_employee_id ? String(row.source_employee_id) : null,
-      employeeNumber: row.employee_number ? String(row.employee_number) : null,
-      nik: row.nik ? String(row.nik) : null,
-      fullName: String(row.full_name ?? ""),
-      nickname: row.nickname ? String(row.nickname) : null,
-      email: row.email ? String(row.email) : null,
-      photo: row.photo ? String(row.photo) : null,
-      position: row.position ? String(row.position) : null,
-      departmentId: row.department_id ? String(row.department_id) : null,
-      weeklyCapacity: Number(row.weekly_capacity ?? 40),
-      employmentStatus: String(row.employment_status ?? "active"),
-      visibility: String(row.visibility ?? "active"),
-      workStartDate: row.work_start_date ? String(row.work_start_date) : null,
-      sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
-      sourceHash: String(row.source_hash ?? ""),
-      syncedAt: String(row.synced_at ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? ""),
-      archivedAt: row.archived_at ? String(row.archived_at) : null,
-      })),
+      data: rows.map(mapEmployeeReadRow),
       total,
       hasMore: total > args.offset + rows.length,
     };
+  }
+
+  async function listTimelineEmployees(args: {
+    employeeUuid?: string | null;
+    assignmentRange?: { startDate: string; endDate: string } | null;
+  }): Promise<PlannerDirectoryEmployeeRow[]> {
+    const params: unknown[] = [];
+    const whereClauses = ["e.archived_at IS NULL"];
+
+    if (args.employeeUuid) {
+      params.push(args.employeeUuid);
+      whereClauses.push(`e.employee_uuid = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    }
+
+    // Active employees always show; an inactive employee surfaces only when they
+    // still have a planned (non-time-off) assignment overlapping the visible
+    // range. Skipped for the self-scoped fetch so a user always sees their own row.
+    if (!args.employeeUuid && args.assignmentRange) {
+      const plannedInRange = buildAssignmentExistsClause("assignments", null, args.assignmentRange, params);
+      whereClauses.push(`(e.employment_status = 'active' OR ${plannedInRange})`);
+    }
+
+    const result = await db.query(
+      `
+        SELECT e.*
+        FROM planner_employees e
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY e.full_name ASC
+      `,
+      params
+    );
+
+    return readRows<DbRow>(result).map(mapEmployeeReadRow);
   }
 
   async function listProjectsForBootstrap(args: {
@@ -917,23 +957,34 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     referencedProjectIds?: string[];
   }): Promise<PlannerDirectoryProjectRow[]> {
     const params: unknown[] = [];
-    const whereClauses = ["p.archived_at IS NULL"];
 
+    // The "scoped" set is the brand/search catalog subset. The "referenced"
+    // set is every project the visible assignments touch and must ALWAYS be
+    // present, or the timeline drops lanes for an employee's other-brand work.
+    // So referenced is UNIONed with scoped, never intersected.
+    const scopedConds: string[] = [];
     if (args.brandId) {
       params.push(args.brandId);
-      whereClauses.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+      scopedConds.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
     }
-
     const searchClause = buildLikeSearchClause(["p.name", "b.name", "b.company_name"], args.search, dialect, params);
     if (searchClause) {
-      whereClauses.push(searchClause);
+      scopedConds.push(searchClause);
     }
 
+    let referencedCond: string | null = null;
     if (args.referencedProjectIds && args.referencedProjectIds.length > 0) {
-      const referencedClause = buildInClause("p.source_project_id", args.referencedProjectIds, dialect, params);
-      if (referencedClause) {
-        whereClauses.push(referencedClause);
-      }
+      referencedCond = buildInClause("p.source_project_id", args.referencedProjectIds, dialect, params);
+    }
+
+    const scoped = scopedConds.length > 0 ? `(${scopedConds.join(" AND ")})` : null;
+    const whereClauses = ["p.archived_at IS NULL"];
+    if (scoped && referencedCond) {
+      whereClauses.push(`(${scoped} OR ${referencedCond})`);
+    } else if (scoped) {
+      whereClauses.push(scoped);
+    } else if (referencedCond) {
+      whereClauses.push(referencedCond);
     }
 
     const result = await db.query(
@@ -968,7 +1019,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
   }
 
   async function listProjectsForFilterOptions(args: {
-    brandId?: string | null;
+    brandIds?: string[] | null;
     status?: string | null;
     sourceType?: string | null;
     search?: string | null;
@@ -982,9 +1033,9 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     const params: unknown[] = [];
     const whereClauses = ["p.archived_at IS NULL"];
 
-    if (args.brandId) {
-      params.push(args.brandId);
-      whereClauses.push(`p.brand_id = ${dialect === "postgresql" ? `$${params.length}` : "?"}`);
+    if (args.brandIds && args.brandIds.length > 0) {
+      const inClause = buildInClause("p.brand_id", args.brandIds, dialect, params);
+      if (inClause) whereClauses.push(inClause);
     }
 
     if (args.status) {
@@ -1014,7 +1065,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         FROM planner_projects p
         LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
         WHERE ${whereClauses.join(" AND ")}
-        ORDER BY p.name ASC
+        ORDER BY p.name ASC, p.project_key ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
@@ -1066,7 +1117,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
         FROM planner_projects p
         LEFT JOIN planner_brands b ON b.brand_id = p.brand_id
         ${whereSql}
-        ORDER BY p.name ASC
+        ORDER BY p.name ASC, p.project_key ASC
         LIMIT ${limitPlaceholder}
         OFFSET ${offsetPlaceholder}
       `,
@@ -1116,6 +1167,7 @@ export function createPlannerDirectoryRepository(options: PlannerDirectoryReposi
     listProjects,
     listEmployees,
     listEmployeesForBootstrap,
+    listTimelineEmployees,
     listProjectsForBootstrap,
     getProjectForFilterOption,
     listProjectsForFilterOptions,

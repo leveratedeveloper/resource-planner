@@ -16,12 +16,12 @@ describe("planner filter options route", () => {
     expect(brandRouteSource).toContain('searchParams.get("search")');
 
     expect(projectRouteSource).toContain("fetchPlannerFilterProjects");
-    expect(projectRouteSource).toContain('searchParams.get("brandId")');
     expect(projectRouteSource).toContain('searchParams.get("status")');
     expect(projectRouteSource).toContain('searchParams.get("sourceType")');
     expect(projectRouteSource).toContain('searchParams.get("offset")');
     expect(projectRouteSource).toContain('searchParams.get("limit")');
     expect(projectRouteSource).toContain('searchParams.get("search")');
+    expect(projectRouteSource).toContain("brandIds");
 
     expect(brandServerSource).toContain("plannerDirectoryRepository.listBrandsForFilterOptions");
     expect(brandServerSource).not.toContain("plannerDirectoryRepository.listBrandsByIds");
@@ -35,11 +35,9 @@ describe("planner filter options route", () => {
     expect(projectServerSource).not.toContain("plannerDirectoryRepository.getProjectForFilterOption");
     expect(projectServerSource).toContain("export type PlannerFilterProjectsRequest");
     expect(projectServerSource).toContain("export type PlannerFilterProjectsResponse");
-    expect(projectServerSource).toContain("request.brandId");
+    expect(projectServerSource).toContain("request.brandIds");
     expect(projectServerSource).toContain("request.status");
     expect(projectServerSource).toContain("request.sourceType");
     expect(projectServerSource).toContain("request.search");
-    expect(projectServerSource).toContain("availableStatuses");
-    expect(projectServerSource).toContain("availableTypes");
   });
 });
