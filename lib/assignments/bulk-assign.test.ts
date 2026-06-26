@@ -58,10 +58,13 @@ describe("buildBulkAssignOperations with verbose driver dates (regression)", () 
       hoursByMember: { m1: "30" },
     });
     expect(ops).toHaveLength(1);
-    // Before the fix this was {} (Invalid Date -> no months) and hours were lost.
-    expect(Object.keys(ops[0].monthlyHours)).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
-    const sum = Object.values(ops[0].monthlyHours).reduce((a, b) => a + b, 0);
-    expect(sum).toBeCloseTo(30, 5);
+    // Before the date-coercion fix this was {} (Invalid Date -> no months) and hours were lost.
+    // Per-month semantics: 30 hrs/month lands on every month of the span (not 30 split across).
+    expect(ops[0].monthlyHours).toEqual({
+      "2026-04-01": 30,
+      "2026-05-01": 30,
+      "2026-06-01": 30,
+    });
     expect(ops[0].span).toEqual({ startDate: "2026-04-01", endDate: "2026-06-30" });
   });
 });
@@ -135,16 +138,20 @@ describe("buildBulkAssignOperations", () => {
     expect(ops[0].projectKey).toBe("keyA");
   });
 
-  it("applies the member's full hours to EACH project (not divided between them)", () => {
+  it("applies the value as hours-per-month to EACH project (flat, not divided)", () => {
     const ops = buildBulkAssignOperations({
       members: [{ id: "m1" }],
-      projects: [projA, projB],
+      projects: [projA, projB], // projA = Apr–Jun (3 months), projB = Jul (1 month)
       hoursByMember: { m1: "30" },
     });
-    const sum = (o: { monthlyHours: Record<string, number> }) =>
-      Object.values(o.monthlyHours).reduce((a, b) => a + b, 0);
-    expect(sum(ops[0])).toBeCloseTo(30, 5);
-    expect(sum(ops[1])).toBeCloseTo(30, 5);
+    // projA: 30/month across 3 months
+    expect(ops[0].monthlyHours).toEqual({
+      "2026-04-01": 30,
+      "2026-05-01": 30,
+      "2026-06-01": 30,
+    });
+    // projB: 30 in its single month
+    expect(ops[1].monthlyHours).toEqual({ "2026-07-01": 30 });
   });
 
   it("treats blank or invalid hours as zero", () => {

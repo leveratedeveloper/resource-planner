@@ -17,6 +17,11 @@ export const FULL_ACCESS_NIKS = [
   'L-234', // Dylan Setiawan
   'L-294', // Ratna Juwita Kartika Sari
   'L-007', // Herni Veryany Wijaya
+  'L-162', // Abdul Gofur
+  'L-389', // Helmi Febri Nandani
+  'L-357', // Brama Danuwinata
+  'L-427', // Arinda Shabrina
+  'L-410', // Dolorosa Raras Cindewangi
 ];
 
 // Departments whose members ALL get full access (matched by dept_id).

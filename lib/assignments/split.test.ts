@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitTotalAcrossMonths, splitTotalAcrossMonthsMap, toWholeHoursInput } from "./split";
+import { fillMonthsWithValue, splitTotalAcrossMonths, splitTotalAcrossMonthsMap, toWholeHoursInput } from "./split";
 
 describe("splitTotalAcrossMonths", () => {
   it("splits a total equally across the months the span covers", () => {
@@ -55,5 +55,35 @@ describe("toWholeHoursInput", () => {
   });
   it("returns empty string for empty input", () => {
     expect(toWholeHoursInput("")).toBe("");
+  });
+});
+
+describe("fillMonthsWithValue", () => {
+  it("writes the same value to every month in the span", () => {
+    expect(fillMonthsWithValue(10, "2026-04-01", "2026-06-30")).toEqual({
+      "2026-04-01": 10,
+      "2026-05-01": 10,
+      "2026-06-01": 10,
+    });
+  });
+
+  it("writes the value to a single-month span", () => {
+    expect(fillMonthsWithValue(30, "2026-07-01", "2026-07-31")).toEqual({
+      "2026-07-01": 30,
+    });
+  });
+
+  it("does NOT divide across months (per-month, not total)", () => {
+    const result = fillMonthsWithValue(30, "2026-04-01", "2026-06-30");
+    const sum = Object.values(result).reduce((a, b) => a + b, 0);
+    expect(sum).toBe(90); // 30/month × 3 months, not 30 total
+  });
+
+  it("returns an empty map when end is before start", () => {
+    expect(fillMonthsWithValue(10, "2026-06-30", "2026-04-01")).toEqual({});
+  });
+
+  it("returns an empty map for an invalid date", () => {
+    expect(fillMonthsWithValue(10, "not-a-date", "2026-06-30")).toEqual({});
   });
 });

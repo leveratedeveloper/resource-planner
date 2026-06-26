@@ -70,7 +70,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
   // ── Member selection — full objects, independent of the current search ─────
   const [selectedMembers, setSelectedMembers] = useState<Map<string, Employee>>(new Map());
 
-  // ── Per-member man-hours ──────────────────────────────────────────────────
+  // ── Per-member hours per month ────────────────────────────────────────────
   const [manHoursByMember, setManHoursByMember] = useState<Record<string, string>>({});
 
   const toggleMember = (emp: Employee) => {
@@ -188,8 +188,8 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Bulk Assign — {brandName}</DialogTitle>
           <DialogDescription>
-            Choose projects and team members, then set man-hours per member. Each member is assigned
-            to every chosen project as a draft.
+            Choose projects and team members, then set hours per member, per month. Each member is
+            assigned to every chosen project as a draft.
           </DialogDescription>
         </DialogHeader>
 
@@ -263,7 +263,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
               </span>
             </h3>
 
-            {/* Chosen tray = man-hours editor. Persists across searches. */}
+            {/* Chosen tray = hours-per-month editor. Persists across searches. */}
             {selectedMemberList.length > 0 && (
               <div className="mb-3 rounded-lg border bg-muted/30">
                 <div className="max-h-[180px] overflow-y-auto p-2 space-y-1">
@@ -285,9 +285,9 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                         value={manHoursByMember[emp.id] ?? ""}
                         onChange={(e) => setManHours(emp.id, toWholeHoursInput(e.target.value))}
                         className="w-20 text-right"
-                        aria-label={`Man-hours for ${emp.fullName}`}
+                        aria-label={`Hours per month for ${emp.fullName}`}
                       />
-                      <span className="text-xs text-muted-foreground w-6">hrs</span>
+                      <span className="text-xs text-muted-foreground w-8">hrs/mo</span>
                       <button
                         type="button"
                         onClick={() => removeMember(emp.id)}
@@ -310,9 +310,9 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                     value={applyAllValue}
                     onChange={(e) => setApplyAllValue(toWholeHoursInput(e.target.value))}
                     className="w-20 text-right"
-                    aria-label="Man-hours to apply to all chosen members"
+                    aria-label="Hours per month to apply to all chosen members"
                   />
-                  <span className="text-xs text-muted-foreground w-6">hrs</span>
+                  <span className="text-xs text-muted-foreground w-8">hrs/mo</span>
                   <Button type="button" variant="outline" size="sm" onClick={applyAll} disabled={!applyAllValue}>
                     Apply
                   </Button>

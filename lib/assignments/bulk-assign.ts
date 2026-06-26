@@ -1,6 +1,6 @@
 import type { ProjectOption } from "@/lib/query/hooks/useProjects";
 import type { UpsertBody } from "@/lib/query/hooks/useAssignmentCommands";
-import { parseManHoursInput, splitTotalAcrossMonthsMap, toDateInputValue } from "./split";
+import { parseManHoursInput, fillMonthsWithValue, toDateInputValue } from "./split";
 
 export type AssignSpan = { startDate: string; endDate: string };
 
@@ -11,9 +11,10 @@ export type AssignSpan = { startDate: string; endDate: string };
  *
  *  Both dates are coerced through toDateInputValue so verbose driver strings
  *  ("Wed Jun 18 2025 00:00:00 GMT+0700 (...)") become strict "yyyy-MM-dd". The
- *  downstream splitTotalAcrossMonths parses with `new Date(`${date}T00:00:00`)`,
- *  which yields Invalid Date — and therefore zero allocations — on the verbose
- *  form. The single-assign path coerces the same way; the bulk path must too. */
+ *  downstream fillMonthsWithValue parses with `new Date(`${date}T00:00:00`)`,
+ *  which yields Invalid Date — rejected via isValid as {}, i.e. zero
+ *  allocations — on the verbose form. The single-assign path coerces the same
+ *  way; the bulk path must too. */
 export function deriveProjectSpan(
   p: Pick<ProjectOption, "projectType" | "startDate" | "endDate">,
 ): AssignSpan | null {
@@ -73,8 +74,8 @@ export type BulkAssignProject = Pick<
 export type BulkAssignMember = { id: string };
 
 /** Build the draft upsert payloads for a member×project selection.
- *  A member's hours number is applied IN FULL to each assignable project (split across
- *  that project's own month span); projects with no usable dates are skipped. */
+ *  A member's hours number is treated as hours-PER-MONTH and applied flat to every month of
+ *  each assignable project's span; projects with no usable dates are skipped. */
 export function buildBulkAssignOperations(input: {
   members: BulkAssignMember[];
   projects: BulkAssignProject[];
@@ -82,11 +83,11 @@ export function buildBulkAssignOperations(input: {
 }): UpsertBody[] {
   const ops: UpsertBody[] = [];
   for (const m of input.members) {
-    const total = parseManHoursInput(input.hoursByMember[m.id]) ?? 0;
+    const perMonth = parseManHoursInput(input.hoursByMember[m.id]) ?? 0;
     for (const p of input.projects) {
       if (!isAssignableProject(p)) continue;
       const span = deriveProjectSpan(p)!;
-      const monthlyHours = splitTotalAcrossMonthsMap(total, span.startDate, span.endDate);
+      const monthlyHours = fillMonthsWithValue(perMonth, span.startDate, span.endDate);
       ops.push({
         employeeUuid: m.id,
         projectKey: p.projectKey,
