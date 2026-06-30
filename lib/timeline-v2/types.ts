@@ -2,7 +2,7 @@ import type { Employee } from "@/lib/query/hooks/useEmployees";
 import type { AllocationCellModel } from "@/lib/timeline-v2/allocation-model";
 import type { Resource } from "@/types";
 
-export type TimelineViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
+export type TimelineViewMode = "week" | "month" | "quarter" | "halfYear" | "year" | "custom";
 export type TimelineResolution = "day" | "month";
 
 export type TimelineColumn = {
