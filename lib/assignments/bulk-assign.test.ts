@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveProjectSpan, summarizeBulkAssign, applyHoursToAll, buildBulkAssignOperations, isAssignableProject } from "./bulk-assign";
+import { deriveProjectSpan, summarizeBulkAssign, applyHoursToAll, buildBulkAssignOperations, isAssignableProject, filterProjectsByName } from "./bulk-assign";
 
 describe("deriveProjectSpan", () => {
   it("returns start/end for a campaign that has both dates", () => {
@@ -200,5 +200,34 @@ describe("pitch exclusion", () => {
       skippedCount: 1,
       totalAssignments: 1,
     });
+  });
+});
+
+describe("filterProjectsByName", () => {
+  const projects = [
+    { name: "Pegadaian Tiktok" },
+    { name: "Pegadaian IG" },
+    { name: "BRI Prioritas" },
+  ];
+
+  it("returns all projects when the query is empty or whitespace", () => {
+    expect(filterProjectsByName(projects, "")).toEqual(projects);
+    expect(filterProjectsByName(projects, "   ")).toEqual(projects);
+  });
+
+  it("matches a case-insensitive substring of the name", () => {
+    expect(filterProjectsByName(projects, "pega")).toEqual([
+      { name: "Pegadaian Tiktok" },
+      { name: "Pegadaian IG" },
+    ]);
+    expect(filterProjectsByName(projects, "BRI")).toEqual([{ name: "BRI Prioritas" }]);
+  });
+
+  it("trims surrounding whitespace before matching", () => {
+    expect(filterProjectsByName(projects, "  ig ")).toEqual([{ name: "Pegadaian IG" }]);
+  });
+
+  it("returns an empty array when nothing matches", () => {
+    expect(filterProjectsByName(projects, "zzz")).toEqual([]);
   });
 });
