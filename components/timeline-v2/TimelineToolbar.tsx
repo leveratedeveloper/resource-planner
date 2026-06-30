@@ -6,6 +6,8 @@ import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTimelineViewStore } from "@/lib/timeline-v2/view-store";
+import { monthsInRange } from "@/lib/timeline-v2/custom-range";
+import { CustomRangePicker } from "@/components/timeline-v2/CustomRangePicker";
 import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 
 type TimelineToolbarProps = {
@@ -15,12 +17,29 @@ type TimelineToolbarProps = {
 export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate }: TimelineToolbarProps) {
   const viewMode = useTimelineViewStore((state) => state.viewMode);
   const showWeekends = useTimelineViewStore((state) => state.showWeekends);
+  const customRange = useTimelineViewStore((state) => state.customRange);
   const setViewMode = useTimelineViewStore((state) => state.setViewMode);
   const setAnchorDate = useTimelineViewStore((state) => state.setAnchorDate);
+  const setCustomRange = useTimelineViewStore((state) => state.setCustomRange);
   const toggleWeekends = useTimelineViewStore((state) => state.toggleWeekends);
 
   const handleToday = () => {
+    if (viewMode === "custom" && customRange) {
+      const len = monthsInRange(customRange.start, customRange.end);
+      const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      setCustomRange({ start, end: addMonths(start, len - 1) });
+      return;
+    }
     setAnchorDate(new Date());
+  };
+
+  const shiftCustom = (direction: 1 | -1) => {
+    if (!customRange) return;
+    const len = monthsInRange(customRange.start, customRange.end);
+    setCustomRange({
+      start: addMonths(customRange.start, direction * len),
+      end: addMonths(customRange.end, direction * len),
+    });
   };
 
   const handlePrev = () => {
@@ -39,6 +58,9 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate
         break;
       case "year":
         setAnchorDate(subYears(currentDate, 1));
+        break;
+      case "custom":
+        shiftCustom(-1);
         break;
     }
   };
@@ -60,8 +82,18 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate
       case "year":
         setAnchorDate(addYears(currentDate, 1));
         break;
+      case "custom":
+        shiftCustom(1);
+        break;
     }
   };
+
+  const periodLabel =
+    viewMode === "custom" && customRange
+      ? `${format(customRange.start, "MMM yyyy")} – ${format(customRange.end, "MMM yyyy")}`
+      : viewMode === "year" || viewMode === "quarter" || viewMode === "halfYear"
+        ? format(currentDate, "yyyy")
+        : format(currentDate, "MMMM yyyy");
 
   return (
     <div className="border-b bg-background" data-testid="timeline-v2-header-controls">
@@ -96,11 +128,22 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate
               <Icon icon="lucide:chevron-right" className="h-4 w-4" />
             </Button>
           </div>
-          <span className="font-medium text-sm min-w-[140px]">
-            {viewMode === "year" || viewMode === "quarter" || viewMode === "halfYear"
-              ? format(currentDate, "yyyy")
-              : format(currentDate, "MMMM yyyy")}
-          </span>
+          {viewMode === "custom" ? (
+            <CustomRangePicker value={customRange} onApply={setCustomRange}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-w-[140px] justify-start gap-1 text-xs"
+                data-testid="timeline-v2-custom-range-chip"
+              >
+                <Icon icon="lucide:calendar" className="h-3.5 w-3.5" />
+                {periodLabel}
+                <Icon icon="lucide:chevron-down" className="h-3.5 w-3.5 ml-auto" />
+              </Button>
+            </CustomRangePicker>
+          ) : (
+            <span className="font-medium text-sm min-w-[140px]">{periodLabel}</span>
+          )}
         </div>
 
         <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
@@ -124,6 +167,17 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ currentDate
               {label}
             </Button>
           ))}
+          <CustomRangePicker value={customRange} onApply={setCustomRange}>
+            <Button
+              variant={viewMode === "custom" ? "secondary" : "ghost"}
+              size="sm"
+              className={cn("h-7 px-3 text-xs gap-1", viewMode === "custom" && "bg-background shadow-sm")}
+              data-testid="timeline-v2-view-custom"
+            >
+              <Icon icon="lucide:calendar-search" className="h-3.5 w-3.5" />
+              Custom
+            </Button>
+          </CustomRangePicker>
         </div>
 
         {viewMode === "week" || viewMode === "month" ? (
