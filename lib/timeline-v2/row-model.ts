@@ -11,6 +11,7 @@ import type {
   TimelineResource,
   TimelineViewMode,
 } from "@/lib/timeline-v2/types";
+import { getTimelineResolution } from "@/lib/timeline-v2/date-range";
 
 export function groupTimelineAssignmentsByEmployee(assignments: Assignment[]) {
   const grouped = new Map<string, Assignment[]>();
@@ -46,7 +47,7 @@ function getPlanCampaignProjects(
 }
 
 function isTimelineMonthRangeView(viewMode: TimelineViewMode) {
-  return viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+  return getTimelineResolution(viewMode) === "month";
 }
 
 // Row models depend ONLY on data + days + viewMode. Filters, lane ordering,

@@ -12,6 +12,7 @@ import type { OrderedProjectLane } from "@/lib/timeline-v2/lane-order";
 import type { EmployeeRowModel, ProjectLaneModel } from "@/lib/timeline-v2/row-model";
 import type { TimelineColumn, TimelineViewMode } from "@/lib/timeline-v2/types";
 import { buildSegmentDisplayAssignment } from "@/lib/timeline-v2/plan-display-segments";
+import { getTimelineResolution } from "@/lib/timeline-v2/date-range";
 
 function parseLocalDate(value: string): Date {
   return new Date(`${value}T00:00:00`);
@@ -53,7 +54,7 @@ export const ProjectLane = React.memo(function ProjectLane({
   const openEditor = useAssignmentEditorStore((state) => state.open);
   const campaign = lane.project;
   const brand = lane.brand;
-  const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+  const monthRangeView = getTimelineResolution(viewMode) === "month";
 
   // Day-resolution lanes: one pointer-handler set on the canvas replaces the
   // legacy per-cell listener fleet. Drag (or click) opens the create editor.
