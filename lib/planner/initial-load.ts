@@ -70,6 +70,10 @@ export function getInitialTimelineDateRange(
     };
   }
 
+  // No "custom" branch by design: this runs only for the initial/SSR render,
+  // which always uses DEFAULT_TIMELINE_VIEW. viewMode (and customRange) aren't
+  // persisted, so "custom" can never be the initial mode — it's chosen at
+  // runtime via the toolbar, which drives the window off the store's customRange.
   const days = getInitialTimelineDays(getInitialWeekStart(anchor));
 
   return {
