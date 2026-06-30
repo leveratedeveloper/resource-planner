@@ -1,46 +1,6 @@
-import { addMonths, differenceInCalendarMonths, format, startOfMonth } from "date-fns";
+import { addMonths, differenceInCalendarMonths, startOfMonth } from "date-fns";
 
 export const CUSTOM_RANGE_MAX_MONTHS = 12;
-
-export type MonthOption = { value: string; label: string };
-
-/** Serialize a date to the `yyyy-MM` value used by the month selects. */
-export function formatMonthValue(date: Date): string {
-  return format(startOfMonth(date), "yyyy-MM");
-}
-
-/** Parse a `yyyy-MM` value back to a first-of-month Date. */
-export function parseMonthValue(value: string): Date {
-  const [year, month] = value.split("-").map(Number);
-  return new Date(year, month - 1, 1);
-}
-
-/** Options for the "From" select: Jan (anchorYear-1) … Dec (anchorYear+2). */
-export function buildFromMonthOptions(anchorYear: number): MonthOption[] {
-  const options: MonthOption[] = [];
-  for (let year = anchorYear - 1; year <= anchorYear + 2; year++) {
-    for (let month = 0; month < 12; month++) {
-      const date = new Date(year, month, 1);
-      options.push({ value: formatMonthValue(date), label: format(date, "MMM yyyy") });
-    }
-  }
-  return options;
-}
-
-/**
- * Options for the "To" select: exactly `maxMonths` months starting at `from`.
- * This is what enforces the window cap, the From<=To ordering, and cross-year
- * spans — the user simply can't pick a To outside the allowed window.
- */
-export function buildToMonthOptions(fromValue: string, maxMonths = CUSTOM_RANGE_MAX_MONTHS): MonthOption[] {
-  const start = parseMonthValue(fromValue);
-  const options: MonthOption[] = [];
-  for (let i = 0; i < maxMonths; i++) {
-    const date = addMonths(start, i);
-    options.push({ value: formatMonthValue(date), label: format(date, "MMM yyyy") });
-  }
-  return options;
-}
 
 /** Snap to first-of-month and clamp end into [start, start+maxMonths-1]. */
 export function clampRange(
@@ -58,4 +18,39 @@ export function clampRange(
 /** Inclusive count of months between start and end. */
 export function monthsInRange(start: Date, end: Date): number {
   return differenceInCalendarMonths(startOfMonth(end), startOfMonth(start)) + 1;
+}
+
+export type MonthCellState = "start" | "end" | "in-range" | "disabled" | "default";
+
+/**
+ * Classify one month cell in the range-picker grid.
+ *
+ * - `capAnchor` is set only while the user is picking the END month: any month
+ *   more than `maxMonths-1` after it is `disabled`, which enforces the window
+ *   cap directly in the grid rather than silently clamping after the fact.
+ * - `rangeStart`/`rangeEnd` describe the span to highlight — the committed range
+ *   when idle, or start→hovered-month while previewing an end selection.
+ */
+export function getMonthCellState(args: {
+  month: Date;
+  rangeStart: Date | null;
+  rangeEnd: Date | null;
+  capAnchor: Date | null;
+  maxMonths?: number;
+}): MonthCellState {
+  const max = args.maxMonths ?? CUSTOM_RANGE_MAX_MONTHS;
+  const m = startOfMonth(args.month).getTime();
+
+  if (args.capAnchor) {
+    const capEnd = addMonths(startOfMonth(args.capAnchor), max - 1).getTime();
+    if (m > capEnd) return "disabled";
+  }
+
+  const s = args.rangeStart ? startOfMonth(args.rangeStart).getTime() : null;
+  const e = args.rangeEnd ? startOfMonth(args.rangeEnd).getTime() : null;
+
+  if (s !== null && m === s) return "start";
+  if (e !== null && m === e) return "end";
+  if (s !== null && e !== null && m > s && m < e) return "in-range";
+  return "default";
 }
