@@ -235,7 +235,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
                 </div>
                 {filteredProjects.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center">
-                    No projects matching &quot;{projectSearch}&quot;
+                    No projects matching &quot;{projectSearch.trim()}&quot;
                   </p>
                 ) : (
                   <div className="md:flex-1 md:overflow-y-auto space-y-1 pr-1">
