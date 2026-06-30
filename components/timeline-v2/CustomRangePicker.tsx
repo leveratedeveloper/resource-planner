@@ -93,6 +93,11 @@ export function CustomRangePicker({ value, onApply, children }: CustomRangePicke
     setOpen(false);
   };
 
+  const shiftYear = (delta: number) => {
+    setYear((y) => y + delta);
+    setHover(null);
+  };
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
@@ -101,11 +106,11 @@ export function CustomRangePicker({ value, onApply, children }: CustomRangePicke
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Custom range</span>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon-sm" onClick={() => setYear((y) => y - 1)} aria-label="Previous year">
+              <Button variant="ghost" size="icon-sm" onClick={() => shiftYear(-1)} aria-label="Previous year">
                 <Icon icon="lucide:chevron-left" className="h-4 w-4" />
               </Button>
               <span className="text-sm tabular-nums w-10 text-center">{year}</span>
-              <Button variant="ghost" size="icon-sm" onClick={() => setYear((y) => y + 1)} aria-label="Next year">
+              <Button variant="ghost" size="icon-sm" onClick={() => shiftYear(1)} aria-label="Next year">
                 <Icon icon="lucide:chevron-right" className="h-4 w-4" />
               </Button>
             </div>
