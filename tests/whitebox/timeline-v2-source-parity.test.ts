@@ -80,7 +80,7 @@ describe("timeline-v2 source parity", () => {
     const laneSource = readFileSync("components/timeline-v2/ProjectLane.tsx", "utf8");
     const barSource = readFileSync("components/timeline-v2/AssignmentBar.tsx", "utf8");
 
-    expect(laneSource).toContain('const monthRangeView = viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";');
+    expect(laneSource).toContain('const monthRangeView = getTimelineResolution(viewMode) === "month";');
     expect(laneSource).toContain('resolution={monthRangeView ? "month" : "day"}');
     expect(barSource).toContain("getTimelineAssignmentPosition");
     expect(barSource).toContain("leftPct");

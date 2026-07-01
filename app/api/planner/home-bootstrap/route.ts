@@ -13,6 +13,7 @@ const VIEW_MODES = new Set<TimelineViewMode>([
   "quarter",
   "halfYear",
   "year",
+  "custom",
 ]);
 
 export async function GET(request: NextRequest) {

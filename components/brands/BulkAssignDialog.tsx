@@ -16,6 +16,7 @@ import {
   summarizeBulkAssign,
   applyHoursToAll,
   buildBulkAssignOperations,
+  filterProjectsByName,
 } from "@/lib/assignments/bulk-assign";
 import { toWholeHoursInput } from "@/lib/assignments/split";
 
@@ -48,6 +49,12 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
   const selectedProjects = useMemo(
     () => brandProjects.filter((p) => selectedProjectIds.has(p.id)),
     [brandProjects, selectedProjectIds],
+  );
+
+  const [projectSearch, setProjectSearch] = useState("");
+  const filteredProjects = useMemo(
+    () => filterProjectsByName(brandProjects, projectSearch),
+    [brandProjects, projectSearch],
   );
 
   // ── Member search + infinite list ─────────────────────────────────────────
@@ -143,6 +150,7 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
       setManHoursByMember({});
       setApplyAllValue("");
       setSearch("");
+      setProjectSearch("");
     }
   }, [open]);
 
@@ -211,46 +219,67 @@ export const BulkAssignDialog: React.FC<BulkAssignDialogProps> = ({
             ) : brandProjects.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">No projects found for this brand.</p>
             ) : (
-              <div className="md:flex-1 md:overflow-y-auto space-y-1 pr-1">
-                {brandProjects.map((p) => {
-                  const isSelected = selectedProjectIds.has(p.id);
-                  const blocked = p.projectType === "pitch";
-                  const span = deriveProjectSpan(p);
-                  const noDate = !span && !blocked;
-                  const RowTag = blocked ? "div" : "label";
-                  return (
-                    <RowTag
-                      key={p.id}
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border transition-colors",
-                        blocked
-                          ? "border-dashed border-muted bg-muted/20 opacity-60 cursor-not-allowed"
-                          : isSelected
-                            ? "bg-primary/5 border-primary cursor-pointer"
-                            : noDate
-                              ? "border-amber-200 bg-amber-50/50 opacity-70 cursor-pointer"
-                              : "hover:bg-accent/50 border-transparent cursor-pointer",
-                      )}
-                    >
-                      <div className="w-2 h-6 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{p.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {blocked
-                            ? "Pitch · can't be planned on the timeline yet"
-                            : `Campaign${span ? ` · ${span.startDate} – ${span.endDate}` : " · no dates — will be skipped"}`}
-                        </div>
-                      </div>
-                      <Checkbox
-                        checked={isSelected}
-                        disabled={blocked}
-                        onCheckedChange={() => toggleProject(p.id)}
-                        aria-label={blocked ? `${p.name} — pitches can't be planned yet` : `Select project ${p.name}`}
-                      />
-                    </RowTag>
-                  );
-                })}
-              </div>
+              <>
+                <div className="relative mb-2">
+                  <Icon
+                    icon="lucide:search"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                  />
+                  <Input
+                    placeholder="Search projects…"
+                    value={projectSearch}
+                    onChange={(e) => setProjectSearch(e.target.value)}
+                    className="pl-9"
+                    aria-label="Search projects by name"
+                  />
+                </div>
+                {filteredProjects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    No projects matching &quot;{projectSearch.trim()}&quot;
+                  </p>
+                ) : (
+                  <div className="md:flex-1 md:overflow-y-auto space-y-1 pr-1">
+                    {filteredProjects.map((p) => {
+                      const isSelected = selectedProjectIds.has(p.id);
+                      const blocked = p.projectType === "pitch";
+                      const span = deriveProjectSpan(p);
+                      const noDate = !span && !blocked;
+                      const RowTag = blocked ? "div" : "label";
+                      return (
+                        <RowTag
+                          key={p.id}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                            blocked
+                              ? "border-dashed border-muted bg-muted/20 opacity-60 cursor-not-allowed"
+                              : isSelected
+                                ? "bg-primary/5 border-primary cursor-pointer"
+                                : noDate
+                                  ? "border-amber-200 bg-amber-50/50 opacity-70 cursor-pointer"
+                                  : "hover:bg-accent/50 border-transparent cursor-pointer",
+                          )}
+                        >
+                          <div className="w-2 h-6 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{p.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {blocked
+                                ? "Pitch · can't be planned on the timeline yet"
+                                : `Campaign${span ? ` · ${span.startDate} – ${span.endDate}` : " · no dates — will be skipped"}`}
+                            </div>
+                          </div>
+                          <Checkbox
+                            checked={isSelected}
+                            disabled={blocked}
+                            onCheckedChange={() => toggleProject(p.id)}
+                            aria-label={blocked ? `${p.name} — pitches can't be planned yet` : `Select project ${p.name}`}
+                          />
+                        </RowTag>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </section>
 

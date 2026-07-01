@@ -6,6 +6,7 @@ import {
 } from "@/lib/assignments/allocation";
 import type { EmployeeDayMap } from "@/lib/timeline-v2/allocation-day-map";
 import type { TimelineViewMode } from "@/lib/timeline-v2/types";
+import { getTimelineResolution } from "@/lib/timeline-v2/date-range";
 import { toLocalDateString } from "@/lib/utils";
 import { formatAssignmentDisplayHours } from "@/lib/timeline-v2/assignment-display-hours";
 
@@ -45,8 +46,7 @@ export function getAllocationCellModel({
   viewMode,
 }: AllocationCellModelInput): AllocationCellModel {
   const isWeekView = viewMode === "week";
-  const isMonthRangeView =
-    viewMode === "quarter" || viewMode === "halfYear" || viewMode === "year";
+  const isMonthRangeView = getTimelineResolution(viewMode) === "month";
 
   let totalPlanHours = 0;
 

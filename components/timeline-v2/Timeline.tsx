@@ -120,6 +120,7 @@ export function Timeline({
   const viewMode = useTimelineViewStore((state) => state.viewMode);
   const anchorDate = useTimelineViewStore((state) => state.anchorDate);
   const showWeekends = useTimelineViewStore((state) => state.showWeekends);
+  const customRange = useTimelineViewStore((state) => state.customRange);
   const hasHydratedWeekendPreference = useTimelineViewStore((state) => state.hasHydratedWeekendPreference);
   const resourceColumnWidth = useTimelineViewStore((state) => state.resourceColumnWidth);
   const hydrateWeekendPreference = useTimelineViewStore((state) => state.hydrateWeekendPreference);
@@ -173,8 +174,9 @@ export function Timeline({
       anchorDate: currentDate,
       viewMode,
       showWeekends,
+      customRange,
     }),
-    [currentDate, showWeekends, viewMode]
+    [currentDate, showWeekends, viewMode, customRange]
   );
 
   const isLayoutReady = hasHydratedWeekendPreference && containerWidth !== null;

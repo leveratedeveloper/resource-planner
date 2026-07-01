@@ -18,7 +18,11 @@ import type {
   TimelineViewMode,
 } from "@/lib/timeline-v2/types";
 
-function getAllColumns(anchorDate: Date, viewMode: TimelineViewMode): Date[] {
+function getAllColumns(
+  anchorDate: Date,
+  viewMode: TimelineViewMode,
+  customRange?: { start: Date; end: Date } | null,
+): Date[] {
   switch (viewMode) {
     case "week": {
       const start = startOfWeek(anchorDate, { weekStartsOn: 1 });
@@ -50,6 +54,15 @@ function getAllColumns(anchorDate: Date, viewMode: TimelineViewMode): Date[] {
         start: new Date(anchorDate.getFullYear(), 0, 1),
         end: new Date(anchorDate.getFullYear(), 11, 1),
       });
+    case "custom": {
+      if (!customRange) {
+        return [startOfMonth(anchorDate)];
+      }
+      return eachMonthOfInterval({
+        start: startOfMonth(customRange.start),
+        end: startOfMonth(customRange.end),
+      });
+    }
   }
 }
 
@@ -61,13 +74,15 @@ export function getTimelineColumns({
   anchorDate,
   viewMode,
   showWeekends,
+  customRange,
 }: {
   anchorDate: Date;
   viewMode: TimelineViewMode;
   showWeekends: boolean;
+  customRange?: { start: Date; end: Date } | null;
 }): TimelineColumnSet {
   const resolution = getTimelineResolution(viewMode);
-  const allColumns = getAllColumns(anchorDate, viewMode);
+  const allColumns = getAllColumns(anchorDate, viewMode, customRange);
   const visibleDates = resolution === "month" || showWeekends
     ? allColumns
     : allColumns.filter((date) => date.getDay() !== 0 && date.getDay() !== 6);

@@ -100,3 +100,14 @@ export function buildBulkAssignOperations(input: {
   }
   return ops;
 }
+
+/**
+ * Client-side, case-insensitive name filter for the Bulk Assign project list.
+ * The whole brand project list is loaded up front (no pagination), so filtering
+ * in memory never misses an off-screen project.
+ */
+export function filterProjectsByName<T extends { name: string }>(projects: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return projects;
+  return projects.filter((p) => p.name.toLowerCase().includes(q));
+}

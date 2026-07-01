@@ -1,8 +1,9 @@
 import { queryKeys } from "@/lib/query/queryKeys";
 import { toLocalDateString } from "@/lib/utils";
 import type { Assignment } from "@/lib/query/hooks/useAssignments";
+import type { TimelineViewMode } from "@/lib/timeline-v2/types";
 
-export type TimelineViewMode = "week" | "month" | "quarter" | "halfYear" | "year";
+export type { TimelineViewMode };
 export type PlannerTimelineResolution = "day" | "month";
 
 export type PlannerTimelineFilters = {
