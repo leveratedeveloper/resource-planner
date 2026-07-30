@@ -8,7 +8,6 @@ export type ErrorType = 'network' | 'timeout' | 'auth' | 'parse' | 'unknown';
 export interface EnhancedApiError {
   message: string;
   type: ErrorType;
-  originalError?: unknown;
 }
 
 // ============ API RESPONSE WRAPPER ============
@@ -289,6 +288,7 @@ export class MySqlApiError extends Error {
   constructor(
     message: string,
     public statusCode: number,
+    public retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'MySqlApiError';
